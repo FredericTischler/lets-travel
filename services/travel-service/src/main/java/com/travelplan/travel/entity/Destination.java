@@ -4,6 +4,7 @@ import org.springframework.data.neo4j.core.schema.Id;
 import org.springframework.data.neo4j.core.schema.Node;
 import org.springframework.data.neo4j.core.schema.Relationship;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -33,6 +34,18 @@ import java.util.UUID;
  * Duration is deliberately not a stored field: it is always derived from
  * {@code startDate}/{@code endDate} (see {@link #getDurationDays()}) so the
  * two can never drift apart.
+ *
+ * <p>Per docs/lets-travel-architecture-decisions.md §2, this node is also the
+ * "Travel" of the subject's Travel Manager/Traveler requirements — a
+ * dedicated {@code Travel} node was considered and rejected as needless
+ * duplication, since {@code Destination} already carries everything a travel
+ * needs except ownership and price/capacity. {@code managerId} is an
+ * applicative reference to a {@code TRAVEL_MANAGER} {@code User} id in
+ * identity-service (no FK, no cross-store lookup — same principle as
+ * {@code Payment.userId} in payment-service) and is immutable once set: it is
+ * assigned at creation and never changed by {@code PUT}. {@code price}/
+ * {@code capacity} exist to leave a clean seam for the subscription feature
+ * of a later phase; this phase does not implement subscriptions itself.</p>
  */
 @Node("Destination")
 public class Destination {
@@ -47,6 +60,12 @@ public class Destination {
     private LocalDate startDate;
 
     private LocalDate endDate;
+
+    private UUID managerId;
+
+    private BigDecimal price;
+
+    private Integer capacity;
 
     private OffsetDateTime createdAt;
 
@@ -100,12 +119,16 @@ public class Destination {
         // required by Spring Data Neo4j
     }
 
-    public Destination(String name, String country, LocalDate startDate, LocalDate endDate) {
+    public Destination(String name, String country, LocalDate startDate, LocalDate endDate,
+                        UUID managerId, BigDecimal price, Integer capacity) {
         this.id = UUID.randomUUID();
         this.name = name;
         this.country = country;
         this.startDate = startDate;
         this.endDate = endDate;
+        this.managerId = managerId;
+        this.price = price;
+        this.capacity = capacity;
         this.createdAt = OffsetDateTime.now();
     }
 
@@ -143,6 +166,31 @@ public class Destination {
 
     public void setEndDate(LocalDate endDate) {
         this.endDate = endDate;
+    }
+
+    /**
+     * Applicative reference to the {@code TRAVEL_MANAGER} user (identity-service)
+     * who owns this travel. Immutable once set — assigned at creation, never
+     * changed by an update.
+     */
+    public UUID getManagerId() {
+        return managerId;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public void setPrice(BigDecimal price) {
+        this.price = price;
+    }
+
+    public Integer getCapacity() {
+        return capacity;
+    }
+
+    public void setCapacity(Integer capacity) {
+        this.capacity = capacity;
     }
 
     /**

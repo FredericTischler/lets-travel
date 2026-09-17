@@ -2,6 +2,7 @@ package com.travelplan.travel.dto;
 
 import com.travelplan.travel.entity.Destination;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -18,7 +19,9 @@ import java.util.UUID;
  * {@link Destination#getActivities()}), so {@link #from} takes them as
  * separate parameters rather than reading them off the entity. {@code
  * durationDays} is never stored — it is {@link Destination#getDurationDays()},
- * always derived from {@code startDate}/{@code endDate}.
+ * always derived from {@code startDate}/{@code endDate}. {@code managerId} is
+ * exposed deliberately: the subject requires a Traveler to be able to reach a
+ * "Travel Manager page" from a travel, which needs the owning manager's id.
  */
 public class DestinationResponse {
 
@@ -28,12 +31,16 @@ public class DestinationResponse {
     private final LocalDate startDate;
     private final LocalDate endDate;
     private final Long durationDays;
+    private final UUID managerId;
+    private final BigDecimal price;
+    private final Integer capacity;
     private final List<ActivityResponse> activities;
     private final List<AccommodationResponse> accommodations;
     private final OffsetDateTime createdAt;
 
     private DestinationResponse(UUID id, String name, String country, LocalDate startDate, LocalDate endDate,
-                                 Long durationDays, List<ActivityResponse> activities,
+                                 Long durationDays, UUID managerId, BigDecimal price, Integer capacity,
+                                 List<ActivityResponse> activities,
                                  List<AccommodationResponse> accommodations, OffsetDateTime createdAt) {
         this.id = id;
         this.name = name;
@@ -41,6 +48,9 @@ public class DestinationResponse {
         this.startDate = startDate;
         this.endDate = endDate;
         this.durationDays = durationDays;
+        this.managerId = managerId;
+        this.price = price;
+        this.capacity = capacity;
         this.activities = activities;
         this.accommodations = accommodations;
         this.createdAt = createdAt;
@@ -55,6 +65,9 @@ public class DestinationResponse {
                 destination.getStartDate(),
                 destination.getEndDate(),
                 destination.getDurationDays(),
+                destination.getManagerId(),
+                destination.getPrice(),
+                destination.getCapacity(),
                 activities,
                 accommodations,
                 destination.getCreatedAt());
@@ -82,6 +95,18 @@ public class DestinationResponse {
 
     public Long getDurationDays() {
         return durationDays;
+    }
+
+    public UUID getManagerId() {
+        return managerId;
+    }
+
+    public BigDecimal getPrice() {
+        return price;
+    }
+
+    public Integer getCapacity() {
+        return capacity;
     }
 
     public List<ActivityResponse> getActivities() {

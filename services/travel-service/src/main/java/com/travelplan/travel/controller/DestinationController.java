@@ -5,6 +5,7 @@ import com.travelplan.travel.dto.DestinationResponse;
 import com.travelplan.travel.dto.UpdateDestinationRequest;
 import com.travelplan.travel.service.DestinationService;
 import com.travelplan.travel.service.TokenValidationService;
+import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +37,16 @@ import java.util.UUID;
  * be able to browse the catalogue — while mutation ({@code create},
  * {@code update}, {@code delete}) stays restricted to {@code ADMIN}/
  * {@code TRAVEL_MANAGER}.
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §2 (a destination also
+ * carries a {@code managerId} — it doubles as the subject's "Travel" entity),
+ * mutation is additionally ownership-aware: {@code create} checks the
+ * request body's {@code managerId} against the caller via
+ * {@link TokenValidationService#requireOwnerOrAdmin} (a {@code TRAVEL_MANAGER}
+ * may only create a travel in their own name), while {@code update}/
+ * {@code delete} delegate the same check to {@link DestinationService}, which
+ * alone knows the existing resource's {@code managerId}. {@code ADMIN}
+ * bypasses ownership entirely in both cases.</p>
  */
 @RestController
 @RequestMapping("/destinations")
@@ -53,13 +64,15 @@ public class DestinationController {
      * Create a new destination. Requires a valid Bearer token — see class-level note.
      *
      * @return 201 Created with the created destination, 400 if the request body fails validation,
-     *         401 with a generic message if the Authorization header is missing/invalid/expired
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the caller is a {@code TRAVEL_MANAGER} trying to create a travel in someone else's name
      */
     @PostMapping
     public ResponseEntity<DestinationResponse> create(
             @Valid @RequestBody CreateDestinationRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        tokenValidationService.requireOwnerOrAdmin(claims, request.getManagerId());
         DestinationResponse created = destinationService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -97,29 +110,32 @@ public class DestinationController {
      *
      * @return 200 with the updated destination, 400 if the request body fails validation,
      *         404 if absent or soft-deleted,
-     *         401 with a generic message if the Authorization header is missing/invalid/expired
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the caller is a {@code TRAVEL_MANAGER} who does not own this travel
      */
     @PutMapping("/{id}")
     public ResponseEntity<DestinationResponse> update(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDestinationRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
-        return ResponseEntity.ok(destinationService.update(id, request));
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        return ResponseEntity.ok(destinationService.update(
+                id, request, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims)));
     }
 
     /**
      * Soft-delete an active destination. Requires a valid Bearer token — see class-level note.
      *
      * @return 204 No Content on success, 404 if absent or already soft-deleted,
-     *         401 with a generic message if the Authorization header is missing/invalid/expired
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the caller is a {@code TRAVEL_MANAGER} who does not own this travel
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
-        destinationService.delete(id);
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        destinationService.delete(id, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims));
         return ResponseEntity.noContent().build();
     }
 }

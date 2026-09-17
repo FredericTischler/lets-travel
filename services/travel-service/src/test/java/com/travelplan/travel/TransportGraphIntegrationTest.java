@@ -196,7 +196,8 @@ class TransportGraphIntegrationTest {
                 "/destinations", HttpMethod.POST,
                 authorizedJsonEntity(Map.of(
                         "name", name, "country", country,
-                        "startDate", "2026-05-01", "endDate", "2026-05-03")),
+                        "startDate", "2026-05-01", "endDate", "2026-05-03",
+                        "managerId", UUID.randomUUID().toString(), "price", 250.00, "capacity", 30)),
                 Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return UUID.fromString((String) response.getBody().get("id"));

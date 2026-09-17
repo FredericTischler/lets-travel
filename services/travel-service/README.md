@@ -1,21 +1,34 @@
 # travel-service
 
-**Context:** Destinations (Spring Boot · Neo4j).
+**Context:** Destinations (Spring Boot · Neo4j). Per
+docs/lets-travel-architecture-decisions.md §2, `Destination` also doubles as
+the subject's "Travel" entity for the Travel Manager/Traveler features — see
+that section for why no separate `Travel` node was introduced.
 
 ## Current scope
 
 Increment 1: basic CRUD for a single node type, `Destination`.
 Increment 2: a first, directed relationship type, `TRANSPORT`, between two
 `Destination` nodes, and the project's first real graph traversal query.
+Increment 3 (docs/lets-travel-architecture-decisions.md §2): `Destination`
+gains `managerId`/`price`/`capacity`, and mutation becomes ownership-aware —
+a `TRAVEL_MANAGER` may only create/update/delete a destination they own,
+`ADMIN` keeps full oversight.
 
-- `POST /destinations` — create a new destination (`name`, `country`).
+- `POST /destinations` — create a new destination/travel (`name`, `country`,
+  `startDate`, `endDate`, `managerId`, `price`, `capacity`, optional
+  `activities`/`accommodations`). Requires `ADMIN` or `TRAVEL_MANAGER`; a
+  `TRAVEL_MANAGER` may only set `managerId` to their own id (403 otherwise).
 - `GET /destinations/{id}` — get an active destination by id (404 if absent
-  or soft-deleted).
-- `GET /destinations` — list all active destinations.
-- `PUT /destinations/{id}` — replace the mutable fields (`name`, `country`)
-  of an active destination (404 if absent or soft-deleted).
+  or soft-deleted). Open to any known role — the catalogue is public.
+- `GET /destinations` — list all active destinations. Open to any known role.
+- `PUT /destinations/{id}` — replace the mutable fields (`name`, `country`,
+  `startDate`, `endDate`, `price`, `capacity`, `activities`,
+  `accommodations` — not `managerId`, immutable after creation) of an active
+  destination (404 if absent or soft-deleted). Requires `ADMIN` or the
+  destination's own `TRAVEL_MANAGER` (403 for a non-owning manager).
 - `DELETE /destinations/{id}` — soft-delete an active destination (404 if
-  absent or already soft-deleted).
+  absent or already soft-deleted). Same ownership rule as `PUT`.
 - `POST /destinations/{fromId}/transports` — create a directed `TRANSPORT`
   relationship from `fromId` to `toDestinationId` (body: `toDestinationId`,
   `mode`, `durationMinutes`). 201 if both endpoints exist and are active; 400
@@ -96,9 +109,16 @@ startup if any required variable is absent.
 
 ## Not yet implemented
 
-- No second node type (e.g. no `Travel`, `Activity`, `Accommodation`).
+- No second node type: `Activity`/`Accommodation` exist but only as children
+  of `Destination`; no dedicated `Travel` node either — see
+  docs/lets-travel-architecture-decisions.md §2 for why `Destination` itself
+  covers that role instead.
 - No pathfinding / multi-hop traversal — only the one-hop `TRANSPORT` query
   above.
 - No update/delete on `TRANSPORT` relationships, no anti-duplicate
   protection (see above).
 - No `/internal/*` cross-service endpoints.
+- No subscriptions, feedback, search, or recommendations yet
+  (docs/lets-travel-architecture-decisions.md §3, §5, §6, §7) — `price`/
+  `capacity` on `Destination` exist only to leave a clean seam for those,
+  not implemented here.
