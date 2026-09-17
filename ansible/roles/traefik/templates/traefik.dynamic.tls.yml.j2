@@ -1,0 +1,28 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Configuration DYNAMIQUE Traefik : TLS statique par fichier (fileProvider).
+# Chargee via providers.file (watch=true) => rechargeable a chaud.
+#
+# TERMINAISON TLS AU BORD (cf. docs §5) : certs auto-signes de dev. Le trafic
+# interne (backend-net) reste en clair, reseau Docker considere de confiance.
+#
+# Idiome Traefik 3.x :
+#   - tls.certificates : liste des paires cert/cle disponibles.
+#   - tls.stores.default.defaultCertificate : cert servi par defaut quand aucun
+#     router ne matche le SNI (indispensable ici : aucun router applicatif
+#     n'existe encore, donc TOUTE connexion HTTPS tombe sur ce cert par defaut).
+# Les chemins sont ceux VUS DANS LE CONTENEUR (montage read-only, voir fragment).
+tls:
+  certificates:
+    - certFile: "/etc/traefik/certs/{{ traefik_tls_cert_file | basename }}"
+      keyFile: "/etc/traefik/certs/{{ traefik_tls_key_file | basename }}"
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/etc/traefik/certs/{{ traefik_tls_cert_file | basename }}"
+        keyFile: "/etc/traefik/certs/{{ traefik_tls_key_file | basename }}"
+
+# NOTE PORTEE : aucune section `http.routers` / `http.services` ici.
+# C'est VOLONTAIRE (cf. scope) : aucun service applicatif n'existe encore, donc
+# aucune regle de routage vers un service n'est definie. Le routage viendra par
+# labels Docker (provider docker) quand les services seront livres.

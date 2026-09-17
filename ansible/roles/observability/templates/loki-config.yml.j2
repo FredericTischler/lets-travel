@@ -1,0 +1,83 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Configuration de Loki, rendue par le role Ansible `observability`.
+# Montee en LECTURE SEULE dans le conteneur.
+#
+# MODE MONOLITHIQUE, STOCKAGE FILESYSTEM. Loki sait tourner en microservices
+# (ingester / distributor / querier / compactor separes) sur un stockage objet.
+# Ce serait 5 conteneurs de plus et une dependance MinIO/S3, pour un projet solo
+# qui indexe les logs de 6 conteneurs. Le mode monolithique sur volume nomme est
+# le bon point de la courbe ici. Le jour ou ca ne tient plus, c'est CE fichier
+# qui change — Promtail, Grafana et les requetes LogQL sont inchanges.
+
+# PAS D'AUTHENTIFICATION SUR L'API DE LOKI, ET C'EST DELIBERE.
+# `auth_enabled: true` n'active PAS une authentification : il rend obligatoire
+# l'en-tete X-Scope-OrgID, c'est-a-dire le cloisonnement MULTI-TENANT. C'est un
+# separateur de locataires, pas un controle d'acces — n'importe qui peut envoyer
+# l'en-tete qu'il veut. Un seul « locataire » ici : on le laisse a false.
+# La protection reelle est ARCHITECTURALE et non applicative : Loki vit sur un
+# reseau `internal: true`, sans port publie et sans route Traefik. La seule voie
+# d'acces humaine aux logs est Grafana, qui authentifie.
+auth_enabled: false
+
+server:
+  http_listen_port: {{ observability_loki_http_port }}
+  # gRPC desactive : en monolithique, aucun composant externe ne dialogue avec
+  # Loki en gRPC. Laisser un port d'ecoute ouvert sans consommateur, c'est de la
+  # surface offerte pour rien.
+  grpc_listen_port: 0
+  log_level: info
+
+common:
+  # `path_prefix` : racine sous laquelle Loki derive ses chemins par defaut.
+  # /loki est le point de montage du volume nomme (cf. fragment Compose) : tout
+  # ce qui doit survivre a un `compose down` est dessous.
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  # Instance unique : un seul exemplaire de chaque bloc. Toute autre valeur
+  # bloquerait les ecritures (Loki attendrait des replicas qui n'existent pas).
+  replication_factor: 1
+  ring:
+    kvstore:
+      # Anneau en memoire : il n'y a qu'un seul membre a coordonner. Un
+      # Consul/etcd ici serait une dependance de plus pour coordonner Loki
+      # avec lui-meme.
+      store: inmemory
+
+schema_config:
+  configs:
+    # `from` est une date de DEBUT DE VALIDITE de schema, pas une date de
+    # creation : elle doit etre DANS LE PASSE au premier demarrage, sinon Loki
+    # refuse les ecritures (« no schema config found for time »). Valeur fixe et
+    # anterieure, volontairement pas `now` : un schema qui bougerait a chaque run
+    # rendrait les anciens chunks illisibles.
+    - from: 2024-04-01
+      # TSDB + schema v13 : le couple recommande par l'amont pour Loki 3.x.
+      # Les schemas anterieurs (v11/v12, boltdb-shipper) sont en fin de vie.
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Retention bornee (cf. defaults) : sans elle, Loki ecrit jusqu'a saturer le
+  # disque de l'hote. Panne lente, decouverte au pire moment.
+  retention_period: {{ observability_loki_retention_period }}
+  # Metadonnees structurees : mecanisme Loki 3.x permettant d'attacher des
+  # champs a fort cardinal (typiquement un requestId) SANS en faire des labels
+  # d'index. Active pour garder cette porte ouverte ; ce stack n'en depend pas
+  # aujourd'hui (le requestId est lu dans la ligne JSON, cf. promtail-config).
+  allow_structured_metadata: true
+
+compactor:
+  working_directory: /loki/compactor
+  # `retention_enabled: true` est OBLIGATOIRE pour que retention_period soit
+  # REELLEMENT applique. Sans cette ligne, la duree ci-dessus est declarative et
+  # rien n'est jamais supprime : le disque se remplit quand meme. Piege classique.
+  retention_enabled: true
+  delete_request_store: filesystem

@@ -1,0 +1,218 @@
+// =============================================================================
+// identity-service — pipeline CI (increment CI/CD n°1, MINIMAL).
+//
+// DECLENCHEMENT : MANUEL UNIQUEMENT.
+//   Il n'y a volontairement AUCUN bloc `triggers { ... }` ici, et le config.xml
+//   du job (rendu par le role Ansible `jenkins`) porte un `<triggers/>` vide.
+//   Pas de pollSCM, pas de webhook, pas de scan multibranch : ce sont des
+//   increments separes. Ce pipeline se lance au bouton "Build Now" ou via
+//   `jenkins-cli build`.
+//
+// CE QUE CE PIPELINE FAIT : checkout + `./mvnw test`. RIEN D'AUTRE.
+//   Pas de build ni de push d'image Docker, pas de deploiement.
+//   L'analyse SonarQube A ETE AJOUTEE (increment qualite) : deux stages
+//   CONDITIONNELS, actifs seulement si la variable globale Jenkins
+//   SONAR_HOST_URL est posee et si le credential `sonarqube-token`
+//   existe — les deux creees MANUELLEMENT (procedure :
+//   ansible/roles/sonarqube/README.md). Aucun token dans ce depot.
+//
+// MAVEN / DEPOT DE DEPENDANCES :
+//   `./mvnw test -B --no-transfer-progress`, strictement aligne sur ce que fait
+//   le Dockerfile du service. AUCUN `-s settings.xml`, AUCUN mirror : ce projet
+//   n'a jamais eu de mecanisme de "contournement Nexus" (verifie : rien dans le
+//   depot hors un fichier IntelliJ gitignore sans rapport). Les dependances
+//   viennent de Maven Central, via le cache ~/.m2 du conteneur Jenkins — cache
+//   persiste par le volume nomme JENKINS_HOME, donc chaud des le 2e build.
+//
+// TESTCONTAINERS :
+//   Les tests d'identity-service demarrent un VRAI postgres:17.5-bookworm via
+//   Testcontainers. Le conteneur Jenkins doit donc avoir acces au socket Docker
+//   et resoudre `host.docker.internal` : les deux sont cables dans le fragment
+//   Compose rendu par le role Ansible `jenkins` (socket monte en lecture-ecriture
+//   + TESTCONTAINERS_HOST_OVERRIDE + extra_hosts host-gateway). Sans ce cablage,
+//   ce pipeline echoue au premier test — c'est attendu, pas un bug du script.
+// =============================================================================
+
+pipeline {
+    // Pas d'agent dedie dans cet increment : le build tourne sur le controleur.
+    // Le fragment Compose dimensionne mem_limit en consequence (1600m).
+    agent any
+
+    options {
+        // JENKINS_HOME vit dans un volume sur une machine a 8 Go : on borne
+        // l'historique conserve (coherent avec le BuildDiscarder du config.xml).
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Deux builds concurrents = deux JVM Maven + deux JVM Surefire dans la
+        // meme cgroup de 1600m => OOM kill garanti. On serialise.
+        disableConcurrentBuilds()
+        // Filet : un premier build telecharge Maven + tout le repo de deps.
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    environment {
+        // Heap de la JVM Maven bornee (meme discipline que les JVM du projet,
+        // cf. docs/architecture-decisions.md §4). La JVM forkee par Surefire
+        // reste container-aware et se borne sur mem_limit.
+        MAVEN_OPTS = '-Xmx256m'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                // `scm` = la configuration Git du job (miroir local file://,
+                // branche main). Aucun credential : rien a authentifier.
+                checkout scm
+            }
+        }
+
+        stage('Test') {
+            steps {
+                // Le Jenkinsfile est a la racine d'identity-service, mais le
+                // checkout ramene la RACINE DU DEPOT : on se place dans le
+                // module avant de lancer le wrapper.
+                dir('services/identity-service') {
+                    // Strictement la commande du Dockerfile (hors -DskipTests) :
+                    // -B = batch (pas de couleurs/prompts), --no-transfer-progress
+                    // = pas de barre de telechargement dans le log de build.
+                    sh './mvnw test -B --no-transfer-progress'
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Analyse SonarQube.
+        //
+        // CONDITIONNEE, PAS OPTIONNELLE PAR CONFORT : le serveur SonarQube
+        // appartient au profil Compose `ci` et n'est donc PAS toujours la
+        // (docs/architecture-decisions.md §8 : la stack CI se lance a la
+        // demande sur une machine a 8 Go). `when` evite de faire echouer
+        // tout le pipeline quand seule la partie test est voulue.
+        //
+        // SONAR_HOST_URL : variable globale Jenkins (Manage Jenkins >
+        // System > Global properties), a poser MANUELLEMENT. Valeur
+        // attendue depuis le conteneur Jenkins : http://sonarqube:9000
+        // (nom de service Compose sur backend-net) — PAS l'URL Traefik
+        // https://sonarqube.localhost, dont le certificat auto-signe
+        // n'est pas dans le truststore de la JVM du scanner.
+        //
+        // SONAR_TOKEN : credential Jenkins de type "Secret text", d'ID
+        // `sonarqube-token`, cree MANUELLEMENT (procedure dans
+        // ansible/roles/sonarqube/README.md). Aucun token n'est ecrit
+        // dans ce depot ni provisionne par Ansible : Vault n'est pas
+        // cable a la chaine CI dans cet increment, et le contrat du
+        // projet interdit le placeholder "temporaire".
+        //
+        // Pas de `withSonarQubeEnv` / `waitForQualityGate` : ces steps
+        // viennent du plugin Jenkins SonarQube Scanner, qui n'est PAS
+        // installe (le role `jenkins` provisionne un jeu de plugins
+        // ferme). Le quality gate est donc relu via l'API REST, ci-dessous.
+        stage('SonarQube analysis') {
+            when {
+                expression { return env.SONAR_HOST_URL?.trim() }
+            }
+            environment {
+                SONAR_TOKEN = credentials('sonarqube-token')
+            }
+            steps {
+                dir('services/identity-service') {
+                    // `verify -DskipTests` : sonar:sonar a besoin des classes
+                    // compilees ET du packaging ; les tests viennent d'etre
+                    // joues au stage precedent, on ne les rejoue pas (deux
+                    // Testcontainers de suite dans 1600m de cgroup = OOM).
+                    // -Dsonar.coverage.jacoco.xmlReportPaths : le stage "Test"
+                    // qui vient de tourner (JaCoCo lie a la phase `test` dans
+                    // le pom.xml) a deja produit target/site/jacoco/jacoco.xml
+                    // dans CE MEME workspace (meme `dir()`, pas de stash/unstash
+                    // entre les deux stages) ; on le pointe explicitement pour
+                    // que le scanner l'attache SANS rejouer les tests.
+                    sh '''
+                        ./mvnw verify sonar:sonar -B --no-transfer-progress \
+                          -DskipTests \
+                          -Dsonar.host.url="$SONAR_HOST_URL" \
+                          -Dsonar.token="$SONAR_TOKEN" \
+                          -Dsonar.projectKey=travel-plan-identity-service \
+                          -Dsonar.projectName="Travel-Plan Identity Service" \
+                          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+                    '''
+                }
+            }
+        }
+
+        // Relecture du quality gate par l'API REST. Le scanner rend la main
+        // DES que le rapport est televerse : c'est le Compute Engine du
+        // serveur qui calcule ensuite les issues et le gate, de facon
+        // ASYNCHRONE. Sans cette attente, un `sonar:sonar` vert ne dit
+        // strictement rien de la qualite du code.
+        //
+        // PIEGE REEL, rencontre sur cette instance : interroger
+        // `qualitygates/project_status?projectKey=...` SANS ancrer sur la
+        // tache d'analyse precise renvoie le statut de la DERNIERE analyse
+        // CONNUE du serveur, qui reste celui de l'analyse precedente tant
+        // que le Compute Engine n'a pas fini de traiter le rapport qu'on
+        // vient d'envoyer. Un build a echoue sur un gate ERROR perime alors
+        // que la nouvelle analyse (deja verte) etait encore en cours de
+        // calcul. Fix : on capture le `ceTaskId` du rapport
+        // (target/sonar/report-task.txt, ecrit par le stage precedent),
+        // on attend que `api/ce/task?id=...` passe a SUCCESS, on en tire
+        // l'`analysisId` DE CETTE analyse, et c'est CE seul identifiant
+        // qu'on interroge sur `qualitygates/project_status` — jamais le
+        // projectKey seul.
+        stage('Quality gate') {
+            when {
+                expression { return env.SONAR_HOST_URL?.trim() }
+            }
+            environment {
+                SONAR_TOKEN = credentials('sonarqube-token')
+            }
+            steps {
+                dir('services/identity-service') {
+                    // curl est present dans l'image jenkins/jenkins:lts
+                    // (base Debian). `set -e` + test explicite sur la
+                    // valeur : un status ERROR fait echouer le build.
+                    sh '''
+                        set -e
+                        ce_task_id=$(grep '^ceTaskId=' target/sonar/report-task.txt | cut -d= -f2)
+
+                        ce_status=""
+                        ce_response=""
+                        for i in $(seq 1 60); do
+                          ce_response=$(curl -sf -u "$SONAR_TOKEN:" \
+                            "$SONAR_HOST_URL/api/ce/task?id=$ce_task_id")
+                          ce_status=$(echo "$ce_response" | grep -oE '"status":"[A-Z]*"' | head -1 | cut -d'"' -f4)
+                          case "$ce_status" in
+                            SUCCESS) break ;;
+                            FAILED|CANCELED) echo "Tache Compute Engine terminee en $ce_status"; exit 1 ;;
+                            *) echo "Tache Compute Engine pas encore terminee ($ce_status), attente..."; sleep 5 ;;
+                          esac
+                        done
+                        if [ "$ce_status" != "SUCCESS" ]; then
+                          echo "Timeout: le Compute Engine n a pas termine la tache $ce_task_id en 5 min"
+                          exit 1
+                        fi
+
+                        analysis_id=$(echo "$ce_response" | grep -oE '"analysisId":"[^"]*"' | head -1 | cut -d'"' -f4)
+                        status=$(curl -sf -u "$SONAR_TOKEN:" \
+                            "$SONAR_HOST_URL/api/qualitygates/project_status?analysisId=$analysis_id" \
+                            | grep -oE '"status":"[A-Z_]*"' | head -1 | cut -d'"' -f4)
+
+                        case "$status" in
+                          OK) echo "Quality gate: OK"; exit 0 ;;
+                          *)  echo "Quality gate: $status"; exit 1 ;;
+                        esac
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Rend les resultats JUnit lisibles dans l'UI plutot que noyes dans
+            // le log. allowEmptyResults:false => un run qui ne produit AUCUN
+            // rapport est un echec, pas un "succes vide" trompeur.
+            junit allowEmptyResults: false,
+                  testResults: 'services/identity-service/target/surefire-reports/TEST-*.xml'
+        }
+    }
+}

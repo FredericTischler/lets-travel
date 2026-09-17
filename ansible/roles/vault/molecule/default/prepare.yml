@@ -1,0 +1,31 @@
+---
+# prepare.yml : APPROCHE CONTROLEUR.
+# Les modules community.hashi_vault tournent depuis le controleur (venv + hvac),
+# en visant Vault via le port de TEST publie (localhost:8200). On attend donc
+# que Vault dev mode reponde EN LOCALHOST avant converge.
+- name: Prepare (wait for Vault dev mode on the published test port)
+  hosts: all
+  gather_facts: false
+  vars:
+    vault_test_addr: "http://localhost:8200"
+    vault_dev_root_token: molecule-root-token
+  tasks:
+    - name: "Wait for Vault port 8200 to be open (controller side)"
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 8200
+        delay: 1
+        timeout: 60
+      delegate_to: localhost
+
+    - name: "Wait for Vault dev mode to be unsealed/initialized (sys/health)"
+      community.hashi_vault.vault_read:
+        url: "{{ vault_test_addr }}"
+        auth_method: token
+        token: "{{ vault_dev_root_token }}"
+        path: "sys/health"
+      delegate_to: localhost
+      register: vault_health
+      until: not (vault_health.failed | default(false))
+      retries: 30
+      delay: 2

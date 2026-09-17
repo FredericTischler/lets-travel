@@ -1,0 +1,53 @@
+---
+# Scenario Molecule du role `traefik` (la GATEWAY).
+# Driver docker (molecule-plugins) : conteneur frere sur le demon hote
+# (Linux natif, PAS de DinD). Pattern identique a postgres/neo4j.
+#
+# Plateforme : debian:bookworm-slim (python3 + openssl installes via prepare).
+# L'image officielle Traefik (Alpine) a bien un shell, mais elle n'a pas python.
+# Une plateforme Debian est donc utilisee pour que les modules Ansible s'executent
+# via docker connection — le role rend ses artefacts dans /tmp de ce conteneur.
+# Le verify lit les fichiers rendus depuis le conteneur (pas de DinD requis).
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-traefik-molecule
+    # Image Debian minimale : simple support de cycle (python dispo via prepare).
+    # Le VRAI test Traefik se fait en connection: local contre le demon hote.
+    image: debian:bookworm-slim
+    pre_build_image: true
+    override_command: true
+    command: ["sleep", "infinity"]
+    published_ports: []
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

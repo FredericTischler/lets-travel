@@ -1,0 +1,25 @@
+---
+# Playbook de test/application LOCAL du rôle jenkins.
+# Self-contained : charge le rôle par son chemin absolu (= playbook_dir, puisque ce
+# fichier est à la racine du rôle). Aucun roles_path ni export shell requis.
+#
+# ATTENTION : appliquer ce playbook écrit RÉELLEMENT sous /opt/travel-plan/jenkins
+# (fragment compose.jenkins.yml + job-<nom>-config.xml). Il NE démarre AUCUN
+# conteneur et ne crée AUCUN job dans Jenkins : ce rôle se contente de
+# PROVISIONNER + rendre des fichiers, conforme au modèle « Ansible provisionne,
+# Compose orchestre » déjà en place pour postgres/vault/neo4j/traefik.
+#
+# jenkins_scm_repo_host_path est OBLIGATOIRE (chemin absolu du checkout du dépôt
+# sur CETTE machine) : le rôle échoue fail-fast s'il est absent. Voir le README
+# du rôle pour le pourquoi (pas de credential SSH → miroir local file://).
+#
+# Lancement (depuis la racine du projet, venv activé) :
+#   ansible-playbook ansible/roles/jenkins/test-local.yml -K \
+#     -e jenkins_scm_repo_host_path=/chemin/absolu/vers/le/checkout/travel-plan
+- name: Provisionner le controleur Jenkins (local)
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  roles:
+    - role: "{{ playbook_dir }}"

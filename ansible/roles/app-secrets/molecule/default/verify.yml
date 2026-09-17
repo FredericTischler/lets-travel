@@ -1,0 +1,126 @@
+---
+# verify.yml : assertions EXPLICITES sur la garantie Molecule-safe.
+# Garantie testee : avec app_secrets_vault_read: false (defaut), le role
+# n'ecrit RIEN et ne contacte PAS Vault. C'est ce qui permet de jouer ce role
+# dans un CI sans credentials. L'etape `idempotence` de la sequence Molecule
+# couvre, elle, l'absence de `changed` au second run.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Stat the runtime .env path"
+      ansible.builtin.stat:
+        path: /tmp/travel-plan/.env
+      register: dotenv
+
+    - name: "Assert no .env was written (flag false => no-op integral)"
+      ansible.builtin.assert:
+        that:
+          - not dotenv.stat.exists
+        # fail_msg est evalue EAGERLY par Ansible (finalisation des args) :
+        # pas de reference a dotenv.stat.path, absent quand le fichier n'existe
+        # pas — ca masquerait l'assertion derriere une erreur de templating.
+        fail_msg: >-
+          Le role a ecrit /tmp/travel-plan/.env alors que app_secrets_vault_read
+          vaut false : la garantie Molecule-safe est rompue (un run CI sans
+          Vault materialiserait un fichier de secrets).
+        success_msg: "Aucun .env ecrit avec app_secrets_vault_read=false."
+
+    - name: "Stat the parent directory"
+      ansible.builtin.stat:
+        path: /tmp/travel-plan
+      register: dotenv_dir
+
+    - name: "Assert the parent directory was not created either"
+      ansible.builtin.assert:
+        that:
+          - not dotenv_dir.stat.exists
+        fail_msg: "Le repertoire parent a ete cree alors que le role doit etre un no-op."
+        success_msg: "Aucun repertoire cree avec app_secrets_vault_read=false."
+
+    # --- Contrat des secrets rendus (verification STATIQUE, cote controleur) ---
+    # Le chemin Vault n'est pas joue dans ce scenario (cf. en-tete molecule.yml) :
+    # aucune assertion runtime sur les VALEURS n'est possible sans credentials.
+    # On verifie donc le CONTRAT : chaque secret attendu a (a) un chemin Vault
+    # declare dans defaults, (b) une lecture dans la boucle vault_kv2_get,
+    # (c) un set_fact, (d) une ligne dans dotenv.j2. Un secret ajoute a moitie
+    # (typiquement : template mis a jour mais pas la boucle) rendrait un .env
+    # avec une variable VIDE — Compose l'accepterait et le `:?` cote fragment ne
+    # se declencherait pas : bug silencieux, exactement ce que ce bloc attrape.
+    # Couverture IDENTIQUE pour les 11 secrets, identity inclus.
+    # Cas a DEUX cles : payment/stripe et payment/paypal partagent chacun un
+    # unique chemin Vault pour deux entrees de la boucle (suffix identique,
+    # fact/env_var distincts). Les assertions (a)/(b) sont alors verifiees deux
+    # fois sur la meme ligne — voulu : ce sont (c) et (d) qui discriminent.
+    - name: "Read role sources from the controller"
+      ansible.builtin.set_fact:
+        role_defaults_src: "{{ lookup('file', playbook_dir ~ '/../../defaults/main.yml') }}"
+        role_tasks_src: "{{ lookup('file', playbook_dir ~ '/../../tasks/main.yml') }}"
+        role_dotenv_src: "{{ lookup('file', playbook_dir ~ '/../../templates/dotenv.j2') }}"
+      delegate_to: localhost
+
+    - name: "Assert each expected secret is wired end-to-end (defaults -> loop -> fact -> .env)"
+      ansible.builtin.assert:
+        that:
+          - role_defaults_src is search('app_secrets_vault_path_' ~ item.suffix ~ ':\\s*"' ~ item.vault_path ~ '"')
+          - role_tasks_src is search('app_secrets_vault_path_' ~ item.suffix ~ ' \\}\\}"')
+          - role_tasks_src is search('app_secrets_' ~ item.fact ~ ':')
+          # multiline=True : sans lui, `^`/`$` ne s'ancreraient qu'aux bornes du
+          # fichier entier et l'assertion serait toujours fausse.
+          - role_dotenv_src is search('^' ~ item.env_var ~ '=\\{\\{ app_secrets_' ~ item.fact ~ ' \\}\\}$', multiline=True)
+        fail_msg: >-
+          Secret '{{ item.env_var }}' ({{ item.vault_path }}) incompletement cable
+          dans le role : verifier defaults/main.yml, la boucle vault_kv2_get, le
+          set_fact et templates/dotenv.j2.
+        success_msg: "{{ item.env_var }} cable de bout en bout."
+      loop:
+        - suffix: postgres_superuser
+          vault_path: infra/postgres-superuser
+          fact: postgres_superuser_password
+          env_var: POSTGRES_SUPERUSER_PASSWORD
+        - suffix: identity_db
+          vault_path: identity/db
+          fact: identity_db_password
+          env_var: IDENTITY_DB_PASSWORD
+        - suffix: payment_db
+          vault_path: payment/db
+          fact: payment_db_password
+          env_var: PAYMENT_DB_PASSWORD
+        - suffix: payment_stripe
+          vault_path: payment/stripe
+          fact: stripe_api_key
+          env_var: STRIPE_API_KEY
+        - suffix: payment_stripe
+          vault_path: payment/stripe
+          fact: stripe_secret_key
+          env_var: STRIPE_SECRET_KEY
+        - suffix: payment_paypal
+          vault_path: payment/paypal
+          fact: paypal_client_id
+          env_var: PAYPAL_CLIENT_ID
+        - suffix: payment_paypal
+          vault_path: payment/paypal
+          fact: paypal_client_secret
+          env_var: PAYPAL_CLIENT_SECRET
+        - suffix: travel_db
+          vault_path: travel/db
+          fact: neo4j_password
+          env_var: NEO4J_PASSWORD
+        - suffix: shared_jwt
+          vault_path: shared/jwt
+          fact: jwt_signing_key
+          env_var: JWT_SIGNING_KEY
+        # Secrets d'OUTILLAGE : ils ne servent aucun service applicatif, mais le
+        # cablage a verifier est EXACTEMENT le meme (un secret a moitie cable
+        # rendrait une variable vide, et la reference ${...} cote fragment
+        # Compose ne s'en apercevrait pas forcement).
+        - suffix: sonarqube_db
+          vault_path: sonarqube/db
+          fact: sonarqube_db_password
+          env_var: SONARQUBE_DB_PASSWORD
+        - suffix: observability_grafana
+          vault_path: observability/grafana
+          fact: grafana_admin_password
+          env_var: GRAFANA_ADMIN_PASSWORD
+      loop_control:
+        label: "{{ item.env_var }}"

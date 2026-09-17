@@ -1,0 +1,151 @@
+# payment-service : Deployment (2 replicas) + Service ClusterIP.
+# Meme structure qu'identity-service ; seules changent la base applicative
+# (payment_db / payment_user) et les credentials Stripe/PayPal.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payment-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  # Ce Service a DEUX consommateurs, et c'est utile de le rappeler ici :
+  #  1) l'Ingress, pour le trafic externe (payment.localhost) ;
+  #  2) identity-service, en interne, via PAYMENT_SERVICE_URL du ConfigMap
+  #     (cascade DELETE /payments/by-user/{userId}). Cet appel est donc
+  #     lui aussi load-balance sur les 2 replicas, sans rien de special a
+  #     configurer : c'est le Service qui s'en charge.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payment-service
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: "postgres:17.5-bookworm"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -q; do
+                echo "en attente de postgres ($DB_HOST:$DB_PORT)..."
+                sleep 2
+              done
+          envFrom:
+            - configMapRef:
+                name: travel-plan-config
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+      containers:
+        - name: payment-service
+          image: "travel-plan/payment-service:0.1.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: travel-plan-config
+          env:
+            - name: DB_NAME
+              value: "payment_db"
+            - name: DB_USERNAME
+              value: "payment_user"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: PAYMENT_DB_PASSWORD
+            # MEME valeur que pour identity-service : payment-service ne fait que
+            # VERIFIER des jetons HS256 emis par identity-service, jamais n'en
+            # emet. HS256 exige le meme secret des deux cotes (RFC 7518 §3.2).
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: JWT_SIGNING_KEY
+            # Credentials des PSP (sandbox). Ce sont les SEULS Pods du namespace
+            # qui les referencent — raison pour laquelle le Secret est consomme
+            # cle par cle et jamais en bloc via envFrom.
+            - name: STRIPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: STRIPE_API_KEY
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: STRIPE_SECRET_KEY
+            - name: PAYPAL_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: PAYPAL_CLIENT_ID
+            - name: PAYPAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: PAYPAL_CLIENT_SECRET
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            # Groupe `liveness` seul, pas le health complet : voir le
+            # commentaire detaille dans 30-identity-service.yaml.
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"

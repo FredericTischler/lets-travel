@@ -1,0 +1,26 @@
+---
+# Playbook de test/application LOCAL du rôle compose-assembly.
+# Self-contained : charge le rôle par son chemin absolu (= playbook_dir, puisque ce
+# fichier est à la racine du rôle). Aucun roles_path ni export shell requis.
+#
+# ATTENTION : appliquer ce playbook crée RÉELLEMENT les réseaux Docker (edge-net,
+# backend-net, data-net) et rend le docker-compose.yml top-level sous
+# /opt/travel-plan.
+#
+# ORDRE : ce rôle doit être appliqué APRÈS tous les rôles de services
+# (postgres, vault, neo4j, traefik) — il assemble leurs fragments DÉJÀ rendus.
+# Appliqué seul avant eux, l'include Compose référencerait des fragments absents.
+#
+# Le fragment identity-service (statique, chemin absolu variable par machine) doit
+# être fourni via -e assembly_identity_fragment=/chemin/absolu/.../docker-compose.identity.yml
+# (assembly_identity_enabled=true par défaut désormais).
+# Lancement (depuis la racine du projet, venv activé) :
+#   ansible-playbook ansible/roles/compose-assembly/test-local.yml -K \
+#     -e assembly_identity_fragment=/chemin/absolu/vers/le/depot/services/identity-service/docker-compose.identity.yml
+- name: Assembler le docker-compose.yml top-level (local)
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  roles:
+    - role: "{{ playbook_dir }}"

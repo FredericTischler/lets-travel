@@ -1,0 +1,35 @@
+---
+galaxy_info:
+  role_name: sonarqube
+  author: travel-plan
+  description: >-
+    Provisionne le serveur d'analyse qualite SonarQube Community Edition de
+    Travel-Plan (profil Compose `ci`, le MEME que jenkins, a la demande — cf.
+    docs/architecture-decisions.md §8). Pose sur l'hote les sysctl exiges par
+    l'Elasticsearch embarque (vm.max_map_count / fs.file-max, non namespaces
+    donc impossibles a poser depuis Compose) et rend un fragment de service
+    Compose declarant SonarQube (image epinglee sonarqube:26.9.x-community,
+    trois heaps JVM bornees explicitement, volumes nommes data/extensions/logs,
+    backend-net, aucun port publie, route Traefik par labels sur
+    sonarqube.localhost) ET sa propre base Postgres DEDIEE (conteneur, volume et
+    reseau distincts de la Postgres applicative, sur un reseau `internal`).
+    Aucun secret en clair : le mot de passe de la base n'est rendu que sous
+    forme de reference d'environnement resolue depuis le .env d'app-secrets.
+    Hors perimetre a ce stade : creation du token d'analyse et configuration via
+    l'API authentifiee de SonarQube (Vault non cable a la chaine CI — meme
+    decision que le role jenkins), quality gate/profile personnalises,
+    couverture de code JaCoCo (releve du build applicatif).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - sonarqube
+    - quality
+    - ci
+    - static-analysis
+    - infrastructure
+
+dependencies: []

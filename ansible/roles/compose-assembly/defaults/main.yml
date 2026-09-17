@@ -1,0 +1,135 @@
+---
+# roles/compose-assembly/defaults/main.yml
+#
+# Assemble les fragments Compose rendus par les rôles postgres/vault/neo4j
+# en un point d'entrée unique. Déclare les réseaux Docker (Ansible en est propriétaire).
+
+# Répertoire racine où les fragments ont été rendus ET où le docker-compose.yml
+# top-level sera rendu (chemin cohérent avec les defaults des 3 rôles).
+assembly_compose_dir: "/opt/travel-plan"
+
+# Chemins RELATIFS à assembly_compose_dir (cohérents avec les defaults de chaque rôle).
+assembly_postgres_fragment: "postgres/compose.postgres.yml"
+assembly_vault_fragment:    "vault/compose.vault.yml"
+assembly_neo4j_fragment:    "neo4j/compose.neo4j.yml"
+# Traefik = la GATEWAY (rôle Ansible stable). Chemin cohérent avec les defaults du
+# rôle traefik : traefik_compose_dir=/opt/travel-plan/traefik et le fragment rendu
+# par sa tâche "Render Traefik compose service fragment" = compose.traefik.yml.
+# Relatif à assembly_compose_dir (/opt/travel-plan) => "traefik/compose.traefik.yml".
+assembly_traefik_fragment:  "traefik/compose.traefik.yml"
+
+# --- Fragment identity-service (statique, dans le dépôt — pas un rôle Ansible) ---
+# Particularité : identity-service BUILD depuis les sources, son fragment doit
+# rester co-localisé avec Dockerfile + src/. Il n'est donc PAS rendu sous
+# assembly_compose_dir mais référencé par CHEMIN ABSOLU vers le checkout du dépôt.
+#
+# Les includes Compose sont traités quel que soit le --profile : un chemin
+# invalide casserait AUSSI le rendu core. On garde donc l'include derrière un
+# flag explicite.
+#
+# DÉFAUT = true : le raccordement identity-service <-> Traefik est désormais prouvé
+# bout-en-bout (dette d'intégration fermée). Ce flag n'a donc plus à être activé
+# manuellement. Il RESTE un flag (et non un include en dur) pour une seule raison :
+# assembly_identity_fragment doit rester surchargeable — c'est un CHEMIN ABSOLU vers
+# le checkout du dépôt, qui varie d'une machine à l'autre. L'intégration n'est PAS
+# optionnelle ; seule la localisation du fragment l'est.
+# À surcharger selon la machine :
+#   -e assembly_identity_fragment=/chemin/absolu/vers/le/depot/services/identity-service/docker-compose.identity.yml
+assembly_identity_enabled: true
+assembly_identity_fragment: ""
+
+# --- Fragment payment-service (statique, dans le dépôt — pas un rôle Ansible) ---
+# Même particularité qu'identity : payment-service BUILD depuis les sources, son
+# fragment reste co-localisé avec Dockerfile + src/ et est référencé par CHEMIN
+# ABSOLU vers le checkout du dépôt (variable d'une machine à l'autre).
+#
+# DÉFAUT = false (CONTRAIREMENT à identity) : le raccordement payment-service <->
+# Traefik n'est PAS encore prouvé bout-en-bout. Tant que cette dette d'intégration
+# n'est pas fermée, le rendu par défaut reste STRICTEMENT inchangé — l'include et
+# le bloc de service payment ne sont émis QUE si ce flag est explicitement activé.
+# À activer + localiser selon la machine :
+#   -e assembly_payment_enabled=true
+#   -e assembly_payment_fragment=/chemin/absolu/vers/le/depot/services/payment-service/docker-compose.payment.yml
+assembly_payment_enabled: false
+assembly_payment_fragment: ""
+
+# --- Fragment travel-service (statique, dans le dépôt — pas un rôle Ansible) ---
+# Même particularité qu'identity/payment : travel-service BUILD depuis les sources,
+# son fragment reste co-localisé avec Dockerfile + src/ et est référencé par CHEMIN
+# ABSOLU vers le checkout du dépôt (variable d'une machine à l'autre).
+#
+# DÉFAUT = false (comme payment) : le raccordement travel-service <-> Traefik n'est
+# PAS considéré comme prouvé bout-en-bout par défaut. Tant que l'opérateur ne l'a pas
+# rejoué sur SA machine, le rendu par défaut reste STRICTEMENT inchangé — l'include et
+# le bloc de service travel ne sont émis QUE si ce flag est explicitement activé.
+# À activer + localiser selon la machine :
+#   -e assembly_travel_enabled=true
+#   -e assembly_travel_fragment=/chemin/absolu/vers/le/depot/services/travel-service/docker-compose.travel.yml
+assembly_travel_enabled: false
+assembly_travel_fragment: ""
+
+# --- Fragment jenkins (RENDU par le rôle Ansible `jenkins`) ------------------
+# Contrairement à identity/payment/travel (fragments statiques du dépôt, chemin
+# ABSOLU variable par machine), jenkins est un rôle Ansible qui REND son propre
+# fragment sous assembly_compose_dir — même pattern que postgres/vault/neo4j/
+# traefik. Le chemin est donc RELATIF et n'a pas à être fourni en -e.
+#
+# DÉFAUT = false, et c'est délibéré (≠ traefik, lui inclus sans flag) :
+#   1. Les `include:` Compose sont résolus QUEL QUE SOIT le --profile. Un
+#      opérateur qui n'a pas (encore) joué le rôle `jenkins` n'a pas ce fragment
+#      sur disque : l'inclure en dur casserait le rendu de core ET de full, pas
+#      seulement celui de ci. Le flag garde le rendu par défaut STRICTEMENT
+#      inchangé — même raisonnement que payment/travel.
+#   2. La CI est explicitement « à la demande » (docs §8) : Jenkins n'appartient
+#      à aucun des profils qui tournent au quotidien.
+# Ce défaut pourra passer à true le jour où le rôle `jenkins` fera partie du run
+# de provisioning standard (comme identity l'a fait une fois prouvé bout-en-bout).
+# À activer :
+#   -e assembly_jenkins_enabled=true
+assembly_jenkins_enabled: false
+assembly_jenkins_fragment: "jenkins/compose.jenkins.yml"
+
+# --- Fragment sonarqube (RENDU par le rôle Ansible `sonarqube`) --------------
+# Même statut que jenkins : rôle Ansible qui rend son fragment sous
+# assembly_compose_dir => chemin RELATIF, rien à fournir en -e.
+#
+# MÊME PROFIL QUE JENKINS (`ci`), et c'est délibéré : le pipeline enchaîne
+# `mvn verify` puis `sonar:sonar`. Lancer la CI sans SonarQube donnerait un
+# pipeline qui échoue sur son étape d'analyse ; les deux montent ensemble.
+#
+# DÉFAUT = false, exactement pour les deux raisons de jenkins :
+#   1. Les `include:` sont résolus quel que soit le --profile — inclure un
+#      fragment absent du disque casserait AUSSI core et full.
+#   2. La CI est « à la demande » (docs §8), et SonarQube est le poste RAM le
+#      plus lourd du projet (~2,1 Go mesurés, trois JVM).
+# À activer :
+#   -e assembly_sonarqube_enabled=true
+assembly_sonarqube_enabled: false
+assembly_sonarqube_fragment: "sonarqube/compose.sonarqube.yml"
+
+# --- Fragment observability (RENDU par le rôle Ansible `observability`) ------
+# Loki + Promtail + Grafana. Même statut que jenkins/sonarqube : chemin RELATIF.
+#
+# PROFIL DÉDIÉ `observability`, ADDITIF aux autres — ni core, ni full, ni ci :
+#   - pas `core` : +450 Mo en permanence romprait le calibrage du dev quotidien ;
+#   - pas `full` : on n'a pas toujours besoin de lire les logs en démo ;
+#   - pas `ci`   : ce stack observe la stack APPLICATIVE ; le monter avec
+#     Jenkins/SonarQube, services éteints, ne collecterait rien.
+# S'utilise donc en combinaison : `--profile full --profile observability`.
+#
+# DÉFAUT = false : même raison n°1 que jenkins/sonarqube (include résolu quel
+# que soit le profil). Le flag protège le rendu de core/full sur une machine où
+# le rôle `observability` n'a pas encore été joué.
+# À activer :
+#   -e assembly_observability_enabled=true
+assembly_observability_enabled: false
+assembly_observability_fragment: "observability/compose.observability.yml"
+
+# Réseaux Docker à créer (Ansible en est propriétaire, driver bridge).
+assembly_networks:
+  - name: "edge-net"
+    driver: "bridge"
+  - name: "backend-net"
+    driver: "bridge"
+  - name: "data-net"
+    driver: "bridge"

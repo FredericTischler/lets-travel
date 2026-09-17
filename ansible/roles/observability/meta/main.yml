@@ -1,0 +1,40 @@
+---
+galaxy_info:
+  role_name: observability
+  author: travel-plan
+  description: >-
+    Provisionne le stack de LOGGING CENTRALISE de Travel-Plan (profil Compose
+    dedie `observability`, additif aux profils core/full — cf.
+    docs/architecture-decisions.md). Rend les configurations de Loki (mode
+    monolithique, stockage filesystem sur volume nomme, schema TSDB v13,
+    retention bornee a 7 jours avec compactor actif), de Promtail (decouverte
+    par docker_sd_configs sur /var/run/docker.sock monte en LECTURE SEULE, liste
+    blanche sur les conteneurs applicatifs, extraction du JSON emis par les
+    services et promotion du seul `level` en label — le requestId reste dans la
+    ligne pour ne pas exploser la cardinalite d'index) et de Grafana (datasource
+    Loki pre-provisionnee par fichier, donc reconstruite a chaque demarrage),
+    puis un fragment de service Compose declarant les trois conteneurs avec
+    images epinglees, mem_limit, healthchecks, aucun port publie et une route
+    Traefik sur grafana.localhost. Loki et Promtail vivent sur un reseau
+    `internal` sans route sortante et ne sont PAS exposes : l'API de Loki n'a
+    aucune authentification, le seul acces humain aux logs passe par Grafana.
+    Aucun secret en clair : le mot de passe admin de Grafana n'est rendu que
+    sous forme de reference d'environnement resolue depuis le .env d'app-secrets.
+    Hors perimetre a ce stade : metriques (Prometheus) et traces (Tempo),
+    dashboards Grafana pre-provisionnes, et tout le code applicatif d'EMISSION
+    des logs (logback-spring.xml, RequestIdFilter) qui est livre par ailleurs.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - observability
+    - logging
+    - loki
+    - promtail
+    - grafana
+    - infrastructure
+
+dependencies: []

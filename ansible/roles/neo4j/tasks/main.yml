@@ -1,0 +1,33 @@
+---
+# roles/neo4j/tasks/main.yml
+#
+# ASYMETRIE ASSUMEE vs postgres / vault :
+# Les roles postgres et vault provisionnent des comptes a droits limites et
+# cloisonnes (moindre privilege, docs §5). Ce role neo4j NE le fait PAS, et ce
+# n'est pas un oubli :
+#   - Neo4j Community Edition ne supporte NI le RBAC granulaire NI le multi-base
+#     (reserves a l'Enterprise Edition).
+#   - Le modele est donc mono-utilisateur : impossible de creer un compte dedie
+#     a droits reduits par service. Le principe de moindre privilege (§5) est
+#     ici DEGRADE — limite structurelle de Community, acceptee pour un projet
+#     8 Go a un seul consommateur (travel-service).
+#   - Aucun provisioning applicatif (schema, contrainte, index) : hors perimetre
+#     infra, cela releve du travel-service.
+#
+# Il ne reste donc que la plomberie : creer le repertoire et rendre le fragment
+# Compose. Ces deux taches (file: state=directory + template:) sont idempotentes
+# par construction ; un second converge rapporte changed=0.
+
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ neo4j_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render Neo4j compose service fragment"
+  ansible.builtin.template:
+    src: "compose.neo4j.yml.j2"
+    dest: "{{ neo4j_compose_dir }}/compose.neo4j.yml"
+    mode: "0644"
+  tags: [compose_fragment]

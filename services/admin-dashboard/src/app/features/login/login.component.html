@@ -1,0 +1,37 @@
+<div class="flex min-h-screen items-center justify-center bg-white p-6 dark:bg-slate-900">
+  <div class="w-full max-w-sm">
+    <h1 class="mb-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">Connexion</h1>
+
+    <app-card>
+      <form class="flex flex-col gap-4" (ngSubmit)="submit()">
+        <app-input
+          fieldId="email"
+          name="email"
+          label="Email"
+          type="email"
+          [(ngModel)]="email"
+          [required]="true"
+          autocomplete="username"
+        />
+
+        <app-input
+          fieldId="password"
+          name="password"
+          label="Mot de passe"
+          type="password"
+          [(ngModel)]="password"
+          [required]="true"
+          autocomplete="current-password"
+        />
+
+        @if (error()) {
+          <app-alert variant="error">{{ error() }}</app-alert>
+        }
+
+        <app-button type="submit" [disabled]="submitting()">
+          {{ submitting() ? 'Connexion…' : 'Se connecter' }}
+        </app-button>
+      </form>
+    </app-card>
+  </div>
+</div>

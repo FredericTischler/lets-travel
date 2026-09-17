@@ -1,0 +1,22 @@
+---
+# converge.yml : joue le role vault.
+# APPROCHE CONTROLEUR : `connection: local` => toutes les taches (modules
+# community.hashi_vault + rendu du fragment) s'executent sur le controleur
+# (le venv, qui a hvac). Vault est joint via le port de TEST localhost:8200.
+# Le fragment compose est rendu dans un repertoire temporaire inoffensif.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  # ansible_connection en var pour SURCHARGER le `ansible_connection: docker`
+  # injecte par molecule dans l'inventaire (un `connection: local` au niveau
+  # play ne suffit pas a battre une host var d'inventaire).
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    # Fixture : root token de dev = celui passe a l'image dans molecule.yml.
+    vault_dev_root_token: molecule-root-token
+    vault_addr: "http://localhost:8200"
+    # Rendu compose dans un repertoire temporaire inoffensif (controleur).
+    vault_compose_dir: /tmp/travel-plan-vault
+  roles:
+    - role: vault

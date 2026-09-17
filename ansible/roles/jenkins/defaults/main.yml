@@ -1,0 +1,308 @@
+---
+# roles/jenkins/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role jenkins
+# (increment CI/CD n°2 : GENERALISATION MULTI-JOBS).
+#
+# Modele operatoire identique aux autres roles du projet :
+#   Ansible PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE.
+#   Aucun `docker_container` en prod, aucun `docker compose up` depuis Ansible.
+#
+# CE QUI CHANGE PAR RAPPORT A L'INCREMENT n°1 : la definition de job n'est plus
+# une poignee de scalaires cables sur identity-service, c'est une LISTE
+# (`jenkins_jobs`) parcourue par une boucle sur UN template generique. Ajouter un
+# service au perimetre CI = ajouter une entree ici + commiter son Jenkinsfile ;
+# aucune modification de tasks/ ni de templates/ n'est requise.
+#
+# PERIMETRE DE CET INCREMENT (assume, pas un oubli) :
+#   - UN controleur Jenkins, TROIS jobs Pipeline (identity / payment / travel),
+#     tous declenches A LA MAIN, chacun jouant `./mvnw test` sur son module.
+#   - PAS de SonarQube (increment separe).
+#   - PAS de webhook, PAS de multibranch scan. Declenchement MANUEL par defaut
+#     (<triggers/> vide dans CHACUN des 3 config.xml, asserte par Molecule).
+#     UNE SEULE derogation, OPT-IN et explicite : `jenkins_scm_poll_enabled`
+#     (poll SCM, cf. bloc dedie plus bas). Elle n'est jamais active par defaut.
+#   - PAS de build/push d'image Docker depuis Jenkins.
+#   - PAS d'agent Jenkins distinct : les builds tournent sur le controleur
+#     (cf. jenkins_mem_limit ci-dessous pour la consequence RAM).
+#   - PAS de job "chapeau" qui enchainerait les 3 : 3 jobs independants, chacun
+#     declenchable seul. Un pipeline d'orchestration multi-modules supposerait un
+#     ordre de dependance entre services qui n'existe pas ici (ils ne partagent
+#     que le monorepo), et ferait tourner 3 builds Maven dans la meme cgroup de
+#     1600m => OOM. disableConcurrentBuilds() ne protege QUE d'un job contre
+#     lui-meme : c'est a l'operateur de ne pas lancer les 3 en meme temps.
+
+# --- Image (tag epingle, jamais latest) -------------------------------------
+# Tag verifie empiriquement : `docker run --rm jenkins/jenkins:2.568.3-lts-jdk21`
+# rapporte JENKINS_VERSION=2.568.3, Temurin 21 (JDK complet, pas un JRE) et
+# embarque deja git / curl / unzip / bash.
+# JDK 21 choisi pour etre ALIGNE sur les TROIS services : identity, payment et
+# travel utilisent tous eclipse-temurin:21.0.7_6-jdk-noble dans leur Dockerfile
+# (verifie). Le `./mvnw test` de chaque job tourne donc sur la meme majeure Java
+# que le build applicatif correspondant, avec UNE seule image de controleur. Un
+# tag -jdk17 casserait cet alignement (Spring Boot 3.4 compile en 21 ici).
+# `unzip` PRESENT est une dependance DURE : le `mvnw` de ce depot est un wrapper
+# shell artisanal (pas de maven-wrapper.jar) qui telecharge la distribution
+# Maven en .zip et l'extrait avec `unzip` (cf. commentaire du Dockerfile
+# identity-service). Sans unzip dans l'image, `./mvnw` echoue.
+jenkins_image: "jenkins/jenkins:2.568.3-lts-jdk21"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+jenkins_service_name: "jenkins"
+jenkins_container_name: "travel-plan-jenkins"
+
+# --- RAM : ecart ASSUME vs les ~700 Mo de docs/architecture-decisions.md §8 --
+# §8 chiffre "Jenkins ~700 Mo" = le controleur AU REPOS. Ici les builds tournent
+# SUR le controleur (pas d'agent separe dans cet increment minimal) : il faut
+# donc loger, dans la meme cgroup, le controleur + la JVM Maven + la JVM forkee
+# par Surefire. 700m OOM-killerait le premier `mvn test`.
+#   controleur (-Xmx512m)        ~700 Mo RSS   <- conforme au chiffre §8
+#   JVM Maven  (MAVEN_OPTS)      ~300 Mo
+#   JVM Surefire forkee          ~400 Mo (container-aware : 25% de mem_limit)
+#   -------------------------------------------
+#   total                        ~1,4 Go  -> limite 1600m
+# Cet ecart est SOUTENABLE parce que le profil `ci` est explicitement "a la
+# demande, idealement quand la stack applicative est down" (§8) : les 1,6 Go ne
+# cohabitent pas avec les ~3,8 Go de la stack runtime.
+# NOTE : les conteneurs Testcontainers (postgres:17.5-bookworm pour identity et
+# payment, neo4j:5.26.6-community pour travel) sont des conteneurs FRERES sur le
+# demon hote — ils ne comptent PAS dans cette limite (compter ~250 Mo de plus a
+# cote pour postgres, ~600 Mo pour neo4j, sur l'hote). C'est la raison
+# supplementaire de ne PAS lancer les 3 jobs en parallele sur une machine 8 Go.
+jenkins_mem_limit: "1600m"
+# Heap du controleur borne explicitement (meme discipline que les JVM du projet,
+# cf. §4 "-Xmx fixe sur CHAQUE JVM") : sans cela la JVM prendrait 25% de
+# mem_limit et laisserait moins de place aux JVM de build.
+jenkins_controller_max_heap: "512m"
+# Heap de la JVM Maven lancee par le job (borne pour la meme raison).
+jenkins_maven_max_heap: "256m"
+
+# --- Reseau -----------------------------------------------------------------
+# backend-net UNIQUEMENT :
+#   - c'est le reseau ou Traefik decouvre les services par labels (docs §4),
+#     donc le seul necessaire pour exposer l'UI Jenkins derriere la gateway ;
+#   - Jenkins n'a AUCUN besoin de data-net : il ne parle ni a postgres ni a
+#     vault ni a neo4j. Les bases Testcontainers du job sont des conteneurs
+#     ephemeres crees sur le demon HOTE, joints via host.docker.internal
+#     (cf. jenkins_testcontainers_host_override), pas via un reseau du projet.
+#   - il n'a pas non plus besoin de joindre le conteneur identity-service : le
+#     job ne teste pas le service DEPLOYE, il compile et teste les SOURCES.
+jenkins_backend_network: "backend-net"
+
+# --- Repertoire de rendu du fragment (surcharge en prod / molecule) ---------
+jenkins_compose_dir: "/opt/travel-plan/jenkins"
+
+# --- Persistance JENKINS_HOME ----------------------------------------------
+# Volume NOMME : la config Jenkins (utilisateur admin, plugins installes, jobs,
+# historique de builds, et le cache ~/.m2 du job) survit a `docker compose down`
+# / `up` et au redemarrage du conteneur. Sans lui, le wizard de premier
+# demarrage serait a rejouer a chaque cycle.
+jenkins_home_volume: "travel-plan-jenkins-home"
+# Port HTTP INTERNE du controleur (jamais publie sur l'hote : cf. README).
+jenkins_http_port: 8080
+
+# --- Acces au demon Docker (OBLIGATOIRE ici, cf. README "Decision securite") -
+# Les tests des trois services utilisent Testcontainers (PostgreSQLContainer
+# pour identity et payment, Neo4jContainer pour travel) : les jobs DOIVENT
+# pouvoir creer des conteneurs. Le socket est donc monte en
+# LECTURE-ECRITURE — contrairement au role traefik ou :ro suffit.
+jenkins_docker_socket: "/var/run/docker.sock"
+# GID du groupe `docker` de l'HOTE, ajoute au process jenkins (uid 1000) via
+# `group_add` pour qu'il ait le droit d'ecrire sur le socket.
+# Vide => auto-decouvert par la tache getent (`getent group docker`).
+# A surcharger explicitement quand le controleur Ansible n'est pas l'hote Docker
+# cible, ou en Molecule (ou le groupe docker n'existe pas dans la plateforme).
+jenkins_docker_gid: ""
+
+# --- Testcontainers : reseau depuis un conteneur vers ses conteneurs freres --
+# Le job tourne DANS le conteneur Jenkins mais cree ses conteneurs de test sur
+# le demon de l'HOTE (socket monte). Testcontainers renvoie par defaut
+# `localhost` pour getHost() -> ce serait le conteneur Jenkins lui-meme, pas
+# l'hote ou le port du postgres de test est publie => connexion refusee.
+# TESTCONTAINERS_HOST_OVERRIDE + extra_hosts host-gateway corrigent ce point.
+jenkins_testcontainers_host_override: "host.docker.internal"
+
+# --- Exposition de l'UI : route Traefik (cf. README pour la justification) ---
+# Aucun port publie (convention du projet : seul Traefik publie, docs §4).
+jenkins_traefik_enabled: true
+jenkins_traefik_router_name: "jenkins"
+jenkins_traefik_host_rule: "jenkins.localhost"
+jenkins_traefik_entrypoint: "websecure"
+
+# === Source du code teste par le job ========================================
+# DEUX MODES, un seul commutateur : la FORME de `jenkins_scm_url`.
+#
+#   A) MODE MIROIR LOCAL (DEFAUT, inchange) : `file:///srv/travel-plan-repo`.
+#      Le checkout de l'hote est bind-monte en lecture seule dans le conteneur ;
+#      le job fait un VRAI `checkout scm` (git-plugin, branche, scriptPath) avec
+#      ZERO credential. Tradeoff : le job teste ce qui est COMMITE DANS LE
+#      CHECKOUT LOCAL, pas ce qui est pousse sur GitHub.
+#
+#   B) MODE REMOTE GITHUB (OPT-IN, jamais par defaut) :
+#      `-e jenkins_scm_url=git@github.com:FredericTischler/travel-plan.git`
+#      `-e jenkins_scm_credential_id=github-deploy-key`
+#      Le job clone le VRAI remote => il teste ce qui est POUSSE. Exige une cle
+#      de deploiement GitHub en LECTURE SEULE, deposee A LA MAIN par l'operateur
+#      dans le credential store de Jenkins (procedure detaillee dans le README).
+#      Le role ne fabrique, ne stocke et ne rend AUCUNE cle : il ne rend que
+#      l'IDENTIFIANT du credential, qui n'est pas un secret.
+#
+# CE QUI NE CHANGE PAS ENTRE A ET B : le declenchement. Basculer la SOURCE du
+# checkout n'amene NI webhook, NI poll, NI scan multibranch, NI mecanisme de Pull
+# Request. Le <triggers/> reste vide dans les deux modes tant que
+# `jenkins_scm_poll_enabled` (commutateur SEPARE, ci-dessous) vaut false —
+# assertee par Molecule sur les deux modes.
+#
+# Le defaut reste le mode A : meme discipline que les autres flags du projet
+# (`false`/vide par defaut, on n'active rien implicitement), et surtout le mode B
+# est INUTILISABLE tant que l'operateur n'a pas depose le credential lui-meme.
+
+# --- Mode A : chemin du miroir local ----------------------------------------
+# CHEMIN ABSOLU sur l'hote, variable d'une machine a l'autre => OBLIGATOIRE en -e
+# EN MODE A (la tache d'assertion echoue fail-fast s'il est vide) :
+#   -e jenkins_scm_repo_host_path=/chemin/absolu/vers/le/checkout/travel-plan
+# En mode B il n'est NI requis NI utilise : il n'y a plus rien a bind-monter.
+jenkins_scm_repo_host_path: ""
+# Point de montage (lecture seule) du miroir dans le conteneur Jenkins.
+jenkins_scm_mount_path: "/srv/travel-plan-repo"
+
+# --- URL SCM vue par le job (c'est ELLE qui choisit le mode) ----------------
+jenkins_scm_url: "file://{{ jenkins_scm_mount_path }}"
+jenkins_scm_branch: "main"
+
+# --- Mode B : identifiant du credential Jenkins a referencer dans le job -----
+# VIDE PAR DEFAUT = aucun <credentialsId> rendu dans les config.xml (comportement
+# actuel, prouve par l'assertion Molecule "credentialsId not in job_cfg").
+# Ce n'est PAS un secret : c'est le NOM d'une entree du credential store de
+# Jenkins. La cle privee, elle, n'existe que dans Jenkins, jamais ici.
+# Convention proposee (cf. README) : "github-deploy-key", type "SSH Username with
+# private key", username `git`.
+jenkins_scm_credential_id: ""
+
+# === Declenchement automatique : POLL SCM (opt-in) ==========================
+# Le sujet (docs/sujet.md) demande que les tests tournent "a chaque changement".
+# Deux facons de l'obtenir, et une seule est realisable ICI :
+#
+#   - WEBHOOK GitHub -> Jenkins : GitHub.com doit POUVOIR JOINDRE ce Jenkins en
+#     HTTP entrant. Or ce Jenkins tourne sur un poste de dev, sans port publie,
+#     derriere Traefik en https://jenkins.localhost avec un certificat
+#     AUTO-SIGNE : aucune URL publique, aucun DNS, aucun certificat que
+#     GitHub accepterait. Un webhook est donc STRUCTURELLEMENT inapplicable sans
+#     tunnel (ngrok/Cloudflare) — procedure documentee dans le README, NON
+#     implementee, et de toute facon elle exige une action dans les settings du
+#     depot GitHub, qui n'appartient pas a ce role.
+#   - POLL SCM : c'est Jenkins qui interroge le SCM. Aucun flux entrant, aucune
+#     action cote GitHub, 100% realisable par ce role. C'est ce qui est cable
+#     ici.
+#
+# DEFAUT `false` : meme discipline que TOUS les flags de ce role — on n'active
+# rien implicitement, et le declenchement manuel strict reste le comportement
+# livre par defaut (invariant asserte par Molecule). Activation explicite :
+#   ansible-playbook ... -e jenkins_scm_poll_enabled=true
+# (puis re-POST des 3 config.xml dans Jenkins : Ansible ne cree ni ne met a jour
+# les jobs — il n'a pas de credential Jenkins, cf. plus haut).
+#
+# TRADEOFFS DU POLL, assumes :
+#   - latence : un push est detecte au pire au bout d'une periode de poll (5 min
+#     ici), la ou un webhook declenche en ~1 s ;
+#   - cout : en mode B chaque poll est un `git ls-remote` SSH vers GitHub — ~288
+#     connexions/jour/job, negligeable et bien en-deca de toute limite ;
+#   - en mode A (miroir local file://) le poll voit les commits du CHECKOUT
+#     LOCAL, pas ceux pousses sur GitHub : le couple utile est donc
+#     poll + mode B (remote reel).
+#   - un poll ne declenche RIEN si le SHA de la branche n'a pas bouge : pas de
+#     build inutile.
+#   - CONSEQUENCE RAM A NE PAS OUBLIER : un push fait detecter le meme SHA par
+#     les TROIS jobs => 3 builds en file. Personne ne clique plus, donc la regle
+#     "un build a la fois" (cf. jenkins_mem_limit) doit etre tenue par le
+#     `numExecutors: 1` du controleur — reglage GLOBAL de Jenkins, dans le volume
+#     JENKINS_HOME, donc hors perimetre de ce role (procedure dans le README).
+#     Defaut Jenkins = 2 executeurs = 2 builds Maven dans 1600m => OOM probable.
+#   - le poll suit UNE branche (`jenkins_scm_branch`, `main`). Il ne couvre donc
+#     PAS les Pull Requests : cela exigerait un job multibranch, hors perimetre.
+jenkins_scm_poll_enabled: false
+
+# Syntaxe cron Jenkins (5 champs). `H` = hash du nom du job : les 3 jobs sont
+# ainsi decales dans les 5 minutes au lieu de poller tous a la meme seconde —
+# ce qui, sur ce controleur sans agent (1600m, 3 builds Maven possibles),
+# evite le scenario ou trois builds demarrent simultanement apres un push.
+# NE PAS descendre a 'H/1' : le poll n'est pas gratuit (un ls-remote SSH par
+# job et par minute), et 5 min reste sans commune mesure avec la duree d'un
+# build (~2 min).
+jenkins_scm_poll_cron: "H/5 * * * *"
+
+# --- DERIVE de la forme de l'URL : sommes-nous en mode miroir local ? --------
+# UNE SEULE source de verite pour les trois consequences du mode A :
+#   1. l'assertion fail-fast sur jenkins_scm_repo_host_path,
+#   2. le bind-mount :ro du miroir dans le fragment Compose,
+#   3. la propriete JVM ALLOW_LOCAL_CHECKOUT ci-dessous.
+# Derive plutot que saisi : un operateur qui passe au remote n'a PAS a penser a
+# basculer trois booleens (et a en oublier un).
+jenkins_scm_local_mirror: "{{ jenkins_scm_url is match('^file://') }}"
+
+# --- Corollaire NON EVIDENT du mode A (trouve empiriquement) ----------------
+# Le git-plugin REFUSE par defaut tout remote pointant sur un repertoire local :
+#   "Checkout of Git remote 'file:///...' aborted because it references a local
+#    directory, which may be insecure."
+# Il faut lever explicitement le garde-fou par une propriete systeme JVM.
+# Ce que ce garde-fou protege, et donc ce qu'on accepte de perdre : sur un
+# Jenkins MULTI-UTILISATEUR, un utilisateur ayant le droit de configurer un job
+# pourrait ainsi faire lire au controleur n'importe quel repertoire local.
+# ACCEPTE EN MODE A parce que : Jenkins solo, un seul compte admin, aucun job
+# tiers, et le seul repertoire local atteignable est un bind-mount LECTURE SEULE.
+# REPONSE A "reste-t-il necessaire en mode B ?" : NON, et c'est desormais
+# AUTOMATIQUE. En mode B l'URL est `git@github.com:...` (transport SSH), le
+# git-plugin ne voit plus de repertoire local, la propriete ne sert a rien — elle
+# n'est donc PLUS injectee dans JAVA_OPTS, ce qui RETABLIT le garde-fou amont
+# sans intervention. (Surchargeable explicitement si un jour un job doit lire un
+# miroir local ALORS qu'un autre clone le remote.)
+jenkins_allow_local_checkout: "{{ jenkins_scm_local_mirror | bool }}"
+
+# --- Jobs Pipeline rendus (config.xml prets a POSTer, PAS crees par Ansible) --
+# Ansible REND les config.xml ; il NE CREE PAS les jobs. Creer un job exigerait
+# de s'authentifier aupres de Jenkins => un secret (mot de passe admin / token
+# API) cote Ansible, avant que Vault ne soit cable a Jenkins. Contrat du projet :
+# on s'arrete et on le signale plutot que de poser un credential en clair.
+# La creation se fait donc par l'operateur, en UNE commande CLI par job,
+# documentee dans le README, avec le mot de passe genere a l'execution (jamais
+# commite).
+#
+# POURQUOI UNE LISTE plutot que 3 jeux de scalaires (jenkins_job_name_identity,
+# ..._payment, ...) : les 3 jobs sont STRUCTURELLEMENT identiques — meme SCM,
+# meme branche, meme politique de retention, meme <triggers/> vide. Seuls varient
+# le nom, la description et le scriptPath. Une liste + un template generique
+# rendent cette identite verifiable d'un coup d'oeil : il n'existe qu'UN endroit
+# ou un trigger ou un credential pourrait se glisser, donc qu'UN endroit a
+# auditer. Trois templates copies-colles auraient au contraire permis a un job de
+# deriver en silence.
+#
+# CLES ATTENDUES PAR ENTREE (toutes obligatoires, cf. assertion dans tasks/) :
+#   name        -> nom de l'item Jenkins ET suffixe du fichier rendu
+#                  (job-<name>-config.xml). Sert aussi de nom dans l'URL REST.
+#   description -> texte affiche sur la page du job.
+#   script_path -> chemin du Jenkinsfile RELATIF A LA RACINE DU DEPOT (le
+#                  checkout ramene le monorepo entier, pas le module).
+#
+# Ajouter un service au perimetre CI = ajouter une entree ici + commiter son
+# Jenkinsfile. Ni tasks/main.yml ni le template ne bougent.
+jenkins_jobs:
+  - name: "identity-service-test"
+    description: >-
+      Build + tests unitaires/integration d'identity-service (./mvnw test).
+      Declenchement : MANUEL par defaut ; poll SCM opt-in
+      (jenkins_scm_poll_enabled). Jamais de webhook.
+    script_path: "services/identity-service/Jenkinsfile"
+  - name: "payment-service-test"
+    description: >-
+      Build + tests unitaires/integration de payment-service (./mvnw test,
+      Testcontainers postgres:17.5-bookworm).
+      Declenchement : MANUEL par defaut ; poll SCM opt-in
+      (jenkins_scm_poll_enabled). Jamais de webhook.
+    script_path: "services/payment-service/Jenkinsfile"
+  - name: "travel-service-test"
+    description: >-
+      Build + tests unitaires/integration de travel-service (./mvnw test,
+      Testcontainers neo4j:5.26.6-community).
+      Declenchement : MANUEL par defaut ; poll SCM opt-in
+      (jenkins_scm_poll_enabled). Jamais de webhook.
+    script_path: "services/travel-service/Jenkinsfile"

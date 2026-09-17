@@ -1,0 +1,192 @@
+# identity-service : Deployment (2 replicas) + Service ClusterIP.
+#
+# DEPLOYMENT ET PAS STATEFULSET : ce service est SANS ETAT (l'etat vit dans
+# PostgreSQL). Ses Pods sont interchangeables, remplacables dans n'importe quel
+# ordre, et c'est exactement ce que le sujet demande — "multiple replicas of
+# each microservice for load balancing and failover" (§1).
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: identity-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  # ClusterIP (defaut) : joignable UNIQUEMENT depuis l'interieur du cluster.
+  # L'exposition publique passe par l'Ingress (40-ingress.yaml), qui est le seul
+  # point d'entree — transposition directe du choix Compose ou seul Traefik
+  # publie un port et ou aucun service applicatif n'expose quoi que ce soit.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: identity-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: identity-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  # 2 replicas : meme valeur que IDENTITY_REPLICAS par defaut cote Compose.
+  # Le Service ClusterIP repartit le trafic entre les deux (kube-proxy), et la
+  # perte d'un Pod ne coupe pas le service — c'est le "failover" du sujet.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: identity-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable: 0 => pendant une mise a jour, on ne descend JAMAIS
+      # sous 2 Pods disponibles : le nouveau Pod doit devenir Ready avant qu'un
+      # ancien ne soit retire. Deploiement sans interruption, au prix d'un Pod
+      # supplementaire transitoire (maxSurge: 1). Sur un poste contraint en RAM,
+      # c'est le parametre a passer a maxUnavailable: 1 / maxSurge: 0 si la
+      # mise a jour bloque faute de ressources pour le Pod supplementaire.
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: identity-service
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      # Les Pods ne doivent PAS demarrer avant que PostgreSQL accepte les
+      # connexions : sinon Flyway/Hikari echouent au boot (fail-fast applicatif)
+      # et le Pod entre en CrashLoopBackOff avec un backoff croissant.
+      #
+      # Kubernetes n'a PAS d'equivalent de `depends_on: condition: service_healthy`
+      # (Compose) : l'ordonnancement est volontairement absent du modele, chaque
+      # objet converge independamment. L'idiome de remplacement est cet
+      # initContainer bloquant. C'est une difference conceptuelle importante
+      # entre les deux orchestrateurs, pas un oubli.
+      initContainers:
+        - name: wait-for-postgres
+          image: "postgres:17.5-bookworm"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            # Boucle jusqu'a ce que le port Postgres reponde. Pas de timeout
+            # volontaire : Kubernetes gere deja l'echec par la `progressDeadline`
+            # du Deployment, et un Pod bloque en Init: est un diagnostic BEAUCOUP
+            # plus lisible qu'un CrashLoopBackOff applicatif.
+            - |
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -q; do
+                echo "en attente de postgres ($DB_HOST:$DB_PORT)..."
+                sleep 2
+              done
+          envFrom:
+            - configMapRef:
+                name: travel-plan-config
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+      containers:
+        - name: identity-service
+          # MEME IMAGE que Docker Compose (services/identity-service/
+          # docker-compose.identity.yml). Tag fige, jamais `latest`.
+          #
+          # IMPORTANT : cette image est construite LOCALEMENT par le projet et
+          # n'existe dans AUCUN registry. Sur kind il faut la charger
+          # explicitement (`kind load docker-image`), sur minikube la construire
+          # dans le daemon du cluster. Voir README, section Prerequis.
+          image: "travel-plan/identity-service:0.1.0"
+          # IfNotPresent (et surtout PAS Always) : avec Always, le kubelet
+          # tenterait un pull vers Docker Hub, echouerait en ErrImagePull et
+          # ignorerait l'image pourtant presente localement.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            # DB_HOST, DB_PORT, PAYMENT_SERVICE_URL... (voir 10-configmap.yaml)
+            - configMapRef:
+                name: travel-plan-config
+          env:
+            # Base et compte applicatif propres a CE service : ils ne sont pas
+            # dans le ConfigMap partage, qui ne contient que ce qui est commun.
+            - name: DB_NAME
+              value: "identity_db"
+            - name: DB_USERNAME
+              value: "identity_user"
+            # Le Secret n'est JAMAIS monte en entier via envFrom : on referme
+            # cle par cle. identity-service n'a aucune raison de voir les
+            # credentials Stripe/PayPal ou le mot de passe superuser Postgres.
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: IDENTITY_DB_PASSWORD
+            # Cle HS256 PARTAGEE : identity-service EMET les jetons, payment et
+            # travel les VERIFIENT avec la MEME cle. Une seule source (ce Secret)
+            # pour les trois Deployments, sinon divergence silencieuse et jetons
+            # rejetes sans explication.
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: JWT_SIGNING_KEY
+          # --- Sondes ------------------------------------------------------
+          # startupProbe : Spring Boot met 20-40 s a demarrer. Elle couvre cette
+          # phase (30 x 5 s = 2 min 30 max) et SUSPEND liveness et readiness
+          # jusqu'a son premier succes. Sans elle, une liveness agressive tuerait
+          # le Pod avant meme qu'il ait fini de demarrer — boucle infinie de
+          # redemarrages sur une application parfaitement saine.
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          # readinessProbe sur /actuator/health COMPLET (inclut le health
+          # contributor de la base) : si Postgres devient injoignable, le Pod
+          # sort des Endpoints du Service et cesse de recevoir du trafic, sans
+          # etre tue. C'est le comportement voulu — il redeviendra Ready des le
+          # retour de la base.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # livenessProbe sur le groupe /actuator/health/liveness et NON sur
+          # /actuator/health : distinction critique. Le groupe `liveness` ne
+          # reflete QUE l'etat interne de l'application, PAS ses dependances.
+          # Brancher la liveness sur le health complet ferait redemarrer les 2
+          # replicas en boucle a chaque hoquet de PostgreSQL — un redemarrage
+          # ne repare pas une base absente, il aggrave la panne.
+          #
+          # Ce groupe est expose automatiquement par Spring Boot des qu'il
+          # detecte une plateforme Kubernetes (variable KUBERNETES_SERVICE_HOST
+          # injectee par le kubelet), sans configuration supplementaire cote
+          # application.yml. Verifie sur le cluster (cf. README, section Test).
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            # Aligne sur mem_limit: 512m du fragment Compose. L'ENTRYPOINT de
+            # l'image fixe MaxRAMPercentage=75, donc ~384 Mo de heap max : la JVM
+            # se dimensionne d'elle-meme sur la limite du cgroup, il n'y a rien a
+            # regler en plus cote manifeste.
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"

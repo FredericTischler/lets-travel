@@ -1,0 +1,140 @@
+---
+# verify.yml : assertions EXPLICITES (echoue si une garantie d'infra manque).
+# Pattern identique a postgres/neo4j : docker connection, assertions sur les
+# fichiers rendus dans /tmp de la plateforme Molecule.
+#
+# PERIMETRE HONNETE : on verifie que le role a rendu les bons artefacts avec les
+# bonnes valeurs. On ne prouve PAS que Traefik accepterait la config au runtime.
+# (Empiriquement, Traefik ne fail-fast PAS sur une cle YAML inconnue, et ne log
+# rien au demarrage quand le logging est configure via fichier. L'assertion de
+# "demarrage sain" ne prouverait rien de plus que le demarrage lui-meme.)
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    tdir: /tmp/travel-plan-traefik
+  tasks:
+
+    # =====================================================================
+    # 1) FRAGMENT COMPOSE : assertions de VALEURS (pas juste presence)
+    # =====================================================================
+    - name: "Read rendered compose fragment"
+      ansible.builtin.slurp:
+        src: "{{ tdir }}/compose.traefik.yml"
+      register: fragment_b64
+
+    - name: "Set fragment text"
+      ansible.builtin.set_fact:
+        fragment: "{{ fragment_b64.content | b64decode }}"
+
+    - name: "Assert fragment: image epinglee, mem_limit, edge-net + backend-net"
+      ansible.builtin.assert:
+        that:
+          - "'traefik:v3.7.1' in fragment"
+          - "'mem_limit' in fragment"
+          - "'128m' in fragment"
+          - "'edge-net' in fragment"
+          - "'backend-net' in fragment"
+        fail_msg: "Fragment : image/mem_limit/reseaux non conformes."
+        success_msg: "Fragment : image epinglee, mem_limit 128m, edge-net + backend-net OK."
+
+    - name: "Assert fragment: port 443 publie (SEUL port du projet)"
+      ansible.builtin.assert:
+        that:
+          - "'ports:' in fragment"
+          - "'443:443' in fragment"
+        fail_msg: "Le port 443 n'est pas publie."
+        success_msg: "Port 443 publie OK (seul port du projet)."
+
+    # --- Le point de securite ACTE : socket monte en LECTURE SEULE ---------
+    # On verifie le MODE EXACT (:ro), pas juste la presence du montage.
+    - name: "Assert fragment: docker.sock monte en READ-ONLY (:ro) — mode exact"
+      ansible.builtin.assert:
+        that:
+          - "'/var/run/docker.sock:/var/run/docker.sock:ro' in fragment"
+          - "'/var/run/docker.sock:/var/run/docker.sock:rw' not in fragment"
+          - "'/var/run/docker.sock:/var/run/docker.sock\"' not in fragment"
+        fail_msg: "Le socket Docker n'est PAS monte en lecture seule (:ro) — interdit."
+        success_msg: "Socket Docker monte en :ro (mode exact verifie) OK."
+
+    # --- Aucune regle de routage applicative dans le fragment --------------
+    - name: "Assert fragment: aucune label/regle de routage vers un service applicatif"
+      ansible.builtin.assert:
+        that:
+          - "'traefik.http.routers' not in fragment"
+          - "'traefik.http.services' not in fragment"
+          - "'identity' not in fragment"
+          - "'travel-service' not in fragment"
+          - "'payment' not in fragment"
+        fail_msg: "Une regle/label de routage applicative est presente — hors perimetre."
+        success_msg: "Aucune regle de routage applicative OK (rien a router a ce stade)."
+
+    # =====================================================================
+    # 2) CONFIG STATIQUE : entrypoint 443, providers docker + file, ping
+    # =====================================================================
+    - name: "Read rendered static config"
+      ansible.builtin.slurp:
+        src: "{{ tdir }}/config/traefik.yml"
+      register: static_b64
+
+    - name: "Set static text"
+      ansible.builtin.set_fact:
+        static_cfg: "{{ static_b64.content | b64decode }}"
+
+    - name: "Assert static config: websecure :443, providers docker + file, ping"
+      ansible.builtin.assert:
+        that:
+          - "'websecure' in static_cfg"
+          - "':443' in static_cfg"
+          - "'docker:' in static_cfg"
+          - "'exposedByDefault: false' in static_cfg"
+          - "'file:' in static_cfg"
+          - "'/etc/traefik/dynamic' in static_cfg"
+          - "'ping:' in static_cfg"
+          - "'dashboard: true' not in static_cfg"
+        fail_msg: "Config statique non conforme (entrypoint/providers/ping/dashboard)."
+        success_msg: "Config statique OK (websecure :443, docker+file, ping, dashboard off)."
+
+    # =====================================================================
+    # 3) CONFIG DYNAMIQUE TLS : cert reference + PRESENT sur le disque
+    # =====================================================================
+    - name: "Read rendered dynamic TLS config"
+      ansible.builtin.slurp:
+        src: "{{ tdir }}/config/dynamic/tls.yml"
+      register: tls_b64
+
+    - name: "Set tls text"
+      ansible.builtin.set_fact:
+        tls_cfg: "{{ tls_b64.content | b64decode }}"
+
+    - name: "Assert dynamic TLS: defaultCertificate reference le cert/cle"
+      ansible.builtin.assert:
+        that:
+          - "'defaultCertificate' in tls_cfg"
+          - "'/etc/traefik/certs/travel-plan.crt' in tls_cfg"
+          - "'/etc/traefik/certs/travel-plan.key' in tls_cfg"
+          - "'http:' not in tls_cfg"
+        fail_msg: "Config TLS dynamique non conforme (defaultCertificate / router)."
+        success_msg: "Config TLS dynamique OK (defaultCertificate reference, aucun router)."
+
+    - name: "Stat the referenced cert and key on disk"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ tdir }}/certs/travel-plan.crt"
+        - "{{ tdir }}/certs/travel-plan.key"
+      register: cert_stats
+
+    - name: "Assert cert + key files exist (references non fantomes)"
+      ansible.builtin.assert:
+        that:
+          - "cert_stats.results | selectattr('stat.exists', 'equalto', true) | list | length == 2"
+        fail_msg: "Le cert et/ou la cle references n'existent pas sur le disque."
+        success_msg: "Cert + cle TLS presents sur le disque (references valides)."
+
+    - name: "Assert private key is 0600 (least exposure)"
+      ansible.builtin.assert:
+        that:
+          - "(cert_stats.results | selectattr('item', 'search', '\\.key$') | map(attribute='stat.mode') | first) == '0600'"
+        fail_msg: "La cle privee TLS n'est pas en 0600."
+        success_msg: "Cle privee TLS en 0600 OK."

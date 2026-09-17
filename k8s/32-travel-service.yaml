@@ -1,0 +1,129 @@
+# travel-service : Deployment (2 replicas) + Service ClusterIP.
+# Seul des trois services a dependre de Neo4j et non de PostgreSQL.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: travel-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: travel-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-service
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: travel-service
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  # 2 replicas comme les deux autres services. A noter : chaque replica ouvre
+  # son PROPRE pool de connexions Bolt vers l'unique instance Neo4j, qui est
+  # deja le poste le plus lourd de la stack. Sur un cluster contraint en RAM,
+  # c'est ici qu'on redescend a 1 en premier.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: travel-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: travel-service
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      initContainers:
+        - name: wait-for-neo4j
+          # On reutilise l'image Neo4j deja necessaire au StatefulSet plutot que
+          # d'introduire une image utilitaire supplementaire (busybox, netcat...)
+          # a telecharger et a versionner : une dependance de moins, et l'image
+          # est deja dans le cache du noeud.
+          image: "neo4j:5.26.6-community"
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - -c
+            # /dev/tcp est une fonction du shell bash (pas un vrai fichier) :
+            # d'ou `bash` et non `sh` en commande. Elle evite d'avoir a installer
+            # nc dans l'image.
+            - |
+              until (exec 3<>/dev/tcp/"$NEO4J_HOST"/"$NEO4J_PORT") 2>/dev/null; do
+                echo "en attente de neo4j ($NEO4J_HOST:$NEO4J_PORT)..."
+                sleep 2
+              done
+          envFrom:
+            - configMapRef:
+                name: travel-plan-config
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+      containers:
+        - name: travel-service
+          image: "travel-plan/travel-service:0.1.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            # NEO4J_HOST, NEO4J_PORT, NEO4J_USERNAME (voir 10-configmap.yaml).
+            - configMapRef:
+                name: travel-plan-config
+          env:
+            # Neo4j Community = UN SEUL compte : le mot de passe consomme ici est
+            # exactement celui injecte dans NEO4J_AUTH cote StatefulSet
+            # (21-neo4j.yaml). Meme cle de Secret des deux cotes, sinon echec
+            # d'authentification Bolt au premier appel.
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: NEO4J_PASSWORD
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: JWT_SIGNING_KEY
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            # Groupe `liveness` seul : voir 30-identity-service.yaml.
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"

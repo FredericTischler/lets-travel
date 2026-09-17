@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: docker_host
+  namespace: travel_plan
+  author: Travel-Plan infra
+  description: >-
+    Installe Docker CE et le plugin Compose v2 sur un hôte Ubuntu depuis le
+    dépôt APT officiel Docker (deb822). N'effectue aucune configuration du
+    démon ni création de réseaux (hors périmètre).
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+
+dependencies: []

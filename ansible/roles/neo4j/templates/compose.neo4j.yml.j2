@@ -1,0 +1,36 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `neo4j`.
+services:
+  {{ neo4j_service_name }}:
+    image: "{{ neo4j_image }}"
+    container_name: "{{ neo4j_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM 8 Go (cf. docs §4) : heap 512m + pagecache 256m + overhead JVM.
+    mem_limit: "{{ neo4j_mem_limit }}"
+    environment:
+      # Applique le mot de passe UNIQUEMENT au premier demarrage (volume vide).
+      # Ignore sur volume deja initialise. Secret injecte via Vault en prod.
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?set via env/Vault}"
+      # Memoire bornee 8 Go (cf. docs §4). Noms 5.x verifies (rename dbms->server).
+      # Convention double-underscore : max_size -> max__size (point -> _, _ -> __).
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "256m"
+    volumes:
+      - "{{ neo4j_data_volume }}:/data"
+    networks:
+      - {{ neo4j_network }}
+    # Aucune publication de port vers l'hote (seul Traefik expose, cf. docs §4).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  {{ neo4j_data_volume }}:
+
+networks:
+  {{ neo4j_network }}:
+    external: true

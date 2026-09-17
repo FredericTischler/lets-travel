@@ -1,0 +1,44 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Provisioning de la datasource Loki, rendu par le role Ansible `observability`.
+# Depose dans provisioning/datasources/ : arborescence IMPOSEE par Grafana, qui
+# la scanne a CHAQUE demarrage.
+#
+# Provisionnee par FICHIER, et pas creee a la main dans l'UI : une datasource
+# cliquee vit dans la base interne de Grafana. Elle survit tant que le volume
+# survit, et disparait silencieusement le jour ou on le recree. Celle-ci est
+# reconstruite a chaque demarrage, et elle est relisible dans le depot.
+
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    # `proxy` (et pas `direct`) : le navigateur n'appelle JAMAIS Loki, c'est le
+    # serveur Grafana qui relaie. Indispensable ici — Loki vit sur un reseau
+    # `internal`, sans port publie ni route Traefik : un appel direct depuis le
+    # navigateur ne pourrait pas l'atteindre.
+    access: proxy
+    # Nom de service Compose sur le reseau prive. Grafana est le SEUL conteneur
+    # a chevaucher backend-net et observability-net ; c'est ce qui lui permet
+    # d'etre joignable par Traefik tout en joignant Loki.
+    url: "http://{{ observability_loki_service_name }}:{{ observability_loki_http_port }}"
+    # Seule datasource du stack : elle est celle par defaut, sinon chaque
+    # ouverture d'Explore commencerait par un choix a faire.
+    isDefault: true
+    # Non modifiable depuis l'UI : la source de verite est CE fichier, rendu par
+    # Ansible. Autoriser l'edition permettrait une divergence entre ce que dit
+    # le depot et ce que fait le serveur — exactement ce que le provisioning
+    # sert a eviter.
+    editable: false
+    jsonData:
+      # Loki tourne avec auth_enabled: false (un seul locataire), mais le
+      # client Grafana envoie l'en-tete de tenant des qu'il est configure.
+      # `manageAlerts: false` : ce stack ne gere que la CONSULTATION des logs ;
+      # aucune regle d'alerte n'est definie, et laisser Grafana en piloter dans
+      # Loki creerait un etat que personne ne releit.
+      manageAlerts: false
+      # Aucun `derivedFields` (liens vers un backend de traces) : ce projet n'a
+      # pas de tracing distribue. En declarer un produirait dans l'UI des liens
+      # morts sur chaque ligne de log. La correlation se fait par requete LogQL
+      # sur le requestId (cf. README du role).

@@ -1,0 +1,10 @@
+---
+# Ce role n'utilise QUE des modules de ansible.builtin (file, template) : il n'a
+# aucune dependance de collection.
+#
+# Le fichier existe quand meme, et il est VIDE A DESSEIN : molecule.yml declare
+# `dependency: galaxy` avec ce fichier en requirements. Le supprimer ferait
+# echouer l'etape `dependency` du test_sequence. Une liste vide est le moyen
+# explicite de dire « aucune collection requise » — a la difference du role
+# `sonarqube`, qui a besoin de ansible.posix pour son module `sysctl`.
+collections: []

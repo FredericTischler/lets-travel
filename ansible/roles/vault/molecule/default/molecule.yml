@@ -1,0 +1,71 @@
+---
+# Scenario Molecule du role `vault`.
+# Driver docker (molecule-plugins) : conteneurs freres sur le demon hote
+# (Linux natif, PAS de DinD). La plateforme EST un conteneur Vault dev mode
+# en PID1.
+#
+# APPROCHE CONTROLEUR : l'image Vault est alpine (python+hvac penibles a y
+# installer). Les modules community.hashi_vault tournent donc depuis le
+# CONTROLEUR (le venv, qui a hvac), en visant Vault via un PORT DE TEST publie
+# cote plateforme Molecule (published_ports 8200:8200). CE PORT EST DE TEST :
+# il est sur la PLATEFORME molecule, distinct du FRAGMENT compose rendu par le
+# role (qui, lui, n'a AUCUN port hote). Ne pas confondre les deux artefacts.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-vault-molecule
+    # Image Vault reelle, taguee (cf. defaults/main.yml). pre_build_image: true
+    # => pas de Dockerfile derive, on lance l'image telle quelle.
+    image: hashicorp/vault:1.18.3
+    pre_build_image: true
+    # command = `server -dev` => dev mode (auto-unsealed, en memoire) en PID1.
+    override_command: true
+    command: ["server", "-dev"]
+    env:
+      # Fixture : root token de dev FIXE (jamais une valeur de prod ici).
+      VAULT_DEV_ROOT_TOKEN_ID: molecule-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    # Port de TEST (plateforme molecule) -> le controleur joint Vault en
+    # localhost:8200. Distinct du fragment compose rendu (qui n'a aucun port).
+    published_ports:
+      - "8200:8200"
+
+# Molecule 26.x : l'environnement du provisioner est lu depuis le bloc
+# top-level `ansible:` (config["ansible"]["env"]). MOLECULE_SCENARIO_DIRECTORY
+# est interpole DANS molecule.yml par Molecule lui-meme.
+# Chemin absolu : <repo>/ansible/roles/vault/molecule/default
+#   /../../.. => <repo>/ansible/roles  => `- role: vault` se resout,
+# quel que soit le repertoire de lancement. Plus aucun env shell requis.
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  # Pas de cleanup.yml fourni -> on ne met PAS `cleanup` (evite le warning
+  # "Missing playbook").
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

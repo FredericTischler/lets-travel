@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    JSON structured logging on stdout for identity-service.
+
+    Every log line is emitted as one JSON object (timestamp, level, logger,
+    message, MDC — including requestId, see filter.RequestIdFilter) so it can
+    be parsed and correlated downstream (Loki/Promtail, out of scope here —
+    this service only emits, it does not collect).
+
+    Replaces Spring Boot's default plain-text console appender entirely:
+    no dual output, stdout is JSON only, in every profile. Uses
+    logstash-logback-encoder's LogstashEncoder with includeMdc left at its
+    default (true) so every MDC entry — including requestId — is included
+    automatically without listing keys by hand.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>

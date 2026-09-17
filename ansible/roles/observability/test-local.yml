@@ -1,0 +1,33 @@
+---
+# Playbook de test/application LOCAL du rôle observability.
+# Self-contained : charge le rôle par son chemin absolu (= playbook_dir, puisque ce
+# fichier est à la racine du rôle). Aucun roles_path ni export shell requis.
+#
+# EFFET RÉEL SUR LA MACHINE — un seul, et il est circonscrit :
+#   il écrit sous /opt/travel-plan/observability/ quatre fichiers (le fragment
+#   Compose et les trois configurations Loki / Promtail / datasource Grafana).
+#
+# Contrairement au rôle `sonarqube`, il NE TOUCHE À AUCUN SYSCTL : aucun des
+# trois composants n'embarque d'Elasticsearch ni ne mappe massivement en mémoire.
+#
+# Il NE démarre AUCUN conteneur et ne configure RIEN dans Grafana au-delà de la
+# datasource provisionnée par fichier : conforme au modèle « Ansible
+# provisionne, Compose orchestre » déjà en place pour tous les autres rôles.
+#
+# PRÉREQUIS AVANT `docker compose --profile observability up -d` :
+#   la variable GRAFANA_ADMIN_PASSWORD doit exister dans /opt/travel-plan/.env
+#   (rendu par le rôle app-secrets depuis Vault). Ce rôle n'y écrit PAS —
+#   app-secrets en est le propriétaire unique. Le fragment utilise la syntaxe
+#   `${GRAFANA_ADMIN_PASSWORD:?...}` : si elle manque, `compose up` REFUSE de
+#   démarrer au lieu de laisser Grafana retomber sur admin/admin.
+#   Voir le README du rôle, section « Mot de passe admin Grafana ».
+#
+# Lancement (depuis la racine du projet, venv activé) :
+#   ansible-playbook ansible/roles/observability/test-local.yml -K
+- name: Provisionner le stack de logging centralisé (local)
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+  roles:
+    - role: "{{ playbook_dir }}"

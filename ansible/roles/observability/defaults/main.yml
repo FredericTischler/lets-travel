@@ -1,0 +1,175 @@
+---
+# roles/observability/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role `observability` (increment LOGGING DISTRIBUE).
+#
+# Modele operatoire identique a tous les autres roles du projet :
+#   Ansible PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE.
+#   Aucun `docker_container`, aucun `docker compose up` declenche depuis Ansible.
+#
+# EXIGENCE COUVERTE (docs/sujet.md) : « centralised logging », jusqu'ici une
+# INTENTION dans docs/architecture-decisions.md. Ce role rend le mecanisme REEL.
+#
+# PARTAGE DES RESPONSABILITES — a lire avant de chercher un bug au mauvais endroit :
+#   - Les services Spring EMETTENT. Chaque ligne de log est un objet JSON sur
+#     stdout (logback-spring.xml + logstash-logback-encoder) et porte le champ
+#     `requestId` issu du MDC (filter/RequestIdFilter, propage d'identity vers
+#     payment par l'en-tete X-Request-Id). C'est du code APPLICATIF, deja livre,
+#     hors perimetre de ce role.
+#   - Ce role COLLECTE, STOCKE et EXPOSE. Il ne touche a aucun .java.
+#   Consequence directe : ce stack n'a d'interet que face a des images de
+#   services CONSTRUITES APRES l'ajout du logging JSON. Branche sur des images
+#   anterieures, Promtail collectera bien les lignes, mais elles seront en texte
+#   brut et `| json | requestId=...` ne filtrera rien. Ce n'est pas une panne du
+#   stack : c'est une image applicative trop ancienne.
+#
+# PERIMETRE DE CET INCREMENT (assume, pas un oubli) :
+#   - LOGS uniquement. Pas de metriques (Prometheus), pas de traces (Tempo).
+#     Grafana est ici la fenetre de lecture de Loki, rien d'autre.
+#   - Loki en mode MONOLITHIQUE, stockage FILESYSTEM sur volume nomme. Pas de
+#     S3/MinIO, pas de mode microservices (read/write/backend) : a l'echelle
+#     d'un projet solo, ce serait 5 conteneurs de plus pour zero benefice.
+#   - Aucun dashboard Grafana pre-provisionne. La datasource Loki, elle, EST
+#     provisionnee (sinon l'outil est inutilisable a froid). Un dashboard est un
+#     objet de confort, pas un prerequis a la correlation.
+
+# === PROMTAIL : CHOIX ASSUME D'UN COLLECTEUR EN FIN DE VIE =================
+# A DIRE FRANCHEMENT : Grafana a place Promtail en maintenance LTS et pousse
+# Grafana Alloy comme successeur. Promtail est donc un choix a duree limitee.
+# Il est retenu ici pour deux raisons, et il faut connaitre les deux :
+#   1. C'est ce que demande explicitement l'enonce de l'increment.
+#   2. Sa configuration `docker_sd_configs` fait EXACTEMENT ce qu'on veut en
+#      ~20 lignes ; l'equivalent Alloy (`discovery.docker` + `loki.source.docker`
+#      + `loki.process` en langage River) est plus verbeux pour un resultat
+#      identique a cette echelle.
+# MIGRATION : le jour ou Promtail sera retire, seuls promtail-config.yml.j2 et
+# le bloc `promtail` du fragment Compose changent. Loki, Grafana, la datasource
+# et les requetes LogQL sont INCHANGES — c'est le point du decouplage.
+
+# === Images (tags epingles, JAMAIS latest) =================================
+# Les trois tags ont ete verifies via `docker manifest inspect` (EXISTS).
+# Loki et Promtail sont epingles sur LE MEME numero : ce sont deux binaires du
+# meme depot, publies ensemble. Les desynchroniser, c'est s'exposer a un couple
+# non teste par l'amont pour zero benefice.
+observability_loki_image: "grafana/loki:3.6.11"
+observability_promtail_image: "grafana/promtail:3.6.11"
+observability_grafana_image: "grafana/grafana:13.2.2"
+
+# === Services / conteneurs rendus dans le fragment Compose =================
+observability_loki_service_name: "loki"
+observability_loki_container_name: "travel-plan-loki"
+observability_promtail_service_name: "promtail"
+observability_promtail_container_name: "travel-plan-promtail"
+observability_grafana_service_name: "grafana"
+observability_grafana_container_name: "travel-plan-grafana"
+
+# === Budget RAM (MESURE, pas suppose — protocole dans README.md) ===========
+# Trois binaires Go, aucune JVM : c'est le poste le plus leger du projet, et
+# c'est precisement ce qui rend ce stack finançable ici. Mesure a vide puis
+# sous charge reportee dans le README.
+# Loki : 84 Mo mesures au repos avec quelques heures de logs indexes. 512m
+# laisse la marge d'une requete LogQL sur une large plage temporelle, ou le
+# querier materialise beaucoup de chunks d'un coup.
+observability_loki_mem_limit: "512m"
+# Promtail : 31 Mo mesures en suivant 6 conteneurs. Le plus petit poste du projet.
+observability_promtail_mem_limit: "128m"
+# Grafana : 336 Mo mesures A VIDE, sans dashboard ouvert. La premiere valeur
+# essayee ici etait 384m — soit 88 % d'occupation au repos, avant toute requete.
+# C'etait trop juste et c'est la mesure qui l'a montre, pas une intuition :
+# Grafana embarque un runtime Node pour son rendu cote serveur en plus du
+# binaire Go. 512m donne la marge d'un Explore qui ramene quelques milliers de
+# lignes.
+observability_grafana_mem_limit: "512m"
+
+# === Reseaux ===============================================================
+# backend-net : reseau PARTAGE, cree et possede par Ansible (role
+# compose-assembly), declare `external: true` cote fragment. SEUL Grafana y est
+# present, et pour UNE seule raison : que Traefik le decouvre et route son UI.
+observability_backend_network: "backend-net"
+
+# 4e reseau prive, MEME DEVIATION ASSUMEE que le role `sonarqube` : declare DANS
+# le fragment (donc cree et detruit par Compose, pas par Ansible).
+# Justification identique :
+#   - C'est un detail d'implementation prive du trio promtail -> loki <- grafana.
+#     Aucun autre conteneur n'a de raison d'y entrer.
+#   - Il doit MOURIR avec le stack plutot que lui survivre.
+# `internal: true` : aucune route sortante. Loki ne parle a personne dehors ;
+# Promtail lit le socket Docker (un FICHIER, pas du reseau) et pousse vers Loki.
+# Ni l'un ni l'autre n'a besoin d'Internet.
+#
+# CONSEQUENCE VOULUE : Loki n'est joignable NI depuis l'hote, NI depuis
+# backend-net, NI depuis les services applicatifs. La seule porte d'entree
+# humaine vers les logs est Grafana, derriere Traefik et derriere une auth.
+observability_private_network: "observability-net"
+
+# === Volumes nommes (persistance) ==========================================
+# Sans eux, `docker compose down` perdrait tout l'historique de logs (Loki) et
+# toute la configuration d'UI (Grafana : utilisateurs, dashboards, preferences).
+# Promtail n'a PAS de volume nomme : son seul etat est le fichier de positions,
+# et le perdre ne coute qu'une relecture. Voir le fragment Compose.
+observability_loki_data_volume: "travel-plan-loki-data"
+observability_grafana_data_volume: "travel-plan-grafana-data"
+
+# === Ports INTERNES (jamais publies sur l'hote) ============================
+# Convention du projet : SEUL Traefik publie un port (docs §4).
+observability_loki_http_port: 3100
+observability_promtail_http_port: 9080
+observability_grafana_http_port: 3000
+
+# === Exposition de l'UI Grafana : route Traefik (meme idiome que jenkins) ==
+observability_grafana_traefik_enabled: true
+observability_grafana_traefik_router_name: "grafana"
+observability_grafana_traefik_host_rule: "grafana.localhost"
+observability_grafana_traefik_entrypoint: "websecure"
+# Grafana fabrique des URLs absolues (redirections de login, liens de partage).
+# Sans root_url il les fabriquerait en http://localhost:3000 — injoignable,
+# puisqu'aucun port n'est publie. Meme piege que SONAR_CORE_SERVERBASEURL.
+observability_grafana_root_url: "https://{{ observability_grafana_traefik_host_rule }}"
+
+# LOKI ET PROMTAIL NE SONT PAS ROUTES, ET C'EST DELIBERE.
+# L'API de Loki n'a AUCUNE authentification dans cette configuration
+# (auth_enabled: false, cf. loki-config.yml.j2 — le multi-tenant de Loki n'est
+# pas un systeme d'authentification). Lui poser une route Traefik exposerait
+# donc en lecture ET EN ECRITURE l'integralite des logs applicatifs a quiconque
+# atteint la gateway. On ne l'expose pas ; on passe par Grafana, qui, lui,
+# authentifie. Idem pour l'endpoint de diagnostic de Promtail.
+
+# === Grafana : mot de passe admin ==========================================
+# AUCUN SECRET EN CLAIR. Le fragment ne rend QUE la reference
+# ${GRAFANA_ADMIN_PASSWORD} ; la valeur vient du .env de /opt/travel-plan, dont
+# le role `app-secrets` est le proprietaire UNIQUE et qu'il alimente depuis Vault.
+#
+# CE ROLE N'ECRIT RIEN DANS LE .env — c'est structurel, pas un oubli : deux roles
+# templatant le meme fichier s'ecraseraient a chaque run (idempotence violee).
+# La procedure d'ajout du chemin Vault est documentee dans le README de ce role.
+#
+# PAS DE DEFAUT admin/admin : Grafana, laisse a lui-meme, cree admin/admin et se
+# contente d'un ecran « changez votre mot de passe » qu'on peut ignorer. Ici,
+# si la variable est absente du .env, Compose refuse de demarrer le service.
+# Echec bruyant et immediat > UI d'observabilite ouverte a tout venant.
+observability_grafana_admin_user: "admin"
+observability_grafana_admin_password_env_var: "GRAFANA_ADMIN_PASSWORD"
+
+# === Retention des logs ====================================================
+# 168h = 7 jours. Borne VOLONTAIRE : sans retention, Loki ecrit sans limite
+# jusqu'a saturer le disque de l'hote — panne lente, decouverte au pire moment.
+# 7 jours couvre tres largement le cycle de debug d'un projet de cette taille.
+observability_loki_retention_period: "168h"
+
+# === Filtre de collecte ====================================================
+# Promtail voit TOUS les conteneurs de l'hote via le socket Docker. Cette machine
+# de dev fait aussi tourner des conteneurs d'AUTRES projets (verifie : nexus,
+# mongo, etc.) : sans filtre, on indexerait leurs logs, on gonflerait Loki et on
+# polluerait les recherches.
+# Regex appliquee au nom de conteneur, en `action: keep` (liste blanche, pas
+# liste noire : un nouveau conteneur inconnu est exclu par defaut).
+# `-\d+$` : les services applicatifs tournent en REPLIQUES (…-service-1, -2).
+observability_scrape_container_regex: "/(travel-plan-(?:identity|payment|travel)-service-[0-9]+)"
+
+# === Repertoire de rendu (coherent avec les autres roles) ==================
+observability_compose_dir: "/opt/travel-plan/observability"
+# Sous-repertoire des configurations montees en lecture seule dans les conteneurs.
+observability_config_dir: "/opt/travel-plan/observability/config"
+# Provisioning Grafana : arborescence IMPOSEE par Grafana
+# (provisioning/datasources/*.yml), ce n'est pas une convention du projet.
+observability_grafana_provisioning_dir: "/opt/travel-plan/observability/config/grafana-provisioning"

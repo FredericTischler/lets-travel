@@ -1,0 +1,414 @@
+---
+# verify.yml : assertions EXPLICITES (echoue si une garantie d'infra manque).
+# Pattern identique a postgres/neo4j/traefik/jenkins/sonarqube : docker
+# connection, assertions sur les fichiers rendus dans /tmp de la plateforme.
+#
+# CHOIX DE METHODE : les quatre artefacts sont PARSES (`from_yaml`) avant d'etre
+# assertes, pas grep-es. Une assertion textuelle sur des fichiers aussi
+# commentes que ceux-ci est fragile DANS LES DEUX SENS : un commentaire qui cite
+# "ports:" ferait echouer un "aucun port publie", et un `ports:` reellement
+# present mais commente le ferait passer a tort. On asserte donc la STRUCTURE
+# reellement vue par Compose / Loki / Promtail / Grafana.
+#
+# PERIMETRE HONNETE : on verifie que le role rend les bons artefacts avec les
+# bonnes valeurs, ET que les interdits du projet sont STRUCTURELLEMENT absents
+# (aucun port publie, aucun secret en clair, Loki et Promtail hors backend-net
+# et sans route Traefik). On ne prouve PAS ici que Loki ingere, que Promtail
+# decouvre, ni que le requestId est correlable : ca exige trois conteneurs
+# vivants, le socket Docker et une stack applicative qui emet. C'est prouve hors
+# Molecule (README du role, section « Verification bout-en-bout »).
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    base_dir: /tmp/travel-plan-observability
+    config_dir: /tmp/travel-plan-observability/config
+    provisioning_dir: /tmp/travel-plan-observability/config/grafana-provisioning
+
+  tasks:
+
+    # =======================================================================
+    # 0) Les quatre artefacts existent et sont lisibles.
+    # =======================================================================
+    - name: "Read the four rendered artefacts"
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      register: artefacts
+      loop:
+        - "{{ base_dir }}/compose.observability.yml"
+        - "{{ config_dir }}/loki-config.yml"
+        - "{{ config_dir }}/promtail-config.yml"
+        - "{{ provisioning_dir }}/datasources/loki.yml"
+
+    - name: "Parse the artefacts as YAML"
+      ansible.builtin.set_fact:
+        compose: "{{ artefacts.results[0].content | b64decode | from_yaml }}"
+        loki_cfg: "{{ artefacts.results[1].content | b64decode | from_yaml }}"
+        promtail_cfg: "{{ artefacts.results[2].content | b64decode | from_yaml }}"
+        grafana_ds: "{{ artefacts.results[3].content | b64decode | from_yaml }}"
+        compose_raw: "{{ artefacts.results[0].content | b64decode }}"
+
+    # =======================================================================
+    # 1) Fragment Compose : les trois services, images EPINGLEES.
+    # =======================================================================
+    - name: "Assert the three services are declared"
+      ansible.builtin.assert:
+        that:
+          - compose.services.keys() | list | sort == ['grafana', 'loki', 'promtail']
+        fail_msg: >-
+          Le fragment doit declarer EXACTEMENT loki, promtail et grafana.
+          Trouve : {{ compose.services.keys() | list | sort }}.
+
+    - name: "Assert no image is untagged or pinned to a floating tag"
+      ansible.builtin.assert:
+        that:
+          - "':' in compose.services[item].image"
+          - not compose.services[item].image.endswith(':latest')
+          - not compose.services[item].image.endswith(':main')
+        fail_msg: >-
+          {{ item }} utilise l'image « {{ compose.services[item].image }} ».
+          Contrat du projet : tag EXPLICITE et FIGE, jamais latest ni un tag
+          mouvant. Un tag flottant fait qu'un `compose pull` change la version
+          en production sans qu'aucun fichier du depot n'ait bouge.
+      loop: "{{ compose.services.keys() | list }}"
+
+    - name: "Assert Loki and Promtail are pinned to the SAME upstream version"
+      ansible.builtin.assert:
+        that:
+          - compose.services.loki.image.split(':')[1]
+            == compose.services.promtail.image.split(':')[1]
+        fail_msg: >-
+          Loki ({{ compose.services.loki.image }}) et Promtail
+          ({{ compose.services.promtail.image }}) sont desynchronises. Ce sont
+          deux binaires du MEME depot amont, publies ensemble et testes
+          ensemble. Les desappairer, c'est s'exposer a un couple jamais teste
+          par l'amont pour zero benefice.
+
+    # =======================================================================
+    # 2) INTERDIT DU PROJET : aucun port publie (seul Traefik publie, docs §4).
+    # =======================================================================
+    - name: "Assert no service publishes a host port"
+      ansible.builtin.assert:
+        that:
+          - "'ports' not in compose.services[item]"
+        fail_msg: >-
+          {{ item }} declare une section `ports:`. Seul Traefik publie un port
+          dans ce projet (docs/architecture-decisions.md §4). L'UI Grafana passe
+          par sa route Traefik ; Loki et Promtail ne sont PAS exposes du tout.
+      loop: "{{ compose.services.keys() | list }}"
+
+    # =======================================================================
+    # 3) INTERDIT DU PROJET : aucun secret en clair.
+    #    Le mot de passe admin de Grafana doit rester une REFERENCE
+    #    d'environnement, resolue par Compose depuis le .env d'app-secrets.
+    # =======================================================================
+    - name: "Assert the Grafana admin password is an env reference, never a value"
+      ansible.builtin.assert:
+        that:
+          - compose.services.grafana.environment.GF_SECURITY_ADMIN_PASSWORD
+            is match('^\\$\\{GRAFANA_ADMIN_PASSWORD:\\?.*\\}$')
+        fail_msg: >-
+          GF_SECURITY_ADMIN_PASSWORD vaut
+          « {{ compose.services.grafana.environment.GF_SECURITY_ADMIN_PASSWORD }} ».
+          Attendu : la REFERENCE ${GRAFANA_ADMIN_PASSWORD:?...} et rien d'autre.
+          Le `:?` n'est pas decoratif — sans lui, une variable absente du .env
+          laisserait Grafana demarrer sur son admin/admin par defaut, c'est-a-dire
+          une UI d'observabilite ouverte a tout venant derriere la gateway.
+
+    - name: "Assert anonymous access and self sign-up are disabled"
+      ansible.builtin.assert:
+        that:
+          - compose.services.grafana.environment.GF_AUTH_ANONYMOUS_ENABLED | bool == false
+          - compose.services.grafana.environment.GF_USERS_ALLOW_SIGN_UP | bool == false
+        fail_msg: >-
+          Grafana est le SEUL point d'acces humain aux logs applicatifs, et le
+          seul composant du stack qui authentifie (Loki tourne avec
+          auth_enabled: false). L'acces anonyme et la creation libre de comptes
+          doivent rester desactives.
+
+    # =======================================================================
+    # 4) SEGMENTATION RESEAU : Loki et Promtail sont prives, Grafana fait le pont.
+    # =======================================================================
+    - name: "Assert Loki and Promtail live ONLY on the private internal network"
+      ansible.builtin.assert:
+        that:
+          - compose.services[item].networks == ['observability-net']
+        fail_msg: >-
+          {{ item }} est rattache a {{ compose.services[item].networks }}.
+          Attendu : observability-net et RIEN d'autre. L'API de Loki n'a AUCUNE
+          authentification : la sortir de son reseau prive exposerait tous les
+          logs applicatifs en lecture ET en ecriture a qui atteint backend-net.
+      loop:
+        - loki
+        - promtail
+
+    - name: "Assert Grafana bridges backend-net and the private network"
+      ansible.builtin.assert:
+        that:
+          - compose.services.grafana.networks | sort == ['backend-net', 'observability-net']
+        fail_msg: >-
+          Grafana doit chevaucher EXACTEMENT backend-net (pour que Traefik le
+          decouvre) et observability-net (pour interroger Loki). C'est ce double
+          rattachement, et lui seul, qui permet a Loki de rester entierement prive.
+          Trouve : {{ compose.services.grafana.networks }}.
+
+    - name: "Assert the private network is internal and the shared one external"
+      ansible.builtin.assert:
+        that:
+          - compose.networks['observability-net'].internal | bool == true
+          - compose.networks['backend-net'].external | bool == true
+        fail_msg: >-
+          observability-net doit etre `internal: true` (aucune route sortante :
+          ni Loki ni Promtail n'a besoin d'Internet) et backend-net doit etre
+          declare `external: true` (il est cree et possede par Ansible, role
+          compose-assembly ; le laisser gerer par Compose le ferait detruire au
+          premier `compose down` sous le nez des autres stacks).
+
+    # =======================================================================
+    # 5) ROUTAGE : Grafana route, Loki et Promtail explicitement PAS.
+    # =======================================================================
+    - name: "Assert ONLY Grafana carries Traefik labels"
+      ansible.builtin.assert:
+        that:
+          - "'labels' not in compose.services.loki"
+          - "'labels' not in compose.services.promtail"
+          - compose.services.grafana.labels | select('search', 'traefik.enable=true') | list | length == 1
+          - compose.services.grafana.labels
+            | select('search', 'routers.grafana.rule=Host\\(`grafana.localhost`\\)')
+            | list | length == 1
+        fail_msg: >-
+          Seule l'UI Grafana est routee, sur grafana.localhost. Poser une route
+          sur Loki reviendrait a publier une API de logs sans authentification.
+
+    # =======================================================================
+    # 6) SOCKET DOCKER : Promtail le monte, et EN LECTURE SEULE.
+    # =======================================================================
+    - name: "Assert Promtail mounts the Docker socket READ-ONLY"
+      ansible.builtin.assert:
+        that:
+          - "'/var/run/docker.sock:/var/run/docker.sock:ro' in compose.services.promtail.volumes"
+          - compose.services.promtail.volumes
+            | select('search', '^/var/run/docker.sock')
+            | reject('search', ':ro$') | list | length == 0
+        fail_msg: >-
+          Le socket Docker doit etre monte en LECTURE SEULE (:ro). Il donne un
+          acces quasi-root a l'hote : le risque est accepte (meme arbitrage que
+          Traefik), mais le :ro est la seule mitigation reellement utile, et
+          Promtail n'a strictement besoin que de LIRE.
+
+    - name: "Assert all bind-mounted configuration is read-only"
+      ansible.builtin.assert:
+        that:
+          - compose.services[item.0].volumes[item.1] is search(':ro$')
+        fail_msg: >-
+          Le montage « {{ compose.services[item.0].volumes[item.1] }} » de
+          {{ item.0 }} n'est pas en lecture seule. Un binaire capable de
+          reecrire sa propre configuration est un binaire dont on ne sait plus
+          ce qu'il fait au redemarrage suivant.
+      loop:
+        - [loki, 0]
+        - [promtail, 0]
+        - [promtail, 1]
+        - [grafana, 0]
+
+    # =======================================================================
+    # 7) PERSISTANCE : volumes nommes la ou perdre l'etat coute quelque chose.
+    # =======================================================================
+    - name: "Assert named volumes for Loki data and Grafana state"
+      ansible.builtin.assert:
+        that:
+          - compose.volumes.keys() | list | sort
+            == ['travel-plan-grafana-data', 'travel-plan-loki-data']
+          - "'travel-plan-loki-data:/loki' in compose.services.loki.volumes"
+          - "'travel-plan-grafana-data:/var/lib/grafana' in compose.services.grafana.volumes"
+        fail_msg: >-
+          Loki doit persister /loki (index TSDB + chunks : sinon tout
+          l'historique disparait au premier `compose down`) et Grafana
+          /var/lib/grafana (sa base interne). Promtail, lui, n'a
+          DELIBEREMENT pas de volume : son seul etat est un fichier de
+          positions, et le perdre ne coute qu'une relecture.
+
+    # =======================================================================
+    # 8) GARDE-FOUS RAM et SONDES.
+    # =======================================================================
+    - name: "Assert every service is memory-capped"
+      ansible.builtin.assert:
+        that:
+          - compose.services[item].mem_limit is defined
+          - compose.services[item].mem_limit is search('^[0-9]+m$')
+        fail_msg: >-
+          {{ item }} doit porter un mem_limit explicite (machine contrainte,
+          docs §4). Sans plafond, un composant qui derape emporte la machine
+          entiere au lieu d'etre OOM-kille seul.
+      loop: "{{ compose.services.keys() | list }}"
+
+    - name: "Assert Promtail and Grafana are health-probed"
+      ansible.builtin.assert:
+        that:
+          - compose.services[item].healthcheck is defined
+        fail_msg: >-
+          {{ item }} doit porter un healthcheck : sans sonde, `docker ps` dit
+          « Up » d'un processus qui ne sert plus rien.
+      loop:
+        - promtail
+        - grafana
+
+    # Loki est le SEUL service du projet sans sonde, et cette assertion existe
+    # pour que ce soit un ECART VOULU et verrouille, pas un oubli qu'on
+    # redecouvre dans six mois. Son image est distroless (un seul binaire,
+    # /usr/bin/loki : ni shell, ni wget, ni curl) — toute sonde ecrite ici
+    # echouerait a l'execution et marquerait le conteneur unhealthy en
+    # permanence. Explication complete dans le fragment Compose.
+    # Le jour ou l'amont republie une image outillee, cette assertion echoue et
+    # force a reconsiderer : c'est exactement ce qu'on veut d'un ecart assume.
+    - name: "Assert the Loki exception is explicit: no healthcheck, dependants on service_started"
+      ansible.builtin.assert:
+        that:
+          - "'healthcheck' not in compose.services.loki"
+          - compose.services.promtail.depends_on.loki.condition == 'service_started'
+          - compose.services.grafana.depends_on.loki.condition == 'service_started'
+        fail_msg: >-
+          Incoherence : soit Loki a gagne un healthcheck et ses dependants
+          doivent repasser en `service_healthy`, soit un `depends_on` vise un
+          `service_healthy` que Loki ne pourra JAMAIS satisfaire — auquel cas le
+          demarrage du stack se bloque indefiniment.
+
+    # =======================================================================
+    # 9) CONFIGURATION LOKI : les pieges qui ne se voient qu'en production.
+    # =======================================================================
+    - name: "Assert Loki retention is actually enforced, not just declared"
+      ansible.builtin.assert:
+        that:
+          - loki_cfg.limits_config.retention_period == '168h'
+          - loki_cfg.compactor.retention_enabled | bool == true
+        fail_msg: >-
+          `retention_period` SANS `compactor.retention_enabled: true` est
+          purement declaratif : Loki ne supprime alors JAMAIS rien et remplit le
+          disque de l'hote. C'est une panne lente, decouverte au pire moment.
+
+    - name: "Assert the Loki schema is in the past and uses TSDB v13"
+      ansible.builtin.assert:
+        that:
+          - loki_cfg.schema_config.configs[0].schema == 'v13'
+          - loki_cfg.schema_config.configs[0].store == 'tsdb'
+          - (loki_cfg.schema_config.configs[0].from | string) < '2026-01-01'
+        fail_msg: >-
+          `from` est une date de DEBUT DE VALIDITE de schema : si elle est dans
+          le futur, Loki rejette toute ecriture (« no schema config found for
+          time »). Et TSDB + v13 est le couple supporte par Loki 3.x ; les
+          schemas anterieurs sont en fin de vie.
+
+    - name: "Assert Loki does not expose a gRPC listener it has no consumer for"
+      ansible.builtin.assert:
+        that:
+          - loki_cfg.server.grpc_listen_port | int == 0
+          - promtail_cfg.server.grpc_listen_port | int == 0
+        fail_msg: >-
+          En mode monolithique, aucun composant ne dialogue en gRPC avec Loki ni
+          avec Promtail. Un port d'ecoute sans consommateur, c'est de la surface
+          offerte pour rien.
+
+    # =======================================================================
+    # 10) CONFIGURATION PROMTAIL : cardinalite et liste blanche.
+    #     C'est LA regle la plus facile a violer avec Loki, et la plus chere.
+    # =======================================================================
+    - name: "Assert Promtail pushes to Loki by service name over the private network"
+      ansible.builtin.assert:
+        that:
+          - promtail_cfg.clients | length == 1
+          - promtail_cfg.clients[0].url == 'http://loki:3100/loki/api/v1/push'
+        fail_msg: >-
+          Promtail doit pousser vers http://loki:3100 (nom de service Compose
+          sur le reseau prive). Ni IP codee en dur, ni URL Traefik : Loki n'est
+          joignable que la.
+
+    - name: "Assert container discovery uses the read-only Docker socket"
+      ansible.builtin.assert:
+        that:
+          - promtail_cfg.scrape_configs[0].docker_sd_configs[0].host
+            == 'unix:///var/run/docker.sock'
+        fail_msg: >-
+          La decouverte doit passer par l'API Docker et non par la lecture de
+          /var/lib/docker/containers/*.log : ces fichiers n'existent que sous le
+          logging-driver json-file, et basculer l'hote sur `local` ou `journald`
+          casserait la collecte EN SILENCE.
+
+    - name: "Assert the scrape filter is an explicit allow-list"
+      ansible.builtin.assert:
+        that:
+          - promtail_cfg.scrape_configs[0].relabel_configs[0].action == 'keep'
+          - promtail_cfg.scrape_configs[0].relabel_configs[0].source_labels
+            == ['__meta_docker_container_name']
+        fail_msg: >-
+          Promtail voit TOUS les conteneurs de l'hote, y compris ceux d'autres
+          projets. Le filtre doit etre une LISTE BLANCHE (`action: keep`) : avec
+          un `drop`, tout nouveau conteneur inconnu entrerait tout seul dans
+          l'index.
+
+    - name: "Assert requestId is extracted but NEVER promoted to a label"
+      ansible.builtin.assert:
+        that:
+          # extrait : il doit etre disponible aux etages suivants du pipeline
+          - "'requestId' in (promtail_cfg.scrape_configs[0].pipeline_stages
+             | selectattr('json', 'defined') | first).json.expressions"
+          # mais JAMAIS promu en label
+          - (promtail_cfg.scrape_configs[0].pipeline_stages
+             | selectattr('labels', 'defined') | map(attribute='labels')
+             | map('list') | flatten | sort) == ['level']
+        fail_msg: >-
+          REGLE DE CARDINALITE. Dans Loki, chaque combinaison de labels cree un
+          FLUX indexe. Le requestId est unique PAR REQUETE : en faire un label
+          ferait exploser le nombre de flux et mettrait Loki a genoux en
+          quelques heures. Il doit rester DANS LA LIGNE et se filtrer a la
+          lecture (`| json | requestId="..."`). Seul `level` (5 valeurs
+          possibles) est un label legitime ici.
+
+    - name: "Assert no docker/cri unwrapping stage is applied on an API log stream"
+      ansible.builtin.assert:
+        that:
+          - promtail_cfg.scrape_configs[0].pipeline_stages
+            | selectattr('docker', 'defined') | list | length == 0
+          - promtail_cfg.scrape_configs[0].pipeline_stages
+            | selectattr('cri', 'defined') | list | length == 0
+        fail_msg: >-
+          Les etages `docker:` et `cri:` decodent l'enveloppe des logs lus DANS
+          DES FICHIERS. Avec docker_sd_configs, Promtail consomme le flux de
+          l'API Docker, DEJA desenveloppe : ajouter ces etages ferait echouer le
+          parsing de chaque ligne.
+
+    # =======================================================================
+    # 11) DATASOURCE GRAFANA : provisionnee, en proxy, non editable.
+    # =======================================================================
+    - name: "Assert the Loki datasource is provisioned in proxy mode and locked"
+      ansible.builtin.assert:
+        that:
+          - grafana_ds.apiVersion | int == 1
+          - grafana_ds.datasources | length == 1
+          - grafana_ds.datasources[0].type == 'loki'
+          - grafana_ds.datasources[0].url == 'http://loki:3100'
+          - grafana_ds.datasources[0].access == 'proxy'
+          - grafana_ds.datasources[0].isDefault | bool == true
+          - grafana_ds.datasources[0].editable | bool == false
+        fail_msg: >-
+          `access: proxy` est OBLIGATOIRE ici : en `direct`, c'est le NAVIGATEUR
+          qui appellerait Loki, or Loki vit sur un reseau `internal` sans port
+          publie — l'appel ne pourrait pas aboutir.
+          `editable: false` : la source de verite est le fichier rendu par
+          Ansible ; autoriser l'edition creerait une divergence silencieuse
+          entre ce que dit le depot et ce que fait le serveur.
+
+    # =======================================================================
+    # 12) Filet textuel : aucune valeur qui RESSEMBLE a un secret en dur.
+    #     Complementaire de l'assertion structurelle 3 — elle attraperait un
+    #     secret glisse ailleurs que dans GF_SECURITY_ADMIN_PASSWORD.
+    # =======================================================================
+    - name: "Assert no hard-coded credential leaked anywhere in the fragment"
+      ansible.builtin.assert:
+        that:
+          - compose_raw is not search('(?i)password\\s*[:=]\\s*["\\x27]?[A-Za-z0-9]{8,}')
+          - compose_raw is not search('(?i)admin\\s*[:=]\\s*["\\x27]?admin\\b')
+        fail_msg: >-
+          Le fragment rendu contient ce qui ressemble a un credential en dur.
+          Contrat du projet : tout secret passe par Vault -> .env (role
+          app-secrets) et n'apparait dans un fragment que sous forme de
+          reference ${...}.

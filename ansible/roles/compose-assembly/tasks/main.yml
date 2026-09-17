@@ -1,0 +1,38 @@
+---
+# roles/compose-assembly/tasks/main.yml
+#
+# SÉPARATION DES RESPONSABILITÉS (intentionnelle) :
+#   - Infrastructure  = Ansible : les 3 réseaux Docker (edge-net, backend-net,
+#     data-net) sont créés et "possédés" par Ansible via docker_network. Les
+#     fragments Compose les référencent en `external: true` : Compose ne les
+#     gère donc pas.
+#   - Orchestration   = Compose : le docker-compose.yml top-level assemble les
+#     fragments (include:) et applique les profils core/full.
+#
+# CONSÉQUENCE : `docker compose down` NE supprime PAS les réseaux (ils sont
+# externes à Compose). Leur cycle de vie appartient exclusivement à Ansible.
+# C'est voulu — la donnée réseau survit aux cycles up/down de la stack.
+
+- name: "Ensure Docker networks exist"
+  community.docker.docker_network:
+    name: "{{ item.name }}"
+    driver: "{{ item.driver }}"
+    state: present
+  loop: "{{ assembly_networks }}"
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [compose_fragment]
+
+- name: "Ensure assembly compose directory exists"
+  ansible.builtin.file:
+    path: "{{ assembly_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render top-level docker-compose.yml"
+  ansible.builtin.template:
+    src: "docker-compose.yml.j2"
+    dest: "{{ assembly_compose_dir }}/docker-compose.yml"
+    mode: "0644"
+  tags: [compose_fragment]

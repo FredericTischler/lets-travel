@@ -1,0 +1,155 @@
+# Neo4j (base de graphe de travel-service) : Service headless + StatefulSet.
+#
+# Meme raisonnement que pour PostgreSQL : StatefulSet et non Deployment, parce
+# que Neo4j possede un repertoire de donnees exclusif (verrou sur /data) et ne
+# supporte pas deux instances concurrentes dessus. Neo4j Community Edition ne
+# sait de toute facon PAS faire de cluster (le clustering est une fonction
+# Enterprise) : la contrainte est structurelle, pas un choix de simplification.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: neo4j
+  ports:
+    # Bolt : le seul port reellement consomme par travel-service (driver
+    # neo4j-java-driver, NEO4J_PORT=7687 dans le ConfigMap).
+    - name: bolt
+      port: 7687
+      targetPort: bolt
+    # HTTP : utilise UNIQUEMENT par la sonde de demarrage ci-dessous et,
+    # eventuellement, par un `kubectl port-forward` manuel vers le Neo4j Browser.
+    # Il n'est expose par AUCUN Ingress : la base n'est pas joignable de
+    # l'exterieur du cluster, coherent avec le choix Compose (aucun port publie).
+    - name: http
+      port: 7474
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neo4j
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      containers:
+        - name: neo4j
+          # Tag identique a ansible/roles/neo4j/defaults/main.yml.
+          image: "neo4j:5.26.6-community"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          env:
+            # LE NOM DE CETTE VARIABLE NE DOIT PAS COMMENCER PAR `NEO4J_`.
+            #
+            # L'entrypoint de l'image neo4j traduit AUTOMATIQUEMENT toute variable
+            # d'environnement prefixee `NEO4J_` en un parametre de configuration du
+            # serveur (NEO4J_server_memory_heap_max__size -> server.memory.heap.max_size,
+            # juste en dessous). Une variable `NEO4J_PASSWORD` est donc lue comme le
+            # reglage `PASSWORD`, qui n'existe pas, et la validation stricte fait
+            # echouer le demarrage :
+            #   Failed to read config: Unrecognized setting. No declared setting
+            #   with name: PASSWORD
+            # => CrashLoopBackOff (constate sur le cluster kind avant correction).
+            #
+            # C'est un piege PROPRE A KUBERNETES : cote Docker Compose, le fragment
+            # du role Ansible neo4j ecrit `NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:?...}"`,
+            # ou l'interpolation est faite par Compose LUI-MEME depuis l'environnement
+            # de l'hote — la variable n'entre jamais dans le conteneur. Kubernetes n'a
+            # pas d'interpolation a l'exterieur du Pod : l'expansion `$(VAR)` exige que
+            # VAR soit declaree dans la liste `env` du conteneur, donc reellement
+            # presente dans son environnement. D'ou ce renommage.
+            #
+            # `GRAPH_DB_PASSWORD` est declare AVANT NEO4J_AUTH : l'expansion $(VAR)
+            # ne resout que des variables definies PLUS HAUT dans la meme liste `env`.
+            # Inverser les deux entrees produirait litteralement la chaine
+            # "neo4j/$(GRAPH_DB_PASSWORD)" comme mot de passe — un bug silencieux
+            # jusqu'au premier echec d'authentification de travel-service.
+            #
+            # La CLE du Secret reste `NEO4J_PASSWORD` : c'est le meme secret partage
+            # que celui consomme par travel-service (32-travel-service.yaml), seul le
+            # nom de la variable exposee DANS CE CONTENEUR change.
+            - name: GRAPH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: NEO4J_PASSWORD
+            - name: NEO4J_AUTH
+              value: "neo4j/$(GRAPH_DB_PASSWORD)"
+            # Memoire bornee, memes valeurs que le fragment Compose du role
+            # Ansible neo4j. Convention de nommage Neo4j 5.x : un point devient
+            # `_`, un `_` d'origine devient `__` (d'ou max__size).
+            - name: NEO4J_server_memory_heap_max__size
+              value: "512m"
+            - name: NEO4J_server_memory_pagecache_size
+              value: "256m"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          # Neo4j met 20 a 40 s a ouvrir Bolt sur un demarrage a froid.
+          # startupProbe : on lui laisse jusqu'a 30 x 10 s = 5 min AVANT que la
+          # liveness ne commence a compter. Sans startupProbe, il faudrait un
+          # initialDelaySeconds genereux sur la liveness, qui resterait ensuite
+          # lent a detecter un vrai blocage en regime permanent. La startupProbe
+          # separe proprement les deux questions : "a-t-il fini de demarrer ?"
+          # et "est-il encore vivant ?".
+          startupProbe:
+            tcpSocket:
+              port: bolt
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: bolt
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: bolt
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            # Neo4j est le poste le plus lourd de la stack (docs §4) :
+            # heap 512m + pagecache 256m + overhead JVM. La limite doit couvrir
+            # l'ensemble, sinon le cgroup OOM-kill le Pod pendant la montee en
+            # charge du pagecache (diagnostic penible : exit code 137, aucun log).
+            requests:
+              memory: "768Mi"
+              cpu: "200m"
+            limits:
+              memory: "1200Mi"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/part-of: travel-plan
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

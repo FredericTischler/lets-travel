@@ -1,0 +1,8 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    neo4j_compose_dir: /tmp/travel-plan-neo4j
+  roles:
+    - role: neo4j

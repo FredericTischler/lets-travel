@@ -1,0 +1,16 @@
+---
+# prepare.yml : l'image debian slim n'embarque pas python3, requis par les
+# modules Ansible (file/template/stat).
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Install python3 (raw: python pas encore present dans l'image)"
+      ansible.builtin.raw: >-
+        apt-get update -qq &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3
+      register: apt_install
+      changed_when: false
+
+    - name: "Gather facts now that python3 is available"
+      ansible.builtin.setup:

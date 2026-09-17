@@ -1,0 +1,244 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `observability`.
+# Orchestration assuree par docker-compose, profil `observability` (applique par
+# merge dans le docker-compose.yml top-level rendu par le role compose-assembly).
+#
+# POURQUOI UN PROFIL DEDIE, ET PAS core / full / ci (decision, pas hesitation) :
+#   - PAS `core`. Le dev quotidien (~350 Mo) est calibre pour laisser la place a
+#     un IDE et un navigateur. Y ajouter ~450 Mo en permanence pour des logs
+#     qu'on ne lit pas tous les jours romprait ce calibrage.
+#   - PAS `full` non plus, bien que ce soit tentant : `full` est le profil de
+#     demonstration et d'integration, et on n'a pas toujours besoin de lire les
+#     logs pendant une demo.
+#   - PAS `ci`. Ce stack observe la stack APPLICATIVE. Le monter avec Jenkins et
+#     SonarQube, alors que les services ne tournent pas, ne collecterait rien.
+#   - PROFIL PROPRE, donc, ADDITIF : `--profile full --profile observability`.
+#     Compose accepte plusieurs --profile ; on choisit explicitement d'observer.
+#
+# COUT REEL (mesure, protocole dans le README) : trois binaires Go, aucune JVM.
+# C'est le poste le plus leger du projet — c'est precisement ce qui rend ce
+# stack finançable a cote de la stack applicative, la ou un ELK ne le serait pas.
+#
+# AUCUN PORT PUBLIE : convention du projet, seul Traefik publie (docs §4).
+# Seul Grafana est route ; Loki et Promtail ne le sont pas, DELIBEREMENT
+# (l'API de Loki n'a aucune authentification — cf. defaults/main.yml).
+#
+# AUCUN SECRET EN CLAIR : le mot de passe admin de Grafana n'apparait QUE sous
+# forme de reference ${{ '{' }}{{ observability_grafana_admin_password_env_var }}{{ '}' }}, resolue par Compose
+# depuis le .env de /opt/travel-plan (dont `app-secrets` est le proprietaire unique).
+services:
+
+  # ==========================================================================
+  # Loki — le magasin de logs.
+  # Recoit de Promtail, sert Grafana. Ne parle a personne d'autre.
+  # ==========================================================================
+  {{ observability_loki_service_name }}:
+    image: "{{ observability_loki_image }}"
+    container_name: "{{ observability_loki_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM. Binaire Go : pas de heap a borner explicitement comme pour
+    # les JVM du projet, le runtime Go s'adapte a la cgroup.
+    mem_limit: "{{ observability_loki_mem_limit }}"
+    # `-config.file` explicite : ne depend d'aucun defaut d'image (meme
+    # discipline que le `--configFile` de Traefik).
+    command:
+      - "-config.file=/etc/loki/loki-config.yml"
+    volumes:
+      # Configuration en LECTURE SEULE : Loki n'a aucune raison de reecrire sa
+      # propre conf.
+      - "{{ observability_config_dir }}/loki-config.yml:/etc/loki/loki-config.yml:ro"
+      # /loki = `path_prefix` de la conf : index TSDB, chunks, etat du
+      # compactor. Sans ce volume, chaque `compose down` perdrait l'historique.
+      - "{{ observability_loki_data_volume }}:/loki"
+    networks:
+      # UN SEUL reseau, `internal: true`. Ni backend-net, ni edge-net : rien ni
+      # personne hors de ce trio n'a a joindre Loki directement.
+      - {{ observability_private_network }}
+    # Aucune section `ports:`.
+    #
+    # AUCUN HEALTHCHECK, ET CE N'EST PAS UN OUBLI — c'est la seule anomalie
+    # assumee de ce fragment, elle merite donc d'etre expliquee precisement.
+    #
+    # L'image grafana/loki est DISTROLESS. Verifie, pas suppose : l'export de
+    # son systeme de fichiers ne contient QU'UN SEUL binaire, /usr/bin/loki.
+    # Ni shell (pas de /bin/sh : un `test: ["CMD-SHELL", ...]` echoue avec
+    # « stat /bin/sh: no such file or directory », ce qui marque le conteneur
+    # UNHEALTHY EN PERMANENCE et bloque tout `depends_on: service_healthy`),
+    # ni wget, ni curl, ni busybox. Et `loki` n'offre aucune sous-commande de
+    # sonde utilisable en forme exec.
+    #
+    # Les trois issues possibles, et pourquoi celle-ci :
+    #   1. Construire une image derivee juste pour y ajouter wget. On introduit
+    #      une image maison a maintenir et a re-construire a chaque montee de
+    #      version amont, pour une sonde. Disproportionne.
+    #   2. Retomber sur un tag non distroless. Il n'y en a pas de stable et
+    #      versionne pour Loki 3.x ; ce serait choisir un tag mouvant, ce que le
+    #      contrat du projet interdit explicitement.
+    #   3. Ne pas sonder Loki, et en assumer la consequence. RETENU.
+    #
+    # CONSEQUENCE REELLE, a connaitre : les deux `depends_on` qui visent Loki
+    # sont en `service_started` et non `service_healthy`. Promtail peut donc
+    # demarrer avant que Loki accepte des ecritures. Ce n'est pas une perte de
+    # donnees : Promtail REESSAIE ses pushes et garde sa position, la seule
+    # trace est quelques erreurs de connexion dans son log au demarrage.
+    # Le vrai etat de sante de Loki reste observable : l'endpoint /ready existe
+    # et repond, il est simplement interroge DEPUIS UN AUTRE conteneur du
+    # reseau (Grafana teste la datasource) plutot que depuis celui-ci.
+
+  # ==========================================================================
+  # Promtail — le collecteur.
+  # Lit les logs des conteneurs applicatifs via l'API Docker, pousse vers Loki.
+  # Jamais dans le chemin critique d'une requete : s'il meurt, les services
+  # continuent, on perd seulement la collecte.
+  # ==========================================================================
+  {{ observability_promtail_service_name }}:
+    image: "{{ observability_promtail_image }}"
+    container_name: "{{ observability_promtail_container_name }}"
+    restart: unless-stopped
+    mem_limit: "{{ observability_promtail_mem_limit }}"
+    command:
+      - "-config.file=/etc/promtail/promtail-config.yml"
+    depends_on:
+      {{ observability_loki_service_name }}:
+        # `service_started` FAUTE DE MIEUX, pas par choix : l'image distroless
+        # de Loki ne permet aucun healthcheck (explication complete dans le bloc
+        # `loki` ci-dessus), donc `service_healthy` ne serait jamais satisfait et
+        # bloquerait indefiniment le demarrage de Promtail.
+        # Cout reel : Promtail peut pousser vers un Loki pas encore pret. Il
+        # reessaie et conserve sa position, donc aucune ligne n'est perdue — on
+        # ne recolte que quelques erreurs de connexion dans son log de demarrage.
+        condition: service_started
+    volumes:
+      # Socket Docker en LECTURE SEULE. MEME arbitrage de securite que Traefik,
+      # explicitement (cf. son fragment) : le socket donne un acces quasi-root a
+      # l'hote, risque ACCEPTE pour un projet solo, MITIGE par :ro — Promtail
+      # n'a besoin que de LIRE (lister les conteneurs, suivre leurs logs).
+      # Il ne demarre rien, ne construit rien, n'ecrit rien cote Docker.
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "{{ observability_config_dir }}/promtail-config.yml:/etc/promtail/promtail-config.yml:ro"
+      # PAS de volume nomme pour le fichier de positions (cf. promtail-config) :
+      # le perdre ne coute qu'une relecture, et Loki deduplique.
+    networks:
+      # `internal` : Promtail n'a besoin du reseau que pour pousser vers Loki.
+      # Il atteint Docker par un FICHIER (le socket), pas par le reseau.
+      - {{ observability_private_network }}
+    # Aucune section `ports:` — l'endpoint de diagnostic reste interne.
+    healthcheck:
+      # /ready de Promtail : 200 quand toutes les cibles sont demarrees.
+      #
+      # Requete HTTP ecrite A LA MAIN en bash, et il faut dire pourquoi : l'image
+      # promtail contient un shell et bash, mais NI wget NI curl (verifie, pas
+      # suppose). Le pseudo-fichier /dev/tcp de bash est donc le seul client HTTP
+      # disponible sans construire une image derivee.
+      # `HTTP/1.0` (et pas 1.1) : sans en-tete Host obligatoire et sans keep-alive,
+      # le serveur ferme la connexion apres sa reponse — sinon le `grep` resterait
+      # bloque a attendre une suite qui ne vient pas, jusqu'au timeout.
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/127.0.0.1/{{ observability_promtail_http_port }} && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q Ready <&3"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ==========================================================================
+  # Grafana — la fenetre de lecture.
+  # SEUL conteneur du stack a chevaucher deux reseaux, et le SEUL point d'acces
+  # humain aux logs. C'est aussi le seul des trois a authentifier ses appelants,
+  # ce qui est exactement pourquoi Loki ne sort pas de son reseau prive.
+  # ==========================================================================
+  {{ observability_grafana_service_name }}:
+    image: "{{ observability_grafana_image }}"
+    container_name: "{{ observability_grafana_container_name }}"
+    restart: unless-stopped
+    mem_limit: "{{ observability_grafana_mem_limit }}"
+    depends_on:
+      {{ observability_loki_service_name }}:
+        # `service_started` : meme contrainte que pour Promtail — l'image
+        # distroless de Loki ne permet aucun healthcheck (cf. bloc `loki`).
+        # Consequence benigne ici : si Grafana ouvre avant que Loki soit pret,
+        # la datasource affiche une erreur qui disparait au rafraichissement
+        # suivant. Aucune donnee en jeu, Grafana ne fait que lire.
+        condition: service_started
+    environment:
+      # --- Compte admin -----------------------------------------------------
+      GF_SECURITY_ADMIN_USER: "{{ observability_grafana_admin_user }}"
+      # Reference d'environnement, PAS la valeur : resolue par Compose depuis le
+      # .env rendu par `app-secrets`. Le `:?` fait ECHOUER `compose up` si la
+      # variable est absente, plutot que de laisser Grafana retomber sur son
+      # admin/admin par defaut. Une UI d'observabilite ouverte a tout venant est
+      # un incident ; un demarrage qui refuse de partir est un message.
+      GF_SECURITY_ADMIN_PASSWORD: "${{ '{' }}{{ observability_grafana_admin_password_env_var }}:?{{ observability_grafana_admin_password_env_var }} absent du .env — voir ansible/roles/observability/README.md{{ '}' }}"
+      # Pas de creation de compte libre : le seul acces est le compte admin
+      # provisionne ci-dessus.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+
+      # --- URL publique vue par le navigateur -------------------------------
+      # Sans elle, Grafana fabrique ses redirections de login en
+      # http://localhost:{{ observability_grafana_http_port }} — injoignable, puisqu'aucun port n'est
+      # publie. Meme piege que SONAR_CORE_SERVERBASEURL cote SonarQube.
+      GF_SERVER_ROOT_URL: "{{ observability_grafana_root_url }}"
+
+      # --- Bruit reseau sortant ---------------------------------------------
+      # Grafana appelle grafana.com au demarrage pour verifier les mises a jour
+      # et lister des plugins. Inutile ici, et source d'erreurs trompeuses dans
+      # les logs si la machine est hors ligne.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    volumes:
+      # Provisioning en LECTURE SEULE : la datasource Loki est reconstruite a
+      # chaque demarrage depuis le fichier rendu par Ansible.
+      - "{{ observability_grafana_provisioning_dir }}:/etc/grafana/provisioning:ro"
+      # Base interne de Grafana (utilisateurs, dashboards crees a la main,
+      # preferences). Sans ce volume, toute personnalisation disparait au
+      # premier `compose down`.
+      - "{{ observability_grafana_data_volume }}:/var/lib/grafana"
+    networks:
+      # backend-net : UNIQUEMENT pour que Traefik decouvre et route l'UI.
+      - {{ observability_backend_network }}
+      # observability-net : pour interroger Loki. Ce double rattachement est ce
+      # qui permet a Loki de rester entierement prive.
+      - {{ observability_private_network }}
+    # Aucune section `ports:` — seul Traefik publie un port (docs §4).
+    healthcheck:
+      # /api/health est servi SANS authentification et rend {"database":"ok"}
+      # quand la base interne est prete. `wget` : image Alpine, pas de curl.
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:{{ observability_grafana_http_port }}/api/health | grep -q '\"database\": *\"ok\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+{% if observability_grafana_traefik_enabled %}
+    # --- Routage Traefik par LABELS (meme idiome que jenkins/sonarqube) -----
+    # providers.docker est deja actif cote role traefik (exposedByDefault=false,
+    # network=backend-net) : le routage se declare ICI, par labels.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ observability_backend_network }}"
+      - "traefik.http.routers.{{ observability_grafana_traefik_router_name }}.rule=Host(`{{ observability_grafana_traefik_host_rule }}`)"
+      - "traefik.http.routers.{{ observability_grafana_traefik_router_name }}.entrypoints={{ observability_grafana_traefik_entrypoint }}"
+      - "traefik.http.routers.{{ observability_grafana_traefik_router_name }}.tls=true"
+      - "traefik.http.services.{{ observability_grafana_traefik_router_name }}.loadbalancer.server.port={{ observability_grafana_http_port }}"
+{% endif %}
+
+volumes:
+  {{ observability_loki_data_volume }}:
+  {{ observability_grafana_data_volume }}:
+
+networks:
+  {{ observability_backend_network }}:
+    # Reseau PARTAGE, cree et possede par Ansible (role compose-assembly) ;
+    # declare externe ici (Compose ne le gere pas).
+    external: true
+  {{ observability_private_network }}:
+    # MEME DEVIATION ASSUMEE que le role `sonarqube` : reseau possede par
+    # Compose et non par Ansible. Detail d'implementation prive du trio
+    # promtail/loki/grafana, qui doit mourir avec le stack plutot que lui survivre.
+    # `internal: true` => aucune route sortante : ni Loki ni Promtail n'atteint
+    # l'exterieur, et l'exterieur ne les atteint pas.
+    internal: true

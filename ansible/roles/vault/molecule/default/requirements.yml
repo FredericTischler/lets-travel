@@ -1,0 +1,9 @@
+---
+# Collections requises par le role et par le scenario Molecule (driver docker).
+collections:
+  # Modules vault_* (kv2_get/kv2_write, read/write, token_create) ; requiert hvac.
+  - name: community.hashi_vault
+    version: ">=7.0.0,<8.0.0"
+  # Driver docker de Molecule.
+  - name: community.docker
+    version: ">=5.2.1,<6.0.0"

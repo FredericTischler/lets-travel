@@ -1,0 +1,99 @@
+---
+# roles/postgres/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role postgres.
+# Le role ne fait QUE : rendre un fragment de service Compose + provisionner
+# l'instance (2 bases vides, 2 comptes a droits limites, leurs privileges).
+# Aucune table / index / contrainte metier : ca releve de Flyway cote services.
+
+# --- Image (tag epingle, jamais latest) -------------------------------------
+# Tag verifie via `docker manifest inspect postgres:17.5-bookworm` (EXISTS).
+# 17.x = majeure stable courante ; patch precis ; variant bookworm (Debian).
+postgres_image: "postgres:17.5-bookworm"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+postgres_service_name: "postgres"
+postgres_container_name: "travel-plan-postgres"
+# Reseau interne : base JAMAIS exposee a l'hote (cf. docs §4, data-net).
+postgres_network: "data-net"
+# Garde-fou RAM 8 Go (cf. docs §4) : limite memoire raisonnable.
+postgres_mem_limit: "256m"
+# Repertoire ou Ansible rend le fragment compose (surcharge en prod / molecule).
+postgres_compose_dir: "/opt/travel-plan/postgres"
+# Volume nomme pour la persistance des donnees.
+postgres_data_volume: "travel-plan-postgres-data"
+
+# --- Superuser de provisioning (sert UNIQUEMENT a provisionner) -------------
+# En prod : injecte depuis Vault. Ici : valeur de dev evidente a surcharger.
+postgres_superuser: "postgres"
+postgres_superuser_password: "changeme_postgres_superuser"  # noqa: surcharger via Vault
+
+# Cible de connexion pour les taches de provisioning (modules community.postgresql).
+# En prod ces taches tournent contre l'instance via le reseau ; ici parametrable.
+postgres_login_host: "localhost"
+postgres_login_port: 5432
+
+# --- Bases applicatives (vides : juste l'instance + les bases) --------------
+postgres_databases:
+  - name: "identity_db"
+    owner: "identity_user"
+  - name: "payment_db"
+    owner: "payment_user"
+
+# --- Comptes applicatifs a DROITS LIMITES (moindre privilege) ---------------
+# NOSUPERUSER,NOCREATEDB,NOCREATEROLE : aucun compte applicatif superuser.
+# Mots de passe = valeurs de dev evidentes, A SURCHARGER VIA VAULT en prod.
+postgres_app_users:
+  - name: "identity_user"
+    password: "changeme_identity_user"   # noqa: surcharger via Vault
+    db: "identity_db"
+  - name: "payment_user"
+    password: "changeme_payment_user"    # noqa: surcharger via Vault
+    db: "payment_db"
+
+# --- Extensions -------------------------------------------------------------
+# AUCUNE par defaut : citext/uuid-ossp relevent du schema Flyway, pas de l'infra.
+# Ne pas ajouter d'extension "au cas ou".
+postgres_extensions: []
+
+# --- Integration Vault (lecture des secrets pour le provisioning) -----------
+# postgres_vault_read: false => Molecule-safe, aucune lecture Vault : le bloc
+#   `provision` se connecte avec les placeholders de ce fichier.
+# postgres_vault_read: true  => lecture depuis Vault (run reel).
+#
+# (a) POURQUOI CE COUPLAGE A app_secrets_vault_read.
+#     Les deux roles doivent lire Vault ENSEMBLE ou PAS DU TOUT. Le role
+#     app-secrets rend /opt/travel-plan/.env, qui fournit
+#     POSTGRES_SUPERUSER_PASSWORD au conteneur Postgres lui-meme
+#     (templates/compose.postgres.yml.j2 : `${POSTGRES_SUPERUSER_PASSWORD:?...}`).
+#     Ce role, lui, utilise postgres_superuser_password pour SE CONNECTER en
+#     superuser pendant le provisioning. Si app_secrets_vault_read=true sans
+#     postgres_vault_read=true, le conteneur demarre avec le VRAI mot de passe
+#     Vault tandis que le provisioning tente le placeholder
+#     `changeme_postgres_superuser` => echec d'authentification immediat sur tout
+#     le bloc `provision`. Le meme decalage desynchronise silencieusement
+#     identity_user / payment_user (defaults ci-dessus vs Vault identity/db,
+#     payment/db). D'ou la derivation par defaut ci-dessous : un seul nom de flag
+#     canonique (app_secrets_vault_read) honore par les deux roles.
+#
+# (b) POURQUOI CA RESTE MOLECULE-SAFE.
+#     Quand le role postgres est joue SEUL (Molecule, roles/postgres/test-local.yml),
+#     app_secrets_vault_read n'est pas definie => default(false) => postgres_vault_read
+#     reste false. Comportement par defaut strictement inchange, aucune lecture Vault.
+#
+# (c) DECOUPLAGE DELIBERE TOUJOURS POSSIBLE.
+#     Un operateur peut surcharger explicitement `-e postgres_vault_read=false`
+#     (ou `=true`) pour dissocier volontairement les deux roles. C'est alors un
+#     choix explicite et trace en ligne de commande, plus un oubli silencieux.
+postgres_vault_read: "{{ app_secrets_vault_read | default(false) }}"
+
+# NOTE : le rendu de /opt/travel-plan/.env N'APPARTIENT PLUS a ce role
+# (migre vers roles/app-secrets, proprietaire unique de ce fichier). Les
+# variables postgres_runtime_env_path / postgres_env_owner ont donc disparu :
+# leur equivalent est app_secrets_runtime_env_path / app_secrets_env_owner.
+
+# Variables Vault pour le run reel (ignorees quand postgres_vault_read: false).
+# A surcharger via -e en prod. Coherentes avec vault/defaults/main.yml.
+vault_addr: "http://localhost:8200"
+vault_kv_mount: "secret"
+vault_dev_root_token: "changeme_vault_root_token"  # noqa: surcharger via ansible-vault

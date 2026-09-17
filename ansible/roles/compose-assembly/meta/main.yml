@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  role_name: compose-assembly
+  author: travel-plan
+  description: >-
+    Assemble les fragments Compose des rôles postgres/vault/neo4j en un point
+    d'entrée unique avec profils core/full. Crée les réseaux Docker bridge
+    (edge-net, backend-net, data-net) possédés par Ansible.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - docker
+    - compose
+    - infrastructure
+dependencies: []

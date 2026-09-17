@@ -1,0 +1,145 @@
+# Fragment de service Compose pour travel-service.
+#
+# CONTRAIREMENT aux fragments postgres/vault/neo4j (rendus par un role Ansible
+# sous /opt/travel-plan), CELUI-CI est STATIQUE et vit dans le depot, co-localise
+# avec le Dockerfile + src/ : travel-service BUILD depuis les sources, son
+# contexte de build doit donc rester a cote. Le docker-compose.yml top-level
+# l'inclut par CHEMIN ABSOLU (voir role compose-assembly), meme pattern que
+# identity-service/payment-service.
+#
+# CABLAGE RESEAU (coherent avec le reste du projet, docs §4) :
+#   - data-net    : pour joindre Neo4j (nom de service `neo4j`).
+#   - backend-net : pour etre DECOUVERT et route par Traefik (labels ci-dessous).
+#   AUCUN port publie vers l'hote : seul Traefik expose (443, terminaison TLS).
+#
+# TERMINAISON TLS AU BORD : Traefik termine le TLS ; ce backend reste en HTTP
+# simple sur backend-net (reseau Docker de confiance), coherent avec les autres.
+#
+# NOTE compose-assembly : ce fragment n'est PAS encore reference par le
+# docker-compose.yml top-level rendu par le role Ansible compose-assembly
+# (assembly_travel_enabled / assembly_travel_fragment n'existent pas encore
+# dans ansible/roles/compose-assembly/defaults/main.yml). Cablage a faire par
+# l'agent infra-devops, a l'identique du pattern identity/payment.
+services:
+  travel-service:
+    build:
+      # Contexte = repertoire de CE fragment (le depot services/travel-service/),
+      # ou se trouvent Dockerfile + mvnw + pom.xml + src/. Resolu par Compose
+      # relativement au fichier inclus, PAS au docker-compose.yml top-level.
+      context: .
+      dockerfile: Dockerfile
+    image: "travel-plan/travel-service:0.1.0"
+    # PAS de `container_name` : DELIBERE, c'est le prerequis du multi-replica.
+    # Un container_name fixe est unique par daemon Docker => il rend
+    # STRUCTURELLEMENT impossible de faire tourner 2 instances du meme service
+    # (Docker refuse le doublon), et Compose rejette d'ailleurs explicitement la
+    # combinaison container_name + replicas > 1. On laisse donc Compose generer
+    # les noms (`travel-plan-travel-service-1`, `-2`, ...). Sujet §1 :
+    # « multiple replicas of each microservice for load balancing and failover ».
+    restart: unless-stopped
+    # --- Replicas / load-balancing (sujet §1) -------------------------------
+    # Compose V2 honore `deploy.replicas` pour un simple `docker compose up`
+    # HORS Swarm (verifie sur la version embarquee de ce projet, cf. README).
+    # ATTENTION RAM : chaque replica travel-service ouvre son propre pool de
+    # connexions Neo4j, et neo4j est deja le poste le plus lourd de la stack
+    # (~1 Go, docs §4). TRAVEL_REPLICAS=1 permet de redescendre a 1 sans editer
+    # ce fragment ; `--scale travel-service=N` reste prioritaire.
+    deploy:
+      replicas: ${TRAVEL_REPLICAS:-2}
+    # Garde-fou RAM 8 Go (docs §4). Spring Boot + driver Neo4j + JVM : 512m
+    # confortable (l'ENTRYPOINT fixe MaxRAMPercentage=75 => ~384m de heap max).
+    mem_limit: "512m"
+    environment:
+      # --- Connexion Neo4j -------------------------------------------------
+      # NEO4J_HOST = NOM DU SERVICE Docker `neo4j` (resolution DNS interne du
+      # reseau data-net), JAMAIS localhost. Le service neo4j n'expose aucun
+      # port a l'hote.
+      NEO4J_HOST: "neo4j"
+      NEO4J_PORT: "7687"
+      # Neo4j Community Edition = un seul compte admin (contrainte connue,
+      # cf. ansible/roles/neo4j/tasks/main.yml) : PAS de compte dedie a droits
+      # reduits possible ici, contrairement a payment_user/identity_user cote
+      # Postgres. travel-service se connecte avec CES credentials admin.
+      NEO4J_USERNAME: "neo4j"
+      # Meme variable NEO4J_PASSWORD que celle consommee par le fragment
+      # Compose rendu par le role Ansible neo4j (NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?...}) :
+      # un seul compte Neo4j => un seul secret partage, pas un secret par
+      # service comme cote Postgres.
+      #
+      # FAIL-FAST DELIBERE (PAS de fallback dev, CONTRAIREMENT a payment) : on
+      # s'aligne exactement sur le fragment du role neo4j, qui utilise `:?` sans
+      # fallback. Raison : un fallback "${NEO4J_PASSWORD:-changeme_neo4j}" ici
+      # fournirait TOUJOURS une valeur non-vide au conteneur travel-service, ce qui
+      #   1) neutralise le fail-fast que l'application.yml impose deja
+      #      (password: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}), et
+      #   2) cree un mismatch SILENCIEUX : si le volume Neo4j a ete initialise avec
+      #      un autre secret (NEO4J_AUTH n'est applique qu'au 1er demarrage), travel
+      #      se connecterait avec "changeme_neo4j" => echec d'auth au runtime, pas
+      #      au parsing Compose.
+      # Avec `:?`, si NEO4J_PASSWORD est absent, les DEUX fragments (neo4j + travel)
+      # echouent identiquement au parsing d'UNE SEULE invocation `docker compose`
+      # (env partage) : impossible de diverger silencieusement. Le secret est injecte
+      # via .env/Vault, jamais en clair ici.
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?set via env/Vault}"
+      # --- Cle de signature JWT (PARTAGEE avec identity-service) -----------
+      # CONTRAIREMENT a NEO4J_PASSWORD ci-dessus (propre a ce service), cette
+      # valeur DOIT etre IDENTIQUE a JWT_SIGNING_KEY dans
+      # identity-service/docker-compose.identity.yml : travel-service ne fait
+      # que VERIFIER des jetons HS256 emis par identity-service, jamais n'en
+      # emet lui-meme, et HS256 exige le meme secret cote emetteur et cote
+      # verificateur (>= 32 octets, exige par jjwt/HS256, RFC 7518 §3.2).
+      # Source unique : secret/shared/jwt (cle `signing_key`) -> .env rendu par
+      # le role Ansible app-secrets. Meme idiome fail-fast `:?` que
+      # NEO4J_PASSWORD ci-dessus : si la cle manque, les trois fragments
+      # (identity, payment, travel) echouent IDENTIQUEMENT au parsing d'une
+      # seule invocation `docker compose`, jamais en divergeant silencieusement.
+      JWT_SIGNING_KEY: "${JWT_SIGNING_KEY:?set via env/Vault}"
+    networks:
+      - data-net
+      - backend-net
+    depends_on:
+      neo4j:
+        # Attend que Neo4j soit HEALTHY avant de demarrer : sinon le driver
+        # Neo4j echoue au boot (fail-fast) sur une base pas prete.
+        condition: service_healthy
+    # Healthcheck applicatif : /actuator/health (expose par application.yml).
+    # curl est present dans l'image runtime (eclipse-temurin:*-jre-noble).
+    # Actuator ne repond UP qu'une fois Neo4j joignable (Neo4jHealthContributorAutoConfiguration)
+    # => `--wait` attend le service REELLEMENT pret (pas juste le conteneur "running").
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    # --- Routage Traefik par LABELS (idiome provider docker Traefik 3.x) -----
+    # providers.docker est DEJA active cote role traefik (traefik.static.yml.j2,
+    # exposedByDefault=false, network=backend-net) : le routage se declare donc
+    # ICI, par labels sur le service, PAS dans une config statique centralisee.
+    labels:
+      # Requis : exposedByDefault=false => rien n'est route sans opt-in explicite.
+      - "traefik.enable=true"
+      # Conteneur multi-homed (data-net + backend-net) : on FORCE le reseau que
+      # Traefik utilise pour joindre le service (belt-and-suspenders vs la valeur
+      # globale providers.docker.network=backend-net).
+      - "traefik.docker.network=backend-net"
+      # Router : Host simple. `travel.localhost` -> testable via l'en-tete Host
+      # sans dependance DNS (voir preuve curl). Le cert auto-signe par defaut de
+      # Traefik (tls.stores.default) couvre tout SNI, -k suffit cote client.
+      # travel-service sert /destinations a sa racine : pas de StripPrefix, meme
+      # raisonnement qu'identity.localhost/payment.localhost.
+      - "traefik.http.routers.travel.rule=Host(`travel.localhost`)"
+      # Entrypoint HTTPS `websecure` (:443) = seul point d'entree public du projet.
+      - "traefik.http.routers.travel.entrypoints=websecure"
+      # TLS termine au bord par Traefik ; backend en HTTP simple derriere.
+      - "traefik.http.routers.travel.tls=true"
+      # Port INTERNE du conteneur (EXPOSE 8080). Traefik y route via backend-net.
+      - "traefik.http.services.travel.loadbalancer.server.port=8080"
+
+networks:
+  # Reseaux cloisonnes crees et possedes par Ansible (role compose-assembly,
+  # community.docker.docker_network) ; declares externes ici (Compose ne les gere pas).
+  data-net:
+    external: true
+  backend-net:
+    external: true

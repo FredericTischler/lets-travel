@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.3</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.travelplan</groupId>
+    <artifactId>payment-service</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>payment-service</name>
+    <description>Travel-Plan Payment Service — skeleton</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <!-- Override Spring Boot BOM 3.4.x (1.20.5): docker-java 3.3.x in 1.20.x
+             has a Unix socket transport bug that breaks API negotiation with Docker Engine 29.x.
+             1.21.2 ships docker-java 3.4.x which fixes it.
+             1.21.4 is required on top: TC 1.21.2 hardcodes API version 1.32 on the initial
+             ping, which Docker Engine 29.x (minimum API 1.40) rejects. 1.21.4 tries 1.44
+             first and only falls back to 1.32 on error, which fixes the negotiation. -->
+        <testcontainers.version>1.21.4</testcontainers.version>
+    </properties>
+
+    <dependencies>
+        <!-- JSON structured logging on stdout (see resources/logback-spring.xml).
+             9.0 — latest stable, compatible with the Logback 1.5.x / SLF4J 2.x
+             shipped by the spring-boot-starter-parent 3.4.3 BOM. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>9.0</version>
+        </dependency>
+
+        <!-- Web (Actuator /actuator/health) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Bean Validation — @Valid, @Email, @NotBlank on DTOs -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Actuator — exposes /actuator/health -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Spring Data JPA + HikariCP (connection pool, health indicator) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL JDBC driver -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway core — schema migrations -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!-- Flyway PostgreSQL support (required for Flyway 10+) -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- JWT (jjwt 0.13.0 — same version as identity-service). api = compile-time
+             interfaces; impl + jackson = runtime implementation. jjwt-jackson reuses
+             the Jackson already on the classpath via spring-boot-starter-web (no
+             extra JSON library). Used only by JwtService to VALIDATE tokens issued
+             by identity-service — this service never generates a token, no Spring
+             Security filter chain involved. -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.13.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.13.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.13.0</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Stripe SDK (docs/sujet.md §2 — supported payment method). Creates
+             PaymentIntents only, sandbox/test keys (sk_test_*) — see
+             StripePaymentService. Latest stable release on Maven Central as of
+             writing (29.3.0-beta.1 exists but is a beta, intentionally skipped). -->
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>29.2.0</version>
+        </dependency>
+
+        <!-- PayPal Server SDK (docs/sujet.md §2 — supported payment method).
+             Official successor to the deprecated com.paypal.sdk:checkout-sdk
+             artifact; creates Orders (v2 Orders API) only, sandbox environment
+             — see PayPalPaymentService. -->
+        <dependency>
+            <groupId>com.paypal.sdk</groupId>
+            <artifactId>paypal-server-sdk</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
+        <!-- ===== TEST scope ===== -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers — real Postgres in tests -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- SonarQube analysis (`mvn sonar:sonar`, invoked by the Jenkins
+                 pipeline after `verify`). Version PINNED: without it Maven would
+                 resolve the newest release from Central at build time, so two
+                 builds of the same commit could use two different scanners.
+                 5.8.0.7211 = current release on Maven Central; requires Java 17+
+                 (this module builds on 21) and works with SonarQube 2025.1+/26.x.
+                 The server URL and the token are NOT set here: they are
+                 environment-specific and the token is a secret — both are passed
+                 on the command line by the pipeline (SONAR_HOST_URL/SONAR_TOKEN).
+                 See ansible/roles/sonarqube/README.md. -->
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>5.8.0.7211</version>
+            </plugin>
+
+            <!-- JaCoCo — code coverage measurement, consumed by SonarQube via
+                 sonar.coverage.jacoco.xmlReportPaths (see Jenkinsfile). Version
+                 PINNED for the same reproducibility reason as the Sonar plugin
+                 above. 0.8.13 = latest stable on Maven Central, supports Java 21
+                 bytecode (class file version 65).
+                 - `prepare-agent`: default binding (no explicit phase), wires the
+                   JaCoCo runtime agent into the forked Surefire JVM so coverage
+                   data is collected while tests run.
+                 - `report`, bound to the `test` phase: generates the report right
+                   after the tests it covers, so a plain `mvn test` already
+                   produces target/site/jacoco/jacoco.xml — no `verify` needed.
+                   This is what lets the Jenkins "Test" stage produce the report
+                   that the later "SonarQube analysis" stage (`verify -DskipTests`)
+                   reuses instead of regenerating. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.13</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

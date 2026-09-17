@@ -1,0 +1,41 @@
+# Configuration NON SENSIBLE, partagee par les trois services applicatifs.
+#
+# Frontiere ConfigMap / Secret : tout ce qui est ici est lisible en clair par
+# quiconque a `get configmap` sur le namespace. Un seul critere d'arbitrage :
+# est-ce que la fuite de cette valeur a un impact ? Un hostname de service
+# interne, non. Un mot de passe, oui -> Secret (voir create-secrets.sh).
+#
+# Les VALEURS sont volontairement identiques aux fragments Docker Compose du
+# projet (services/*/docker-compose.*.yml) : meme nom de service = meme cible
+# DNS. Docker Compose resout `postgres` via le DNS du reseau data-net ;
+# Kubernetes resout `postgres` via le Service headless du meme nom dans le
+# namespace travel-plan. Les applications n'ont donc RIEN a changer.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: travel-plan-config
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/part-of: travel-plan
+data:
+  # --- PostgreSQL (identity-service, payment-service) ---------------------
+  # `postgres` = nom du Service Kubernetes (20-postgres.yaml), resolu en
+  # `postgres.travel-plan.svc.cluster.local` par le DNS du cluster.
+  # JAMAIS localhost : localhost designerait le conteneur applicatif lui-meme.
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+
+  # --- Neo4j (travel-service) ---------------------------------------------
+  NEO4J_HOST: "neo4j"
+  NEO4J_PORT: "7687"
+  # Neo4j Community Edition n'a qu'un seul compte (contrainte documentee dans
+  # ansible/roles/neo4j/tasks/main.yml) : pas de compte applicatif a droits
+  # reduits possible, contrairement a identity_user / payment_user cote Postgres.
+  NEO4J_USERNAME: "neo4j"
+
+  # --- Cascade identity -> payment (suppression d'un utilisateur) ----------
+  # Nom de SERVICE, pas d'IP de Pod : le Service ClusterIP repartit les appels
+  # sur les 2 replicas de payment-service (kube-proxy, round-robin en mode
+  # iptables). Exactement le meme raisonnement que cote Compose, ou le DNS
+  # Docker round-robin sur les replicas du service.
+  PAYMENT_SERVICE_URL: "http://payment-service:8080"

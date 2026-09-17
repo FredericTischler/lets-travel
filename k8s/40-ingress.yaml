@@ -1,0 +1,94 @@
+# Ingress : point d'entree HTTP unique, routage PAR HOST.
+#
+# EQUIVALENCE AVEC TRAEFIK : cote Docker Compose, chaque service porte un label
+# `traefik.http.routers.<x>.rule=Host(`<x>.localhost`)` et Traefik est le seul
+# conteneur a publier un port (443). Ici, un unique objet Ingress declare les
+# trois memes regles de host, et l'Ingress Controller est le seul composant a
+# recevoir du trafic externe. Memes hostnames, meme topologie : un seul bord,
+# des backends ClusterIP non exposes derriere.
+#
+# POURQUOI INGRESS PLUTOT QUE Service type LoadBalancer : trois Services
+# LoadBalancer, ce serait trois adresses IP externes a distribuer, sans routage
+# par host et sans point de terminaison TLS commun. Surtout, `type: LoadBalancer`
+# n'a de sens que sur un cloud disposant d'un controleur de LB : sur kind,
+# minikube ou Docker Desktop, ces Services resteraient indefiniment en
+# `EXTERNAL-IP: <pending>`. L'Ingress est l'objet portable pour ce besoin.
+#
+# PREREQUIS EXPLICITE : un Ingress est une DECLARATION, pas une implementation.
+# Sans Ingress Controller installe dans le cluster, cet objet est cree et
+# strictement ignore (aucune erreur, aucun effet — piege classique). Voir le
+# README pour l'installation d'ingress-nginx.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: travel-plan
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  # ingressClassName designe QUEL controleur prend cet Ingress en charge. On
+  # cible ingress-nginx, le controleur de reference, disponible en une commande
+  # sur kind comme sur minikube (`minikube addons enable ingress`).
+  #
+  # Pour un cluster equipe de Traefik comme Ingress Controller (cohérent avec le
+  # reste du projet), remplacer par `traefik` : les regles ci-dessous sont du
+  # Kubernetes standard et n'ont RIEN de specifique a nginx.
+  ingressClassName: nginx
+  rules:
+    # Memes hostnames que les routers Traefik du deploiement Compose, pour que
+    # les commandes de test du projet restent valables a l'identique :
+    #   curl -H 'Host: identity.localhost' http://<adresse-ingress>/users
+    # `.localhost` resout vers 127.0.0.1 sur la plupart des resolveurs (RFC 6761),
+    # et l'en-tete Host explicite rend le test independant de toute resolution DNS.
+    - host: identity.localhost
+      http:
+        paths:
+          # pathType: Prefix + path: / => tout le trafic de ce host part vers le
+          # service, sans reecriture d'URL. Pas de StripPrefix : identity-service
+          # sert /users a sa racine, exactement comme cote Traefik.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: identity-service
+                # Le PORT DU SERVICE (8080), pas celui du conteneur. L'Ingress
+                # s'adresse au Service, qui repartit ensuite sur les 2 replicas.
+                port:
+                  name: http
+    - host: payment.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  name: http
+    - host: travel.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: travel-service
+                port:
+                  name: http
+# --- TLS : ABSENT, et c'est un ecart assume vs le deploiement Compose --------
+# Traefik termine le TLS en 443 avec un certificat auto-signe genere a la volee
+# (tls.stores.default). L'equivalent Kubernetes exige un Secret de type
+# kubernetes.io/tls contenant un certificat et une cle privee, donc soit un
+# certificat commite (exclu : une cle privee ne se commite pas), soit cert-manager
+# (composant supplementaire, hors perimetre de cette demonstration), soit une
+# generation manuelle documentee.
+#
+# Pour ajouter TLS sur un cluster de demonstration :
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout tls.key -out tls.crt -subj '/CN=identity.localhost' \
+#     -addext 'subjectAltName=DNS:identity.localhost,DNS:payment.localhost,DNS:travel.localhost'
+#   kubectl -n travel-plan create secret tls travel-plan-tls --cert=tls.crt --key=tls.key
+# puis ajouter sous spec: (au meme niveau que `rules:`)
+#   tls:
+#     - hosts: [identity.localhost, payment.localhost, travel.localhost]
+#       secretName: travel-plan-tls

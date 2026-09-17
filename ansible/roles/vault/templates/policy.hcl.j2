@@ -1,0 +1,6 @@
+{# Genere une policy HCL Vault a partir de item.paths (dict path -> capacites). #}
+{% for p, caps in item.paths.items() %}
+path "{{ p }}" {
+  capabilities = [{% for c in caps %}"{{ c }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+}
+{% endfor %}

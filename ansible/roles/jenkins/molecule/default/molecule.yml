@@ -1,0 +1,60 @@
+---
+# Scenario Molecule du role `jenkins`.
+# Driver docker (molecule-plugins) : conteneur frere sur le demon hote
+# (Linux natif, PAS de DinD). Meme pattern que postgres/neo4j/traefik.
+#
+# PERIMETRE HONNETE DE CE SCENARIO (lire avant de crier au test faible) :
+# ce role ne fait QUE rendre des fichiers (fragment Compose + config.xml du job).
+# Le scenario teste donc exactement ca : converge + IDEMPOTENCE + assertions de
+# VALEURS sur les artefacts rendus, dans une plateforme Debian minimale.
+# Il NE demarre PAS de vrai Jenkins : un cycle Molecule qui attend l'expansion du
+# war (~90 s), le wizard de premier demarrage, l'installation des plugins puis un
+# `mvn test` avec Testcontainers depasserait largement les 10 minutes et
+# demanderait un acces reseau a updates.jenkins.io + Maven Central a chaque
+# `molecule test` — inacceptable pour une boucle de test. Le VRAI demarrage de
+# Jenkins et l'execution du job sont prouves hors Molecule, par la sequence
+# rejouable documentee dans le README du role.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-jenkins-molecule
+    # Debian minimale : simple support de cycle (python3 installe via prepare).
+    # L'image jenkins/jenkins embarque bien un shell et python n'y est PAS
+    # garanti ; de toute facon on ne teste ici que des fichiers rendus.
+    image: debian:bookworm-slim
+    pre_build_image: true
+    override_command: true
+    command: ["sleep", "infinity"]
+    published_ports: []
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

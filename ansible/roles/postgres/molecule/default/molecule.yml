@@ -1,0 +1,63 @@
+---
+# Scenario Molecule du role `postgres`.
+# Driver docker (molecule-plugins) : conteneurs freres sur le demon hote
+# (Linux natif, PAS de DinD). La plateforme EST un conteneur postgres en PID1.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-postgres-molecule
+    # Image postgres reelle, taguee (cf. defaults/main.yml). pre_build_image:
+    # true => pas de Dockerfile derive, on lance l'image telle quelle.
+    image: postgres:17.5-bookworm
+    pre_build_image: true
+    # override_command: false => l'entrypoint postgres tourne en PID1 (up).
+    override_command: false
+    env:
+      POSTGRES_PASSWORD: changeme_postgres_superuser
+      # Force scram-sha-256 a l'init (defaut en 17, explicite ici).
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    published_ports: []
+    # Les modules community.postgresql tournent DANS l'instance (docker exec),
+    # ils joignent postgres via localhost:5432.
+
+# Molecule 26.x : l'environnement du provisioner est lu depuis le bloc
+# top-level `ansible:` (config["ansible"]["env"]), pas depuis `provisioner.env`
+# (verifie dans le code : provisioner/ansible.py -> env lit config["ansible"]["env"]).
+# MOLECULE_SCENARIO_DIRECTORY est interpole DANS molecule.yml par Molecule lui-meme
+# (config.py: "MOLECULE_SCENARIO_DIRECTORY": self.scenario.directory).
+# Chemin absolu : <repo>/ansible/roles/postgres/molecule/default
+#   /../../.. => <repo>/ansible/roles  => `- role: postgres` se resout,
+# quel que soit le repertoire de lancement. Plus aucun env shell requis.
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+    - destroy

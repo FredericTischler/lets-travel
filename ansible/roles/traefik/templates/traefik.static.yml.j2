@@ -1,0 +1,56 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Configuration STATIQUE Traefik (rendue par le role Ansible `traefik`).
+# La config statique ne se recharge PAS a chaud : tout changement ici impose un
+# redemarrage du conteneur. Elle definit les entrypoints, les providers et le
+# niveau de log. Le routage/TLS dynamique vit dans le fileProvider (voir plus bas).
+#
+# Cle de validation empirique : Traefik ECHOUE AU DEMARRAGE sur toute cle
+# statique inconnue. Le converge Molecule qui demarre reellement le conteneur
+# avec CE fichier prouve donc la validite des cles (plus fort qu'une lecture doc).
+
+# --- Entrypoints ------------------------------------------------------------
+# `websecure` = HTTPS, le SEUL point d'entree externe (publie sur edge-net, §4).
+# Aucun entrypoint `web` (:80) : on ne veut pas de surface HTTP en clair au bord.
+entryPoints:
+  websecure:
+    address: ":{{ traefik_https_published_port }}"
+
+# --- Providers --------------------------------------------------------------
+providers:
+  # Provider Docker : decouverte des services par labels (§4). Les nouvelles
+  # repliques entrent dans le pool sans reconfiguration.
+  docker:
+    # exposedByDefault=false : un conteneur n'est route QUE s'il porte
+    # explicitement `traefik.enable=true`. Moindre exposition (§4/§5).
+    exposedByDefault: {{ traefik_docker_exposed_by_default | to_json }}
+    # Reseau utilise par Traefik pour joindre les services decouverts.
+    network: "{{ traefik_backend_network }}"
+
+  # File provider : config DYNAMIQUE (TLS statique par fichier, futurs routers).
+  # watch=true recharge a chaud le contenu du repertoire sans redemarrer Traefik.
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+# --- Ping (healthcheck) -----------------------------------------------------
+# Active l'endpoint interne /ping utilise par `traefik healthcheck --ping`
+# (healthcheck du conteneur). Sans ce bloc, la sonde echoue. Non expose au bord.
+ping: {}
+
+# --- Log --------------------------------------------------------------------
+log:
+  level: "INFO"
+
+# --- API / Dashboard --------------------------------------------------------
+{% if traefik_dashboard_enabled %}
+# Dashboard ACTIVE mais INTERNE uniquement : il n'est PAS attache a l'entrypoint
+# public `websecure`/edge-net. L'exposition eventuelle passerait par un router
+# dedie sur backend-net (jamais edge-net). insecure=false : pas d'API en clair.
+api:
+  dashboard: true
+  insecure: false
+{% else %}
+# Dashboard desactive par defaut (traefik_dashboard_enabled=false).
+# S'il est active un jour, il reste INTERNE (backend-net), jamais sur edge-net.
+{% endif %}

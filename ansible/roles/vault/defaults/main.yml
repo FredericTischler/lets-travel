@@ -1,0 +1,163 @@
+---
+# roles/vault/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role vault.
+# Le role ne fait QUE : rendre un fragment de service Compose (Vault dev mode)
+# + provisionner Vault via modules community.hashi_vault (idempotents) :
+#   - s'assurer du moteur KV v2 sur secret/ (deja monte en dev mode -> check),
+#   - ecrire les secrets runtime (creds DB, cles API) en read-before-write,
+#   - poser les policies par service (moindre privilege, cf. docs §5).
+
+# === RECONCILIATION DEV MODE <-> docs/architecture-decisions.md §5 ===========
+# Vault tourne en DEV MODE : auto-unsealed, EN MEMOIRE, NON persistant.
+# Consequences actees (ne pas sur-ingenierer) :
+#   - AUCUNE logique d'unseal/persistance : dev mode est deja unsealed.
+#   - En dev mode, un secrets engine KV v2 est DEJA monte sur `secret/` :
+#     on VERIFIE sa presence (sys/mounts), on ne fait PAS un enable aveugle
+#     (activer un moteur deja monte ECHOUE).
+#   - La "nuance bootstrap §5" se reduit ici a : le root token dev ne se
+#     commite JAMAIS en clair. Il est FIXE via VAULT_DEV_ROOT_TOKEN_ID, source
+#     d'une VARIABLE -> en prod chiffree via ansible-vault ; en Molecule fixture.
+# =============================================================================
+
+# --- Image (tag epingle, jamais latest) -------------------------------------
+# Tag verifie via `docker manifest inspect hashicorp/vault:1.18.3` (EXISTS).
+vault_image: "hashicorp/vault:1.18.3"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+vault_service_name: "vault"
+vault_container_name: "travel-plan-vault"
+# Reseau interne : Vault JAMAIS expose a l'hote (cf. docs §4, data-net).
+# Seul Traefik expose (§4). Le fragment ne publie AUCUN port.
+vault_network: "data-net"
+# Garde-fou RAM 8 Go (cf. docs §4) : Vault dev mode ~60 Mo -> limite serree.
+vault_mem_limit: "96m"
+# Repertoire ou Ansible rend le fragment compose (surcharge en prod / molecule).
+vault_compose_dir: "/opt/travel-plan/vault"
+# Adresse d'ecoute interne de Vault dev mode (dans le conteneur).
+vault_dev_listen_address: "0.0.0.0:8200"
+
+# --- Root token de dev (FIXE, source d'une variable, JAMAIS en clair commite)
+# En prod : chiffre via ansible-vault. En Molecule : fixture (group_vars/converge).
+# Placeholder ici pour documenter le contrat ; il DOIT etre surcharge.
+vault_dev_root_token: "changeme_vault_root_token"  # noqa: surcharger via ansible-vault
+
+# --- Cible de connexion pour le provisioning (modules community.hashi_vault) -
+# En prod ces taches visent Vault via le reseau ; ici parametrable.
+# En Molecule : Vault joignable via un port de TEST publie cote plateforme.
+vault_addr: "http://localhost:8200"
+
+# --- Moteur KV v2 ------------------------------------------------------------
+# En dev mode `secret/` est deja monte en KV v2 : on VERIFIE, on n'enable pas.
+vault_kv_mount: "secret"
+
+# --- Secrets runtime (valeurs JAMAIS en dur : placeholders changeme_*) -------
+# Injectes par Vault/ansible-vault en prod. Les NOMS de cles forment le
+# contrat homogene consomme par les services (coherent avec le role postgres).
+#
+# Coherence avec ansible/roles/postgres/defaults/main.yml :
+#   identity -> identity_user / changeme_identity_user / identity_db
+#   payment  -> payment_user  / changeme_payment_user  / payment_db
+# travel : Neo4j (role neo4j absent) -> placeholders, memes NOMS de cles.
+vault_secrets:
+  # Secret d'ADMINISTRATION (superuser Postgres). HORS perimetre des policies service.
+  # Seul Ansible (token root) peut le lire. identity/payment/travel-policy n'y accedent pas.
+  - path: "infra/postgres-superuser"
+    data:
+      password: "changeme_postgres_superuser"  # noqa: surcharger via ansible-vault en prod
+  # Secrets APPLICATIFS (inchanges) :
+  - path: "identity/db"
+    data:
+      username: "identity_user"
+      password: "changeme_identity_user"   # noqa: injecte par Vault en prod
+      dbname: "identity_db"
+      host: "postgres"
+      port: "5432"
+  - path: "payment/db"
+    data:
+      username: "payment_user"
+      password: "changeme_payment_user"     # noqa: injecte par Vault en prod
+      dbname: "payment_db"
+      host: "postgres"
+      port: "5432"
+  - path: "payment/stripe"
+    data:
+      api_key: "changeme_stripe_api_key"          # noqa: injecte par Vault en prod
+      secret_key: "changeme_stripe_secret_key"    # noqa: injecte par Vault en prod
+  - path: "payment/paypal"
+    data:
+      client_id: "changeme_paypal_client_id"          # noqa: injecte par Vault en prod
+      client_secret: "changeme_paypal_client_secret"  # noqa: injecte par Vault en prod
+  - path: "travel/db"
+    data:
+      username: "neo4j"
+      password: "changeme_neo4j"   # noqa: injecte par Vault en prod
+      host: "neo4j"
+      port: "7687"
+  # --- Secrets d'OUTILLAGE (hors chaine applicative) ------------------------
+  # Meme statut que infra/postgres-superuser : HORS perimetre des policies
+  # service. Ni identity, ni payment, ni travel n'a de raison de les lire —
+  # seul Ansible (token root) les lit, pour les materialiser dans le .env que
+  # Compose interpole au `up`. Aucune policy n'est donc ajoutee pour eux.
+  #
+  # sonarqube/db : mot de passe de la base DEDIEE a SonarQube (role sonarqube,
+  # profil `ci`). Consomme en SONARQUBE_DB_PASSWORD par DEUX conteneurs a la
+  # fois (POSTGRES_PASSWORD de la base + SONAR_JDBC_PASSWORD du serveur) : une
+  # seule cle, deux consommateurs, donc jamais de desynchronisation possible.
+  - path: "sonarqube/db"
+    data:
+      username: "sonar"
+      password: "changeme_sonarqube_db"   # noqa: injecte par Vault en prod
+      dbname: "sonar"
+      host: "sonarqube-db"
+      port: "5432"
+  # observability/grafana : mot de passe du compte admin Grafana (role
+  # observability, profil `observability`). Consomme en GRAFANA_ADMIN_PASSWORD.
+  # ATTENTION, comportement propre a Grafana : cette valeur n'est appliquee
+  # qu'a la PREMIERE initialisation de sa base interne. La changer ici ne
+  # rejoue pas le mot de passe d'une instance deja provisionnee — il faut
+  # supprimer le volume grafana-data, ou changer le mot de passe dans l'UI.
+  - path: "observability/grafana"
+    data:
+      username: "admin"
+      password: "changeme_grafana_admin"  # noqa: injecte par Vault en prod
+  # Secret PARTAGE (perimetre `shared/`) : cle de signature HS256 des JWT.
+  # HS256 exige le MEME secret chez l'emetteur (identity) et chez les
+  # verificateurs (payment, travel) : ce n'est donc pas un secret par service,
+  # d'ou un perimetre `shared/` distinct, lisible par les trois policies.
+  # La valeur reprend a l'identique celle qui etait en dur dans les fragments
+  # Compose : seul son EMPLACEMENT change, pas le comportement par defaut.
+  # >= 32 octets, exige par jjwt/HS256 (RFC 7518 §3.2).
+  - path: "shared/jwt"
+    data:
+      signing_key: "dev-insecure-jwt-signing-key-change-me-0123456789ABCDEF"  # noqa: injecte par Vault en prod
+
+# --- Policies PAR SERVICE (moindre privilege, cf. docs §5) -------------------
+# ATTENTION KV v2 : les capacites ACL visent secret/data/<svc>/* ET
+# secret/metadata/<svc>/* (PAS secret/<svc>/*). Aucune policy ne lit le
+# perimetre d'une autre.
+#
+# EXCEPTION ASSUMEE — perimetre `shared/` : la cle de signature HS256 est par
+# nature commune a l'emetteur (identity) et aux verificateurs (payment, travel).
+# Les trois policies le lisent donc en LECTURE SEULE. Ce n'est pas une brique
+# de cloisonnement en moins : chaque service reste incapable de lire le
+# perimetre d'un AUTRE service (identity/*, payment/*, travel/*).
+vault_policies:
+  - name: "identity-policy"
+    paths:
+      "secret/data/identity/*": ["read"]
+      "secret/metadata/identity/*": ["read", "list"]
+      "secret/data/shared/*": ["read"]
+      "secret/metadata/shared/*": ["read", "list"]
+  - name: "payment-policy"
+    paths:
+      "secret/data/payment/*": ["read"]
+      "secret/metadata/payment/*": ["read", "list"]
+      "secret/data/shared/*": ["read"]
+      "secret/metadata/shared/*": ["read", "list"]
+  - name: "travel-policy"
+    paths:
+      "secret/data/travel/*": ["read"]
+      "secret/metadata/travel/*": ["read", "list"]
+      "secret/data/shared/*": ["read"]
+      "secret/metadata/shared/*": ["read", "list"]

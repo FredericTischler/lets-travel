@@ -1,0 +1,16 @@
+---
+# converge.yml : joue le role postgres contre l'instance.
+# Provisioning via localhost:5432 (superuser postgres). Le rendu compose
+# pointe vers /tmp (templating inoffensif dans l'instance).
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    # Mot de passe superuser = celui passe a l'image dans molecule.yml.
+    postgres_superuser_password: changeme_postgres_superuser
+    postgres_login_host: localhost
+    postgres_login_port: 5432
+    # Rendu compose dans un repertoire temporaire inoffensif.
+    postgres_compose_dir: /tmp/travel-plan-postgres
+  roles:
+    - role: postgres

@@ -1,0 +1,127 @@
+---
+# verify.yml : assertions EXPLICITES. Echoue si une garantie d'infra manque.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    su_pw: changeme_postgres_superuser
+    identity_pw: changeme_identity_user
+    payment_pw: changeme_payment_user
+  tasks:
+
+    # ---- 1) Les 2 bases existent --------------------------------------------
+    - name: "Query existing databases"
+      community.postgresql.postgresql_query:
+        login_host: localhost
+        login_user: postgres
+        login_password: "{{ su_pw }}"
+        login_db: postgres
+        query: "SELECT datname FROM pg_database WHERE datname IN ('identity_db','payment_db')"
+      register: dbs
+
+    - name: "Assert identity_db AND payment_db exist"
+      ansible.builtin.assert:
+        that:
+          - "'identity_db' in (dbs.query_result | map(attribute='datname') | list)"
+          - "'payment_db' in (dbs.query_result | map(attribute='datname') | list)"
+        fail_msg: "Une base attendue est absente : {{ dbs.query_result }}"
+        success_msg: "identity_db et payment_db existent."
+
+    # ---- 2) Les 2 comptes existent ------------------------------------------
+    - name: "Query existing roles"
+      community.postgresql.postgresql_query:
+        login_host: localhost
+        login_user: postgres
+        login_password: "{{ su_pw }}"
+        login_db: postgres
+        query: "SELECT rolname, rolsuper FROM pg_roles WHERE rolname IN ('identity_user','payment_user')"
+      register: app_roles
+
+    - name: "Assert identity_user AND payment_user exist"
+      ansible.builtin.assert:
+        that:
+          - "'identity_user' in (app_roles.query_result | map(attribute='rolname') | list)"
+          - "'payment_user' in (app_roles.query_result | map(attribute='rolname') | list)"
+        fail_msg: "Un compte attendu est absent : {{ app_roles.query_result }}"
+        success_msg: "identity_user et payment_user existent."
+
+    # ---- 3) AUCUN compte applicatif superuser -------------------------------
+    - name: "Assert no application account is superuser (rolsuper = false)"
+      ansible.builtin.assert:
+        that:
+          - "(app_roles.query_result | selectattr('rolname','equalto','identity_user') | map(attribute='rolsuper') | first) == false"
+          - "(app_roles.query_result | selectattr('rolname','equalto','payment_user') | map(attribute='rolsuper') | first) == false"
+        fail_msg: "Un compte applicatif est superuser : {{ app_roles.query_result }}"
+        success_msg: "Aucun compte applicatif n'est superuser."
+
+    # ---- 4) Cloisonnement moindre privilege ---------------------------------
+    # 4a. Connexions LEGITIMES : DOIVENT reussir.
+    - name: "identity_user -> identity_db (legitime, doit reussir)"
+      community.postgresql.postgresql_ping:
+        login_host: localhost
+        login_user: identity_user
+        login_password: "{{ identity_pw }}"
+        login_db: identity_db
+      register: ping_identity_ok
+
+    - name: "payment_user -> payment_db (legitime, doit reussir)"
+      community.postgresql.postgresql_ping:
+        login_host: localhost
+        login_user: payment_user
+        login_password: "{{ payment_pw }}"
+        login_db: payment_db
+      register: ping_payment_ok
+
+    - name: "Assert legitimate connections succeed"
+      ansible.builtin.assert:
+        that:
+          - ping_identity_ok.is_available | bool
+          - ping_payment_ok.is_available | bool
+        fail_msg: "Une connexion legitime a echoue (cloisonnement trop strict)."
+        success_msg: "Connexions legitimes OK (identity->identity, payment->payment)."
+
+    # 4b. Connexions CROISEES : DOIVENT echouer (CONNECT non accorde).
+    - name: "identity_user -> payment_db (interdit, doit echouer)"
+      community.postgresql.postgresql_ping:
+        login_host: localhost
+        login_user: identity_user
+        login_password: "{{ identity_pw }}"
+        login_db: payment_db
+      register: ping_identity_cross
+      ignore_errors: true
+
+    - name: "payment_user -> identity_db (interdit, doit echouer)"
+      community.postgresql.postgresql_ping:
+        login_host: localhost
+        login_user: payment_user
+        login_password: "{{ payment_pw }}"
+        login_db: identity_db
+      register: ping_payment_cross
+      ignore_errors: true
+
+    - name: "Assert cross-tenant connections are DENIED"
+      ansible.builtin.assert:
+        that:
+          - not (ping_identity_cross.is_available | default(false) | bool)
+          - not (ping_payment_cross.is_available | default(false) | bool)
+        fail_msg: >-
+          Cloisonnement viole : une connexion croisee a reussi.
+          identity->payment={{ ping_identity_cross.is_available | default('?') }},
+          payment->identity={{ ping_payment_cross.is_available | default('?') }}
+        success_msg: "Cloisonnement OK : connexions croisees refusees."
+
+    # ---- 5) Fragment Compose rendu ------------------------------------------
+    - name: "Read rendered compose fragment"
+      ansible.builtin.slurp:
+        src: /tmp/travel-plan-postgres/compose.postgres.yml
+      register: fragment_b64
+
+    - name: "Assert fragment references pinned image and both databases concerns"
+      ansible.builtin.assert:
+        that:
+          - "'postgres:17.5-bookworm' in (fragment_b64.content | b64decode)"
+          - "'data-net' in (fragment_b64.content | b64decode)"
+          - "'mem_limit' in (fragment_b64.content | b64decode)"
+          - "'ports:' not in (fragment_b64.content | b64decode)"
+        fail_msg: "Le fragment compose ne reflete pas l'infra attendue."
+        success_msg: "Fragment compose conforme (image epinglee, data-net, mem_limit, pas de ports)."

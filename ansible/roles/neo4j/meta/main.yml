@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: neo4j
+  author: travel-plan
+  description: >-
+    Provisionne une instance Neo4j (Community Edition) pour Travel-Plan, seul
+    consommateur : travel-service. Rend un fragment de service Compose (instance
+    up, auth au premier demarrage, memoire bornee pour un hote 8 Go). Aucun
+    schema / contrainte / index metier. Community Edition = mono-utilisateur :
+    pas de RBAC granulaire ni de multi-base (Enterprise uniquement).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - neo4j
+    - graph
+    - database
+    - infrastructure
+dependencies: []

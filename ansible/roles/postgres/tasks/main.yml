@@ -1,0 +1,212 @@
+---
+# roles/postgres/tasks/main.yml
+#
+# Modele operatoire : Ansible PROVISIONNE et REND le fragment compose ;
+# docker-compose ORCHESTRE. Ce role n'utilise PAS docker_container en prod :
+# il rend un fragment de service Compose, puis provisionne l'instance via
+# les modules community.postgresql (idempotents).
+
+# --------------------------------------------------------------------------
+# RENDU DU .env : DEPLACE dans le role `app-secrets`.
+# Ce role NE POSSEDE PLUS /opt/travel-plan/.env. Raison : ce fichier est unique
+# et rendu integralement par un `template` ; s'il etait templatte par plusieurs
+# roles (postgres pour le superuser, un autre pour payment/travel/JWT), chaque
+# run ecraserait le rendu du precedent => `changed` systematique, idempotence
+# violee. Un fichier, un proprietaire : voir roles/app-secrets.
+# La lecture Vault ci-dessous (tag `provision`) RESTE ici : elle sert les
+# besoins propres de provisioning de postgres (comptes + bases), pas le .env.
+# --------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# 1) Rendu du fragment de service Compose (templating pur, inoffensif)
+# --------------------------------------------------------------------------
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ postgres_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render PostgreSQL compose service fragment"
+  ansible.builtin.template:
+    src: "compose.postgres.yml.j2"
+    dest: "{{ postgres_compose_dir }}/compose.postgres.yml"
+    mode: "0644"
+  tags: [compose_fragment]
+
+# --------------------------------------------------------------------------
+# 2) Provisioning de l'instance
+#    Ordre : users d'abord (ils sont owner des bases), puis bases, puis privs.
+#    PGOPTIONS force scram-sha-256 pour la coherence du hash (idempotence).
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# LECTURE VAULT — provision (conditionnel)
+# Voir commentaire ci-dessus : chemin non couvert par Molecule.
+# --------------------------------------------------------------------------
+- name: "Read provisioning credentials from Vault (infra + app users)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    engine_mount_point: "{{ vault_kv_mount }}"
+    path: "{{ item }}"
+  loop:
+    - "infra/postgres-superuser"
+    - "identity/db"
+    - "payment/db"
+  register: _vault_provision_creds
+  no_log: true
+  when: postgres_vault_read | bool
+  tags: [provision]
+
+- name: "Set postgres_superuser_password from Vault (pour la connexion de provisioning)"
+  ansible.builtin.set_fact:
+    postgres_superuser_password: >-
+      {{ _vault_provision_creds.results
+         | selectattr('item', 'equalto', 'infra/postgres-superuser')
+         | map(attribute='secret.password')
+         | first }}
+  no_log: true
+  when: postgres_vault_read | bool
+  tags: [provision]
+
+- name: "Override postgres_app_users passwords from Vault"
+  ansible.builtin.set_fact:
+    postgres_app_users:
+      - name: identity_user
+        password: >-
+          {{ _vault_provision_creds.results
+             | selectattr('item', 'equalto', 'identity/db')
+             | map(attribute='secret.password')
+             | first }}
+        db: identity_db
+      - name: payment_user
+        password: >-
+          {{ _vault_provision_creds.results
+             | selectattr('item', 'equalto', 'payment/db')
+             | map(attribute='secret.password')
+             | first }}
+        db: payment_db
+  no_log: true
+  when: postgres_vault_read | bool
+  tags: [provision]
+
+# --- Prérequis Python controller (provision, connection: local seulement) -----
+# CHEMIN NON COUVERT PAR MOLECULE : ce check ne s'execute qu'en connexion locale
+# reelle (ansible_connection == 'local'), jamais en sandbox Molecule ou la connexion
+# est 'docker'. Non-regression = verifier manuellement apres toute modification de
+# cette logique.
+# En run reel (connection: local), psycopg2 doit etre dans le venv Ansible.
+- name: "Check psycopg2 importable on Ansible Python (required for postgresql_* modules)"
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "-c"
+      - "import psycopg2"
+  changed_when: false
+  register: _psycopg2_check
+  ignore_errors: true
+  when: ansible_connection == 'local'
+  tags: [provision]
+
+- name: "Fail with actionable message if psycopg2 missing"
+  ansible.builtin.fail:
+    msg: >-
+      psycopg2 absent de l'interpreteur Python d'Ansible
+      ({{ ansible_playbook_python }}).
+      Les modules community.postgresql l'exigent pour se connecter a PostgreSQL.
+      Correction : pip install psycopg2-binary
+      (dans ce projet : source .venv-ansible/bin/activate && pip install psycopg2-binary)
+  when:
+    - ansible_connection == 'local'
+    - _psycopg2_check is defined
+    - _psycopg2_check.rc | default(0) != 0
+  tags: [provision]
+
+- name: "Create application roles (least privilege, NOSUPERUSER)"
+  tags: [provision]
+  community.postgresql.postgresql_user:
+    name: "{{ item.name }}"
+    password: "{{ item.password }}"
+    role_attr_flags: "NOSUPERUSER,NOCREATEDB,NOCREATEROLE,LOGIN"
+    state: present
+    login_host: "{{ postgres_login_host }}"
+    login_port: "{{ postgres_login_port }}"
+    login_user: "{{ postgres_superuser }}"
+    login_password: "{{ postgres_superuser_password }}"
+  environment:
+    PGOPTIONS: "-c password_encryption=scram-sha-256"
+  loop: "{{ postgres_app_users }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: "Create application databases (owned by their dedicated role)"
+  tags: [provision]
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "{{ item.owner }}"
+    encoding: "UTF8"
+    state: present
+    login_host: "{{ postgres_login_host }}"
+    login_port: "{{ postgres_login_port }}"
+    login_user: "{{ postgres_superuser }}"
+    login_password: "{{ postgres_superuser_password }}"
+  loop: "{{ postgres_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --------------------------------------------------------------------------
+# 3) Cloisonnement (moindre privilege) : revoquer le CONNECT public, puis
+#    n'autoriser que le proprietaire. payment_user ne peut PAS joindre
+#    identity_db et reciproquement.
+# --------------------------------------------------------------------------
+- name: "Revoke CONNECT from PUBLIC on each database"
+  tags: [provision]
+  community.postgresql.postgresql_privs:
+    login_db: "{{ item.name }}"
+    type: database
+    privs: "CONNECT"
+    roles: "PUBLIC"
+    state: absent
+    login_host: "{{ postgres_login_host }}"
+    login_port: "{{ postgres_login_port }}"
+    login_user: "{{ postgres_superuser }}"
+    login_password: "{{ postgres_superuser_password }}"
+  loop: "{{ postgres_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Grant CONNECT only to the owning role on each database"
+  tags: [provision]
+  community.postgresql.postgresql_privs:
+    login_db: "{{ item.name }}"
+    type: database
+    privs: "CONNECT"
+    roles: "{{ item.owner }}"
+    state: present
+    login_host: "{{ postgres_login_host }}"
+    login_port: "{{ postgres_login_port }}"
+    login_user: "{{ postgres_superuser }}"
+    login_password: "{{ postgres_superuser_password }}"
+  loop: "{{ postgres_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# --------------------------------------------------------------------------
+# 4) Extensions : uniquement si explicitement demandees (vide par defaut).
+# --------------------------------------------------------------------------
+- name: "Create requested extensions (none by default)"
+  tags: [provision]
+  community.postgresql.postgresql_ext:
+    name: "{{ item.name }}"
+    login_db: "{{ item.db }}"
+    state: present
+    login_host: "{{ postgres_login_host }}"
+    login_port: "{{ postgres_login_port }}"
+    login_user: "{{ postgres_superuser }}"
+    login_password: "{{ postgres_superuser_password }}"
+  loop: "{{ postgres_extensions }}"
+  loop_control:
+    label: "{{ item.name | default('none') }}"
+  when: postgres_extensions | length > 0

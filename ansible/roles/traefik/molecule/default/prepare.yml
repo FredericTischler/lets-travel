@@ -1,0 +1,13 @@
+---
+# Prepare : python3 + openssl dans la plateforme Debian.
+# openssl est nécessaire pour le script gen-selfsigned-cert.sh (fallback mkcert)
+# qui s'execute dans le conteneur debian via docker connection (pas sur le controleur).
+- name: Prepare platform (python3 + openssl for Molecule lifecycle)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Install python3 and openssl in the Debian platform (raw: python not present yet)"
+      ansible.builtin.raw: >-
+        apt-get update -qq &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 openssl
+      changed_when: false

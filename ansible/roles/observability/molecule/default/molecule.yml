@@ -1,0 +1,64 @@
+---
+# Scenario Molecule du role `observability`.
+# Driver docker (molecule-plugins) : conteneur frere sur le demon hote
+# (Linux natif, PAS de DinD). Meme pattern que postgres/neo4j/traefik/jenkins/sonarqube.
+#
+# PERIMETRE HONNETE DE CE SCENARIO (lire avant de crier au test faible) :
+# ce role ne fait QU'UNE chose — rendre quatre fichiers (fragment Compose + trois
+# configurations). Il ne pose aucun sysctl, ne cree aucun reseau, ne demarre
+# aucun conteneur. Le scenario couvre donc l'INTEGRALITE de ce que le role fait :
+# converge + IDEMPOTENCE + assertions de VALEURS sur les quatre artefacts.
+#
+# CE QUE CE SCENARIO NE PROUVE PAS, ET NE PEUT PAS PROUVER :
+# que Loki accepte des ecritures, que Promtail decouvre les conteneurs, et que
+# le requestId est effectivement correlable entre identity et payment. Ca exige
+# trois conteneurs qui tournent, le socket Docker, ET une stack applicative
+# vivante emettant du JSON — hors d'atteinte d'un `molecule test` et, pour le
+# socket, hors de ce qu'un test de role a le droit de faire.
+# Cette verification bout-en-bout EST faite, mais hors Molecule : la sequence
+# exacte et son resultat reel (requete LogQL correlee sur les deux services)
+# sont dans le README du role.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-observability-molecule
+    # Debian minimale : simple support de cycle (python3 installe via prepare).
+    # On ne teste que des fichiers rendus ; ni Loki, ni Promtail, ni Grafana
+    # n'ont quoi que ce soit a faire dans cette plateforme.
+    image: debian:bookworm-slim
+    pre_build_image: true
+    override_command: true
+    command: ["sleep", "infinity"]
+    published_ports: []
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

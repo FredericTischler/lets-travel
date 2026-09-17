@@ -1,0 +1,181 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `sonarqube`.
+# Orchestration assuree par docker-compose, profil `ci` (applique par merge dans
+# le docker-compose.yml top-level rendu par le role compose-assembly) — LE MEME
+# profil que jenkins : la chaine « je lance la CI » monte Jenkins + SonarQube
+# ensemble, ce qui est exactement ce que fait le pipeline (mvn verify puis
+# sonar:sonar).
+#
+# PROFIL `ci` = A LA DEMANDE (docs/architecture-decisions.md §8) : la stack CI ne
+# cohabite pas avec la stack applicative complete. C'etait deja vrai pour Jenkins
+# seul ; SonarQube etant le poste le PLUS lourd du projet (trois JVM dans le meme
+# conteneur, cf. defaults), ca l'est a plus forte raison ici.
+#
+# AUCUN PORT PUBLIE : convention du projet, seul Traefik publie (docs §4).
+# L'UI passe par la route Traefik declaree en labels plus bas.
+#
+# AUCUN SECRET EN CLAIR : le mot de passe de la base dediee n'apparait QUE sous
+# forme de reference ${{ '{' }}{{ sonarqube_db_password_env_var }}{{ '}' }}, resolue par Compose depuis le
+# .env de /opt/travel-plan (dont `app-secrets` est le proprietaire unique).
+services:
+
+  # ==========================================================================
+  # Le serveur SonarQube Community Edition.
+  # ==========================================================================
+  {{ sonarqube_service_name }}:
+    image: "{{ sonarqube_image }}"
+    container_name: "{{ sonarqube_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM. ATTENTION : contrairement aux autres conteneurs du projet,
+    # cette cgroup loge TROIS JVM (Web + Compute Engine + Elasticsearch embarque)
+    # et pas une. Cf. defaults/main.yml pour le detail de l'addition, et le
+    # README du role pour la mesure empirique.
+    mem_limit: "{{ sonarqube_mem_limit }}"
+    # L'Elasticsearch embarque ouvre enormement de descripteurs (un par segment
+    # d'index) et forke. Sous ces seuils il refuse de demarrer et SonarQube
+    # redemarre en boucle. Ces limites-la SONT par-conteneur (a la difference de
+    # vm.max_map_count, non namespace, pose sur l'hote par le role Ansible).
+    ulimits:
+      nofile:
+        soft: {{ sonarqube_ulimit_nofile }}
+        hard: {{ sonarqube_ulimit_nofile }}
+      nproc: {{ sonarqube_ulimit_nproc }}
+    depends_on:
+      {{ sonarqube_db_service_name }}:
+        # `service_healthy` et pas `service_started` : SonarQube tente sa
+        # migration de schema DES le demarrage. Un postgres qui a demarre son
+        # process mais pas encore accepte de connexion (il en refuse pendant son
+        # initdb) ferait echouer la migration et SonarQube s'arreterait.
+        condition: service_healthy
+    environment:
+      # --- Connexion a la base DEDIEE (jamais la Postgres applicative) -------
+      SONAR_JDBC_URL: "jdbc:postgresql://{{ sonarqube_db_service_name }}:5432/{{ sonarqube_db_name }}"
+      SONAR_JDBC_USERNAME: "{{ sonarqube_db_user }}"
+      # Reference d'environnement, PAS la valeur : resolue par Compose depuis le
+      # .env rendu par `app-secrets`.
+      SONAR_JDBC_PASSWORD: "${{ '{' }}{{ sonarqube_db_password_env_var }}{{ '}' }}"
+
+      # --- Heaps des TROIS JVM, bornees EXPLICITEMENT -----------------------
+      # Meme discipline que toutes les JVM du projet (docs §4) : sans -Xmx, une
+      # JVM container-aware prend 25 % de la cgroup ; ici trois JVM feraient
+      # 3 x 25 % = 75 % chacune revendiquee => OOM des le premier rapport traite.
+      # Les flags autres que -Xmx reproduisent VOLONTAIREMENT les defauts
+      # documentes dans /opt/sonarqube/conf/sonar.properties de l'image : ces
+      # variables REMPLACENT la ligne entiere, les omettre ferait PERDRE
+      # -XX:+HeapDumpOnOutOfMemoryError et, cote search, le
+      # -XX:MaxDirectMemorySize dont Elasticsearch a besoin.
+      SONAR_WEB_JAVAOPTS: "-Xmx{{ sonarqube_web_max_heap }} -Xms128m -XX:+HeapDumpOnOutOfMemoryError"
+      SONAR_CE_JAVAOPTS: "-Xmx{{ sonarqube_ce_max_heap }} -Xms128m -XX:+HeapDumpOnOutOfMemoryError"
+      SONAR_SEARCH_JAVAOPTS: "-Xmx{{ sonarqube_search_max_heap }} -Xms{{ sonarqube_search_max_heap }} -XX:MaxDirectMemorySize=256m -XX:+HeapDumpOnOutOfMemoryError"
+
+      # --- URL publique vue par le navigateur -------------------------------
+      # Sans elle, SonarQube fabrique ses URLs absolues (liens, redirections,
+      # badges) en http://<hostname-conteneur>:{{ sonarqube_http_port }}, injoignable depuis
+      # l'hote puisqu'aucun port n'est publie. Derriere Traefik il faut lui dire
+      # sous quelle URL il est reellement vu.
+      SONAR_CORE_SERVERBASEURL: "{{ sonarqube_server_base_url }}"
+    volumes:
+      # `data` contient AUSSI l'index Elasticsearch interne (sous data/es*/).
+      # Ce n'est pas un volume oublie : ES n'est pas externalisable en Community,
+      # son index vit dans le repertoire data du serveur.
+      - "{{ sonarqube_data_volume }}:/opt/sonarqube/data"
+      # `extensions` : plugins installes depuis le Marketplace. Sans volume, tout
+      # plugin ajoute serait perdu au prochain `compose down`.
+      - "{{ sonarqube_extensions_volume }}:/opt/sonarqube/extensions"
+      # `logs` : indispensable au diagnostic. Les erreurs de demarrage d'ES et
+      # les echecs du Compute Engine n'apparaissent PAS dans `docker logs`, elles
+      # vont dans es.log / ce.log de ce repertoire.
+      - "{{ sonarqube_logs_volume }}:/opt/sonarqube/logs"
+    networks:
+      # backend-net : UNIQUEMENT pour que Traefik decouvre et route l'UI.
+      - {{ sonarqube_backend_network }}
+      # sonarqube-net : lien prive vers sa base dediee (reseau `internal`,
+      # cf. defaults pour la justification de cette 4e ligne reseau).
+      - {{ sonarqube_private_network }}
+    # Aucune section `ports:` — seul Traefik publie un port (docs §4).
+    healthcheck:
+      # /api/system/status est servi par le Web server SANS authentification et
+      # renvoie {"status":"UP"} SEULEMENT quand la migration de schema est finie
+      # et que le Compute Engine est operationnel — c'est la seule sonde qui
+      # distingue « le port 9000 repond » de « SonarQube est utilisable ».
+      # `grep UP` est necessaire : pendant la phase STARTING/DB_MIGRATION_RUNNING,
+      # l'endpoint renvoie deja HTTP 200, donc `curl -f` seul passerait a tort.
+      # curl est present dans l'image (base Ubuntu 24.04, verifie).
+      test: ["CMD-SHELL", "curl -fsS http://localhost:{{ sonarqube_http_port }}/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      # Genereux : un PREMIER demarrage enchaine l'init d'Elasticsearch et la
+      # creation complete du schema en base — plusieurs minutes sur un disque
+      # ordinaire. Trop court, le conteneur serait declare unhealthy a tort.
+      start_period: 180s
+{% if sonarqube_traefik_enabled %}
+    # --- Routage Traefik par LABELS (meme idiome que jenkins) ---------------
+    # providers.docker est deja actif cote role traefik (exposedByDefault=false,
+    # network=backend-net) : le routage se declare ICI, par labels.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ sonarqube_backend_network }}"
+      - "traefik.http.routers.{{ sonarqube_traefik_router_name }}.rule=Host(`{{ sonarqube_traefik_host_rule }}`)"
+      - "traefik.http.routers.{{ sonarqube_traefik_router_name }}.entrypoints={{ sonarqube_traefik_entrypoint }}"
+      - "traefik.http.routers.{{ sonarqube_traefik_router_name }}.tls=true"
+      - "traefik.http.services.{{ sonarqube_traefik_router_name }}.loadbalancer.server.port={{ sonarqube_http_port }}"
+{% endif %}
+
+  # ==========================================================================
+  # La base DEDIEE a SonarQube.
+  #
+  # DELIBEREMENT DISTINCTE de la Postgres applicative du projet (role
+  # `postgres`, profils core/full) : conteneur different, volume different,
+  # reseau different. Cf. defaults/main.yml pour les trois raisons (cycles de
+  # vie decouples, volumetrie/mem_limit sans rapport, non-elargissement de la
+  # surface de data-net).
+  # ==========================================================================
+  {{ sonarqube_db_service_name }}:
+    image: "{{ sonarqube_db_image }}"
+    container_name: "{{ sonarqube_db_container_name }}"
+    restart: unless-stopped
+    mem_limit: "{{ sonarqube_db_mem_limit }}"
+    environment:
+      POSTGRES_DB: "{{ sonarqube_db_name }}"
+      POSTGRES_USER: "{{ sonarqube_db_user }}"
+      # Reference d'environnement, PAS la valeur (cf. en-tete du fichier).
+      POSTGRES_PASSWORD: "${{ '{' }}{{ sonarqube_db_password_env_var }}{{ '}' }}"
+    volumes:
+      - "{{ sonarqube_db_data_volume }}:/var/lib/postgresql/data"
+    networks:
+      # UN SEUL reseau, `internal: true` : cette base n'est joignable que par
+      # SonarQube et n'a AUCUNE route sortante. Ni backend-net, ni data-net.
+      - {{ sonarqube_private_network }}
+    # Aucune section `ports:` — une base n'est jamais exposee a l'hote
+    # (exigence sujet : « accessible only within the internal network »).
+    healthcheck:
+      # -U/-d explicites : sans eux, pg_isready sonde la base `postgres` avec
+      # l'utilisateur systeme `root` du conteneur, ce qui peut repondre « pret »
+      # alors que la base `{{ sonarqube_db_name }}` n'est pas encore creee.
+      test: ["CMD-SHELL", "pg_isready -U {{ sonarqube_db_user }} -d {{ sonarqube_db_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  {{ sonarqube_data_volume }}:
+  {{ sonarqube_extensions_volume }}:
+  {{ sonarqube_logs_volume }}:
+  {{ sonarqube_db_data_volume }}:
+
+networks:
+  {{ sonarqube_backend_network }}:
+    # Reseau PARTAGE, cree et possede par Ansible (role compose-assembly) ;
+    # declare externe ici (Compose ne le gere pas).
+    external: true
+  {{ sonarqube_private_network }}:
+    # DEVIATION ASSUMEE : ce 4e reseau est le SEUL du projet a etre possede par
+    # Compose et non par Ansible. C'est un detail d'implementation prive du
+    # couple sonarqube/sa base — aucun autre conteneur n'a de raison d'y entrer,
+    # et il doit mourir avec la stack CI plutot que lui survivre.
+    # `internal: true` => aucune route sortante : la base n'atteint pas
+    # l'exterieur, et l'exterieur ne l'atteint pas.
+    internal: true

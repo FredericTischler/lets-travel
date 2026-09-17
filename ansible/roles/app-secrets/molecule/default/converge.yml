@@ -1,0 +1,12 @@
+---
+# converge.yml : joue le role app-secrets AVEC SES DEFAUTS
+# (app_secrets_vault_read: false). Le chemin .env est redirige vers /tmp pour
+# qu'un eventuel ecart (role qui ecrirait malgre le flag) soit detectable sans
+# toucher /opt dans l'instance.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    app_secrets_runtime_env_path: /tmp/travel-plan/.env
+  roles:
+    - role: app-secrets

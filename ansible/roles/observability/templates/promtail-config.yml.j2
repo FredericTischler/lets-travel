@@ -1,0 +1,119 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Configuration de Promtail, rendue par le role Ansible `observability`.
+# Montee en LECTURE SEULE dans le conteneur.
+#
+# ROLE DE PROMTAIL : lire les logs des conteneurs applicatifs via l'API Docker
+# et les pousser vers Loki. Il ne modifie rien, il n'est jamais dans le chemin
+# critique d'une requete : si Promtail meurt, les services continuent, on perd
+# seulement la collecte.
+
+server:
+  http_listen_port: {{ observability_promtail_http_port }}
+  # gRPC desactive : personne n'appelle Promtail en gRPC.
+  grpc_listen_port: 0
+
+positions:
+  # Ou Promtail memorise jusqu'ou il a lu chaque flux, pour reprendre au bon
+  # endroit apres un redemarrage.
+  # DELIBEREMENT DANS /tmp, SANS VOLUME NOMME : perdre ce fichier ne coute
+  # qu'une relecture depuis le debut des logs encore presents, et Loki
+  # deduplique les entrees identiques (meme flux, meme horodatage, meme ligne).
+  # Un volume de plus pour cet etat-la serait du ceremonial.
+  filename: /tmp/positions.yaml
+
+clients:
+  # Nom de service Compose sur le reseau prive `internal`. Pas d'URL Traefik,
+  # pas d'IP : Loki n'est joignable QUE la.
+  - url: "http://{{ observability_loki_service_name }}:{{ observability_loki_http_port }}/loki/api/v1/push"
+
+scrape_configs:
+  - job_name: travel-plan-services
+
+    docker_sd_configs:
+      # Decouverte par le socket Docker, monte en LECTURE SEULE (meme idiome et
+      # meme arbitrage de securite que Traefik, cf. son fragment Compose : acces
+      # quasi-root ACCEPTE, MITIGE par :ro, seul minimum reellement utile).
+      #
+      # POURQUOI docker_sd ET PAS LA LECTURE DE /var/lib/docker/containers/*.log :
+      #   - Ces fichiers n'existent que sous le logging-driver `json-file`.
+      #     Passer l'hote a `local` ou `journald` casserait la collecte en
+      #     silence. L'API Docker, elle, sert les logs quel que soit le driver.
+      #   - Ils appartiennent a root et vivent hors de tout volume : les lire
+      #     imposerait un montage supplementaire de /var/lib/docker.
+      #   - Le nom de fichier est un ID de conteneur : il faudrait de toute
+      #     facon interroger l'API pour retrouver un nom lisible.
+      - host: unix:///var/run/docker.sock
+        # Un conteneur qui vient de demarrer (ou une replique recreee) est
+        # decouvert en moins de 15 s. Plus court ferait marteler l'API Docker
+        # pour rien.
+        refresh_interval: 15s
+
+    relabel_configs:
+      # --- 1. LISTE BLANCHE ---------------------------------------------------
+      # Promtail voit TOUS les conteneurs de l'hote. Cette machine en fait
+      # tourner d'autres, sans rapport avec ce projet. `action: keep` = on ne
+      # garde QUE ce qui correspond : un conteneur inconnu est exclu par defaut
+      # (a l'inverse d'un `drop`, ou tout nouveau venu entrerait tout seul).
+      # Le nom expose par l'API Docker commence par un `/` — d'ou la regex.
+      - source_labels: ['__meta_docker_container_name']
+        regex: '{{ observability_scrape_container_regex }}'
+        action: keep
+
+      # --- 2. LABELS D'INDEX --------------------------------------------------
+      # REGLE CARDINALITE, la plus facile a violer avec Loki : un label est une
+      # cle d'index. Chaque combinaison distincte cree un FLUX. Peu de valeurs
+      # possibles => label. Beaucoup => surtout pas.
+      # Ici : `container` (6 repliques), `service` (3), `job` (1). Borne et stable.
+      # Le requestId, lui, est unique PAR REQUETE : en faire un label ferait
+      # exploser le nombre de flux et mettrait Loki a genoux en quelques heures.
+      # Il reste donc DANS LA LIGNE, et se filtre a la lecture (`| json |
+      # requestId="..."`). Un peu plus lent a interroger, infiniment plus sain.
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+        replacement: '$1'
+
+      # Nom logique du service Compose (identity-service, payment-service...),
+      # commun aux repliques -1 et -2. C'est le label avec lequel on raisonne :
+      # « montre-moi payment-service », sans se soucier de quelle replique a
+      # servi la requete.
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+
+      - target_label: 'job'
+        replacement: 'travel-plan'
+
+    pipeline_stages:
+      # PAS d'etage `docker:` ni `cri:` ici, et c'est VOLONTAIRE : ces etages
+      # servent a decoder l'enveloppe des logs lus DANS DES FICHIERS. Avec
+      # docker_sd_configs, Promtail consomme le flux de l'API Docker, deja
+      # desenveloppe — l'entree est directement la ligne emise par le service.
+      # Ajouter `docker:` ferait echouer le parsing de chaque ligne.
+
+      # Extraction depuis la ligne JSON emise par logback-spring.xml
+      # (logstash-logback-encoder). On n'extrait QUE ce qui sert ensuite :
+      #   - `level`   -> promu en label (5 valeurs possibles : cardinal borne) ;
+      #   - `requestId` -> extrait pour etre disponible aux etages suivants, mais
+      #                    JAMAIS promu en label (cf. regle cardinalite ci-dessus).
+      - json:
+          expressions:
+            level: level
+            requestId: requestId
+
+      # Un service demarre avant que logback prenne la main (banniere Spring),
+      # ou un crash de la JVM, produisent des lignes NON-JSON. L'etage `json`
+      # echoue alors sur ces lignes, ce qui est attendu et sans gravite : la
+      # ligne est transmise telle quelle, sans champ extrait. Elle reste
+      # visible dans Loki — on ne PERD pas les logs qu'on ne sait pas parser.
+
+      - labels:
+          level:
+
+      # HORODATAGE : deliberement laisse a l'heure de RECEPTION par Promtail,
+      # sans etage `timestamp:`. Le decalage avec l'instant d'emission se compte
+      # en millisecondes sur un hote unique. En echange, on evite le mode
+      # d'echec le plus penible de Loki : une ligne dont l'horodatage parse est
+      # trop ancien est REJETEE (« entry too far behind ») et disparait
+      # silencieusement. Perdre des logs pour gagner quelques millisecondes de
+      # precision serait un mauvais echange.

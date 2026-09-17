@@ -1,0 +1,72 @@
+---
+# roles/traefik/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role traefik (la GATEWAY du projet).
+# Ce role rend UNIQUEMENT le conteneur gateway lui-meme :
+#   - cablage reseau edge-net (port 443 publie, SEUL point d'entree externe)
+#     + backend-net (vers les futurs services applicatifs, cf. docs §4/§6),
+#   - terminaison TLS au bord (certs auto-signes, cf. docs §5),
+#   - provider Docker (decouverte par labels, cf. docs §4),
+#   - config statique + dynamique (fileProvider TLS).
+#
+# HORS PERIMETRE (assume, pas un oubli) :
+#   - PAS de ForwardAuth : identity-service n'existe pas encore (§6).
+#   - PAS de regle de routage applicative : aucun service a router a ce stade.
+#   - Dashboard : si active, INTERNE seulement (jamais sur edge-net).
+# Aucun secret ici : les certs sont generes localement (openssl/mkcert), pas lus
+# depuis Vault. Traefik ne consomme aucun secret Vault a ce stade.
+
+# --- Image (tag epingle, jamais latest) -------------------------------------
+# Tag verifie via `docker manifest inspect traefik:v3.7.1` (EXISTS,
+# digest sha256:72ed9e98f2395fca5a9e1c67e131910c21ff06e694955da8e0eae0e5206fc27b).
+# v3.8.0 n'existe pas encore -> v3.7.1 = dernier patch stable de la ligne 3.7.
+# Sondage fiable : les tags bidons (v9.9.9) ressortent bien MISSING.
+traefik_image: "traefik:v3.7.1"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+traefik_service_name: "traefik"
+traefik_container_name: "travel-plan-traefik"
+
+# Garde-fou RAM 8 Go (cf. docs §4 : ~70 Mo / §6 : binaire Go ~50 Mo).
+# 128Mi = marge confortable sans gaspiller sur une machine a 8 Go.
+traefik_mem_limit: "128m"
+
+# --- Reseaux ----------------------------------------------------------------
+# edge-net : SEUL reseau ou un port hote est publie (443). Point d'entree public.
+# backend-net : vers les services applicatifs (routage futur). Traefik est le
+#   seul conteneur a chevaucher edge-net ET backend-net (cf. docs §4).
+traefik_edge_network: "edge-net"
+traefik_backend_network: "backend-net"
+
+# --- Port publie (le SEUL du projet, cf. docs §4/§6) ------------------------
+# HTTPS terminaison au bord. Publie sur edge-net uniquement.
+traefik_https_published_port: 443
+
+# --- Provider Docker (decouverte par labels, cf. docs §4) -------------------
+# exposedByDefault: false => un service n'est route que s'il porte
+# explicitement `traefik.enable=true`. Moindre exposition par defaut.
+traefik_docker_exposed_by_default: false
+
+# --- Dashboard --------------------------------------------------------------
+# OFF par defaut. Si un jour active, il reste INTERNE (backend-net), jamais
+# sur l'entrypoint public 443/edge-net (cf. scope : dashboard interne seulement).
+traefik_dashboard_enabled: false
+
+# --- Repertoires (surcharges en prod / molecule) ----------------------------
+# Repertoire ou Ansible rend le fragment compose (coherent avec les autres roles).
+traefik_compose_dir: "/opt/travel-plan/traefik"
+# Repertoire des configs Traefik (statique + dynamique) montees dans le conteneur.
+traefik_config_dir: "/opt/travel-plan/traefik/config"
+# Repertoire des certificats TLS (monte read-only dans le conteneur).
+traefik_certs_dir: "/opt/travel-plan/traefik/certs"
+
+# --- Certificat TLS auto-signe (terminaison au bord, cf. docs §5) -----------
+traefik_tls_cert_file: "{{ traefik_certs_dir }}/travel-plan.crt"
+traefik_tls_key_file: "{{ traefik_certs_dir }}/travel-plan.key"
+# CN / SAN du cert de dev. localhost par defaut (dev sur la machine hote).
+traefik_tls_common_name: "localhost"
+traefik_tls_san_dns:
+  - "localhost"
+  - "travel-plan.localhost"
+# Validite (jours) du cert auto-signe de dev.
+traefik_tls_days: 825

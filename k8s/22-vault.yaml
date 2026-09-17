@@ -1,0 +1,139 @@
+# HashiCorp Vault en DEV MODE : Service headless + StatefulSet.
+#
+# COHERENCE AVEC LE RESTE DU PROJET : le role Ansible `vault` lance lui aussi
+# `vault server -dev` (voir ansible/roles/vault/templates/compose.vault.yml.j2).
+# Dev mode = auto-unsealed, backend EN MEMOIRE, KV v2 deja monte sur secret/.
+#
+# PAS DE volumeClaimTemplates ICI, ET C'EST DELIBERE — ecart assume par rapport
+# aux deux StatefulSets precedents. Le dev mode de Vault ne persiste RIEN sur
+# disque : attacher un PVC donnerait un volume vide en permanence, c'est-a-dire
+# une fausse garantie de durabilite dans les manifestes. On garde le StatefulSet
+# pour l'identite reseau stable (`vault-0`) et la mise a jour sequentielle, mais
+# on ne pretend pas a une persistance qui n'existe pas. Un Vault de production
+# (backend Raft integre, unseal via KMS ou Shamir) est un tout autre objet,
+# explicitement hors perimetre de cette demonstration.
+#
+# CONSEQUENCE OPERATIONNELLE : a chaque redemarrage du Pod, Vault repart vide.
+# Les secrets qu'il contient doivent etre re-provisionnes. Dans ce namespace,
+# ce n'est PAS bloquant : les applications lisent leurs secrets depuis le Secret
+# Kubernetes `travel-plan-secrets`, pas depuis Vault (voir README, section
+# "Limites assumees" : le chainon Vault -> Secret Kubernetes n'est pas automatise).
+# Vault est ici deploye pour la COMPLETUDE de la demonstration, pas comme
+# dependance de demarrage des trois services.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: vault
+  ports:
+    - name: http
+      port: 8200
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  serviceName: vault
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      # Le Pod tourne DIRECTEMENT sous l'utilisateur `vault` de l'image
+      # (uid 100 / gid 1000, verifies dans hashicorp/vault:1.18.3). Ce n'est pas
+      # du durcissement gratuit : l'entrypoint de l'image, lorsqu'il demarre en
+      # root, appelle `su-exec` pour redescendre vers cet utilisateur, ce qui
+      # exige CAP_SETUID/CAP_SETGID. Avec le `drop: ALL` ci-dessous, su-exec
+      # echoue sur "su-exec: setgroups: Operation not permitted" et le conteneur
+      # sort (constate sur le cluster kind). Demarrer d'emblee sous le bon
+      # utilisateur supprime le besoin de su-exec ET celui des capabilities.
+      securityContext:
+        runAsUser: 100
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: vault
+          # Tag identique a ansible/roles/vault/defaults/main.yml.
+          image: "hashicorp/vault:1.18.3"
+          imagePullPolicy: IfNotPresent
+          # On force la commande plutot que de dependre du defaut implicite de
+          # l'image (meme raisonnement que le fragment Compose du role Ansible).
+          args: ["server", "-dev"]
+          ports:
+            - name: http
+              containerPort: 8200
+          env:
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: VAULT_DEV_ROOT_TOKEN_ID
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: "0.0.0.0:8200"
+            # Requis par le CLI `vault` embarque (sondes ci-dessous) : sans
+            # VAULT_ADDR il tente https://127.0.0.1:8200 et echoue sur un
+            # serveur dev qui, lui, ecoute en HTTP clair.
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            # SKIP_SETCAP est INDISPENSABLE ici, ce n'est pas une optimisation.
+            # L'entrypoint de l'image hashicorp/vault tente par defaut un
+            # `setcap cap_ipc_lock=+ep` sur le binaire vault, ce qui exige
+            # CAP_SETFCAP. Avec le securityContext restrictif ci-dessous, cet
+            # appel echoue et le conteneur sort immediatement sur :
+            #   "unable to set CAP_SETFCAP effective capability: Operation not permitted"
+            # (constate sur le cluster kind avant correction). Le dev mode
+            # desactive de toute facon mlock : la capability IPC_LOCK est inutile,
+            # on demande donc a l'entrypoint de ne pas essayer de l'installer,
+            # plutot que de reaccorder un privilege dont on n'a pas besoin.
+            - name: SKIP_SETCAP
+              value: "true"
+          securityContext:
+            capabilities:
+              # Principe du moindre privilege : couple a SKIP_SETCAP ci-dessus,
+              # ce conteneur n'a besoin d'AUCUNE capability. Sans SKIP_SETCAP,
+              # ce `drop: ALL` seul empeche le conteneur de demarrer.
+              drop: ["ALL"]
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            httpGet:
+              # /v1/sys/health repond 200 quand Vault est initialise ET
+              # unsealed. En dev mode c'est immediat ; sur un Vault scelle, ce
+              # meme endpoint renvoie 503 et le Pod resterait NotReady — ce qui
+              # est le comportement correct.
+              path: /v1/sys/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"

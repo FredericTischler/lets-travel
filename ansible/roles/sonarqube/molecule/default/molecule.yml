@@ -1,0 +1,66 @@
+---
+# Scenario Molecule du role `sonarqube`.
+# Driver docker (molecule-plugins) : conteneur frere sur le demon hote
+# (Linux natif, PAS de DinD). Meme pattern que postgres/neo4j/traefik/jenkins.
+#
+# PERIMETRE HONNETE DE CE SCENARIO (lire avant de crier au test faible) :
+# ce role fait deux choses — poser des sysctl sur l'HOTE, et rendre un fragment
+# Compose. Le scenario teste la SECONDE (converge + IDEMPOTENCE + assertions de
+# VALEURS sur l'artefact rendu), et laisse la premiere explicitement decouverte.
+#
+# POURQUOI LE SYSCTL N'EST PAS TESTE ICI : /proc/sys est monte en LECTURE SEULE
+# dans un conteneur non privilegie, et vm.max_map_count n'est de toute facon pas
+# namespace — l'ecrire depuis la plateforme Molecule modifierait le NOYAU DE
+# L'HOTE, ce qu'un test unitaire de role n'a aucun droit de faire. Le converge
+# met donc sonarqube_manage_sysctl=false. C'est une lacune ASSUMEE et NOMMEE,
+# pas un oubli : le chemin sysctl est prouve hors Molecule par la sequence
+# rejouable du README du role (`sysctl vm.max_map_count` avant/apres).
+#
+# Il NE demarre PAS de vrai SonarQube : un cycle qui attend l'init d'un
+# Elasticsearch, la creation complete d'un schema Postgres puis une analyse
+# Maven depasserait largement les 10 minutes et exigerait Maven Central a chaque
+# `molecule test` — inacceptable pour une boucle de test. Le VRAI demarrage et
+# l'analyse bout-en-bout sont prouves hors Molecule (README du role).
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-sonarqube-molecule
+    # Debian minimale : simple support de cycle (python3 installe via prepare).
+    # On ne teste que des fichiers rendus, l'image sonarqube n'a rien a faire ici.
+    image: debian:bookworm-slim
+    pre_build_image: true
+    override_command: true
+    command: ["sleep", "infinity"]
+    published_ports: []
+
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

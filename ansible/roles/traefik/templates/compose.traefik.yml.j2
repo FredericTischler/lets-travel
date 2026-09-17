@@ -1,0 +1,59 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `traefik` (la GATEWAY).
+# Orchestration assuree par docker-compose (profils core/full).
+#
+# SPECIFICITES vs les autres roles (postgres/vault/neo4j) :
+#   - SEUL service du projet a PUBLIER un port hote (443, cf. docs §4/§6).
+#   - SEUL service a chevaucher edge-net ET backend-net.
+#   - Monte /var/run/docker.sock pour la decouverte par labels (§4).
+#
+# DECISION SECURITE ACTEE (documenter, pas debattre) :
+#   Le provider Docker exige /var/run/docker.sock dans le conteneur. Risque
+#   quasi-root ACCEPTE (pas de docker-socket-proxy, juge trop lourd pour un
+#   projet solo 8 Go), MITIGE par le montage en LECTURE SEULE (:ro), minimum
+#   vital. Reevaluer si ce projet visait une vraie prod.
+services:
+  {{ traefik_service_name }}:
+    image: "{{ traefik_image }}"
+    container_name: "{{ traefik_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM 8 Go (cf. docs §4 ~70 Mo / §6 binaire Go ~50 Mo).
+    mem_limit: "{{ traefik_mem_limit }}"
+    # Config statique explicite (--configFile) : ne depend d'aucun defaut d'image.
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      # SEUL port publie du projet : HTTPS au bord (terminaison TLS, §5).
+      # Publie via edge-net (Traefik = unique point d'entree externe, §4).
+      - "{{ traefik_https_published_port }}:{{ traefik_https_published_port }}"
+    volumes:
+      # Socket Docker pour la decouverte par labels. LECTURE SEULE (:ro)
+      # OBLIGATOIRE : risque quasi-root accepte, mitige par read-only (voir en-tete).
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      # Config statique (entrypoints, providers) — montee en lecture seule.
+      - "{{ traefik_config_dir }}/traefik.yml:/etc/traefik/traefik.yml:ro"
+      # Config dynamique (TLS statique par fichier) — repertoire en lecture seule.
+      - "{{ traefik_config_dir }}/dynamic:/etc/traefik/dynamic:ro"
+      # Certificats TLS auto-signes — montes en lecture seule.
+      - "{{ traefik_certs_dir }}:/etc/traefik/certs:ro"
+    networks:
+      # edge-net : cote public (le port 443 y est publie vers l'hote).
+      - {{ traefik_edge_network }}
+      # backend-net : cote services applicatifs (routage/decouverte futurs).
+      - {{ traefik_backend_network }}
+    healthcheck:
+      # `traefik healthcheck` sonde le ping interne. Ne depend d'aucun router.
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  {{ traefik_edge_network }}:
+    # Reseaux cloisonnes, geres hors de ce role (docker-host/compose-assembly) ;
+    # declares externes ici.
+    external: true
+  {{ traefik_backend_network }}:
+    external: true

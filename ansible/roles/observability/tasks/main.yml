@@ -1,0 +1,92 @@
+---
+# roles/observability/tasks/main.yml
+#
+# Modele operatoire identique a postgres/vault/neo4j/traefik/jenkins/sonarqube :
+#   Ansible PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE.
+#   Aucun docker_container, aucun `docker compose up` declenche depuis ce role.
+#
+# CE QUE CE ROLE FAIT :
+#   1. Rend les trois configurations du stack (Loki, Promtail, datasource Grafana).
+#   2. Rend `compose.observability.yml`, le fragment de service Compose
+#      (profil `observability`) declarant Loki + Promtail + Grafana.
+#
+# CE QUE CE ROLE NE FAIT PAS (assume, pas un oubli) :
+#   - Il n'ecrit PAS dans /opt/travel-plan/.env : `app-secrets` en est le
+#     proprietaire UNIQUE. GRAFANA_ADMIN_PASSWORD s'y ajoute par la procedure
+#     documentee dans le README de ce role.
+#   - Il ne touche a AUCUN fichier .java : l'emission des logs JSON et la
+#     propagation de X-Request-Id sont du code applicatif, deja livre.
+#   - Il ne provisionne AUCUN dashboard Grafana (objet de confort), seulement la
+#     datasource (sans laquelle l'outil est inutilisable a froid).
+#
+# IDEMPOTENCE PAR CONSTRUCTION : uniquement file / template — tous natifs et
+# idempotents. AUCUN command:, AUCUN shell:. Un 2e `ansible-playbook` rapporte
+# changed=0. Aucun sysctl a poser ici, contrairement au role sonarqube : aucun
+# des trois composants n'embarque d'Elasticsearch ni ne mappe massivement.
+
+# ---------------------------------------------------------------------------
+# 1) Arborescence de rendu.
+#    Les trois repertoires sont crees en une seule tache (meme etat cible,
+#    memes permissions) ; `loop` sur `file` reste parfaitement idempotent.
+#    grafana-provisioning/datasources : arborescence IMPOSEE par Grafana, qui
+#    scanne provisioning/<datasources|dashboards|...>/ au demarrage.
+# ---------------------------------------------------------------------------
+- name: "Ensure observability directories exist"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ observability_compose_dir }}"
+    - "{{ observability_config_dir }}"
+    - "{{ observability_grafana_provisioning_dir }}/datasources"
+  tags: [compose_fragment, config]
+
+# ---------------------------------------------------------------------------
+# 2) Configuration de Loki.
+#    Montee en LECTURE SEULE dans le conteneur (cf. fragment Compose) : Loki n'a
+#    aucune raison d'ecrire sa propre configuration, et un binaire qui peut
+#    reecrire sa conf est un binaire dont on ne sait plus ce qu'il fait.
+# ---------------------------------------------------------------------------
+- name: "Render Loki configuration"
+  ansible.builtin.template:
+    src: "loki-config.yml.j2"
+    dest: "{{ observability_config_dir }}/loki-config.yml"
+    mode: "0644"
+  tags: [config]
+
+# ---------------------------------------------------------------------------
+# 3) Configuration de Promtail (decouverte Docker + pipeline de parsing).
+# ---------------------------------------------------------------------------
+- name: "Render Promtail configuration"
+  ansible.builtin.template:
+    src: "promtail-config.yml.j2"
+    dest: "{{ observability_config_dir }}/promtail-config.yml"
+    mode: "0644"
+  tags: [config]
+
+# ---------------------------------------------------------------------------
+# 4) Datasource Loki pre-provisionnee dans Grafana.
+#
+#    POURQUOI LA PROVISIONNER PLUTOT QUE LA CLIQUER : une datasource creee a la
+#    main vit dans la base interne de Grafana. Elle survit tant que le volume
+#    survit — et disparait silencieusement le jour ou on le recree. Provisionnee
+#    par fichier, elle est RECONSTRUITE a chaque demarrage. C'est aussi la seule
+#    forme qui rentre dans le depot et se relit.
+# ---------------------------------------------------------------------------
+- name: "Render Grafana Loki datasource provisioning file"
+  ansible.builtin.template:
+    src: "grafana-datasource-loki.yml.j2"
+    dest: "{{ observability_grafana_provisioning_dir }}/datasources/loki.yml"
+    mode: "0644"
+  tags: [config]
+
+# ---------------------------------------------------------------------------
+# 5) Fragment de service Compose (templating pur).
+# ---------------------------------------------------------------------------
+- name: "Render observability compose service fragment (Loki + Promtail + Grafana)"
+  ansible.builtin.template:
+    src: "compose.observability.yml.j2"
+    dest: "{{ observability_compose_dir }}/compose.observability.yml"
+    mode: "0644"
+  tags: [compose_fragment]

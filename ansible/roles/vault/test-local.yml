@@ -1,0 +1,21 @@
+---
+# Playbook de test/application LOCAL du rôle vault.
+# Self-contained : charge le rôle par son chemin absolu (= playbook_dir, puisque
+# ce fichier est à la racine du rôle). Même modèle que
+# ansible/roles/jenkins/test-local.yml et ansible/roles/postgres (via ce même
+# gabarit, appliqué ici pour la première fois en réel).
+#
+# Provisionner les secrets/policies réels (tag `provision`) :
+#   ansible-playbook ansible/roles/vault/test-local.yml --tags provision \
+#     -e vault_addr=http://<ip-conteneur-vault>:8200
+#
+# Pas de `become` : le tag `provision` ne touche que Vault via l'API HTTP, pas
+# le filesystem local. Le tag `compose_fragment` (rendu du fragment Compose)
+# écrirait sous /opt/travel-plan/vault (root:root) et exigerait become — hors
+# scope de cet appel puisque le fragment est déjà rendu et le conteneur tourne.
+- name: Provisionner Vault (secrets + policies, local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: "{{ playbook_dir }}"

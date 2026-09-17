@@ -1,0 +1,136 @@
+# Fragment de service Compose pour payment-service.
+#
+# CONTRAIREMENT aux fragments postgres/vault/neo4j (rendus par un role Ansible
+# sous /opt/travel-plan), CELUI-CI est STATIQUE et vit dans le depot, co-localise
+# avec le Dockerfile + src/ : payment-service BUILD depuis les sources, son
+# contexte de build doit donc rester a cote. Le docker-compose.yml top-level
+# l'inclut par CHEMIN ABSOLU (voir role compose-assembly).
+#
+# CABLAGE RESEAU (coherent avec le reste du projet, docs §4) :
+#   - data-net    : pour joindre PostgreSQL (nom de service `postgres`).
+#   - backend-net : pour etre DECOUVERT et route par Traefik (labels ci-dessous).
+#   AUCUN port publie vers l'hote : seul Traefik expose (443, terminaison TLS).
+#
+# TERMINAISON TLS AU BORD : Traefik termine le TLS ; ce backend reste en HTTP
+# simple sur backend-net (reseau Docker de confiance), coherent avec les autres.
+services:
+  payment-service:
+    build:
+      # Contexte = repertoire de CE fragment (le depot services/payment-service/),
+      # ou se trouvent Dockerfile + mvnw + pom.xml + src/. Resolu par Compose
+      # relativement au fichier inclus, PAS au docker-compose.yml top-level.
+      context: .
+      dockerfile: Dockerfile
+    image: "travel-plan/payment-service:0.1.0"
+    # PAS de `container_name` : DELIBERE, c'est le prerequis du multi-replica.
+    # Un container_name fixe est unique par daemon Docker => il rend
+    # STRUCTURELLEMENT impossible de faire tourner 2 instances du meme service
+    # (Docker refuse le doublon), et Compose rejette d'ailleurs explicitement la
+    # combinaison container_name + replicas > 1. On laisse donc Compose generer
+    # les noms (`travel-plan-payment-service-1`, `-2`, ...). Sujet §1 :
+    # « multiple replicas of each microservice for load balancing and failover ».
+    #
+    # A noter : identity-service joint ce service via PAYMENT_SERVICE_URL =
+    # http://payment-service:8080, soit le NOM DE SERVICE Compose — resolu par le
+    # DNS interne Docker vers toutes les replicas, en round-robin. Rien a changer
+    # cote appelant quand on scale ici.
+    restart: unless-stopped
+    # --- Replicas / load-balancing (sujet §1) -------------------------------
+    # Compose V2 honore `deploy.replicas` pour un simple `docker compose up`
+    # HORS Swarm (verifie sur la version embarquee de ce projet, cf. README).
+    # PAYMENT_REPLICAS=1 permet de redescendre a 1 sur un poste contraint en RAM
+    # sans editer ce fragment ; `--scale payment-service=N` reste prioritaire.
+    deploy:
+      replicas: ${PAYMENT_REPLICAS:-2}
+    # Garde-fou RAM 8 Go (docs §4). Spring Boot + Hikari(5) + JVM : 512m confortable
+    # (l'ENTRYPOINT fixe MaxRAMPercentage=75 => ~384m de heap max).
+    mem_limit: "512m"
+    environment:
+      # --- Connexion PostgreSQL -------------------------------------------
+      # DB_HOST = NOM DU SERVICE Docker `postgres` (resolution DNS interne du
+      # reseau data-net), JAMAIS localhost : localhost designerait le conteneur
+      # payment lui-meme. Le service postgres n'expose aucun port a l'hote.
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      # Base + compte a droits limites provisionnes par le role Ansible postgres
+      # (postgres_databases / postgres_app_users : payment_db / payment_user).
+      DB_NAME: "payment_db"
+      DB_USERNAME: "payment_user"
+      # --- Mot de passe DB : FAIL-FAST, aucun fallback ---------------------
+      # PAYMENT_DB_PASSWORD est alimente par /opt/travel-plan/.env, rendu depuis
+      # Vault (secret/payment/db, cle `password`) par le role Ansible app-secrets.
+      # `:?` et PAS `:-changeme_payment_user` : un fallback fournirait TOUJOURS une
+      # valeur non-vide au conteneur, ce qui neutralise le fail-fast de
+      # application.yml et cree un mismatch SILENCIEUX si le compte payment_user a
+      # ete provisionne avec un autre secret (echec d'auth au runtime, pas au
+      # parsing). Meme idiome que NEO4J_PASSWORD cote travel-service.
+      DB_PASSWORD: "${PAYMENT_DB_PASSWORD:?set via env/Vault}"
+      # --- Cle de signature JWT (PARTAGEE avec identity-service) -----------
+      # CONTRAIREMENT a DB_PASSWORD ci-dessus (propre a ce service), cette
+      # valeur DOIT etre IDENTIQUE a JWT_SIGNING_KEY dans
+      # identity-service/docker-compose.identity.yml : payment-service ne fait
+      # que VERIFIER des jetons HS256 emis par identity-service, jamais n'en
+      # emet lui-meme, et HS256 exige le meme secret cote emetteur et cote
+      # verificateur (>= 32 octets, exige par jjwt/HS256, RFC 7518 §3.2).
+      # Source unique : secret/shared/jwt (cle `signing_key`) -> .env rendu par
+      # le role app-secrets. `:?` garantit que les trois services echouent
+      # IDENTIQUEMENT au parsing si la cle manque, plutot que de diverger.
+      JWT_SIGNING_KEY: "${JWT_SIGNING_KEY:?set via env/Vault}"
+      # --- Credentials Stripe/PayPal (sandbox), FAIL-FAST, aucun fallback --
+      # Alimentees par /opt/travel-plan/.env, rendu depuis Vault (secret/payment/stripe,
+      # secret/payment/paypal) par le role Ansible app-secrets. Meme idiome que
+      # PAYMENT_DB_PASSWORD ci-dessus : un fallback masquerait un Vault non
+      # provisionne au runtime au lieu d'echouer au parsing Compose.
+      STRIPE_API_KEY: "${STRIPE_API_KEY:?set via env/Vault}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:?set via env/Vault}"
+      PAYPAL_CLIENT_ID: "${PAYPAL_CLIENT_ID:?set via env/Vault}"
+      PAYPAL_CLIENT_SECRET: "${PAYPAL_CLIENT_SECRET:?set via env/Vault}"
+    networks:
+      - data-net
+      - backend-net
+    depends_on:
+      postgres:
+        # Attend que PostgreSQL soit HEALTHY (pg_isready) avant de demarrer :
+        # sinon Flyway/Hikari echouent au boot (fail-fast) sur une DB pas prete.
+        condition: service_healthy
+    # Healthcheck applicatif : /actuator/health (expose par application.yml).
+    # curl est present dans l'image runtime (eclipse-temurin:*-jre-noble).
+    # Actuator ne repond UP qu'une fois la DB joignable => `--wait` attend le
+    # service REELLEMENT pret (pas juste le conteneur "running").
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    # --- Routage Traefik par LABELS (idiome provider docker Traefik 3.x) -----
+    # providers.docker est DEJA active cote role traefik (traefik.static.yml.j2,
+    # exposedByDefault=false, network=backend-net) : le routage se declare donc
+    # ICI, par labels sur le service, PAS dans une config statique centralisee.
+    labels:
+      # Requis : exposedByDefault=false => rien n'est route sans opt-in explicite.
+      - "traefik.enable=true"
+      # Conteneur multi-homed (data-net + backend-net) : on FORCE le reseau que
+      # Traefik utilise pour joindre le service (belt-and-suspenders vs la valeur
+      # globale providers.docker.network=backend-net).
+      - "traefik.docker.network=backend-net"
+      # Router : Host simple. `payment.localhost` -> testable via l'en-tete Host
+      # sans dependance DNS (voir preuve curl). Le cert auto-signe par defaut de
+      # Traefik (tls.stores.default) couvre tout SNI, -k suffit cote client.
+      # payment-service sert /payments a sa racine : pas de StripPrefix, meme
+      # raisonnement qu'identity.localhost.
+      - "traefik.http.routers.payment.rule=Host(`payment.localhost`)"
+      # Entrypoint HTTPS `websecure` (:443) = seul point d'entree public du projet.
+      - "traefik.http.routers.payment.entrypoints=websecure"
+      # TLS termine au bord par Traefik ; backend en HTTP simple derriere.
+      - "traefik.http.routers.payment.tls=true"
+      # Port INTERNE du conteneur (EXPOSE 8080). Traefik y route via backend-net.
+      - "traefik.http.services.payment.loadbalancer.server.port=8080"
+
+networks:
+  # Reseaux cloisonnes crees et possedes par Ansible (role compose-assembly,
+  # community.docker.docker_network) ; declares externes ici (Compose ne les gere pas).
+  data-net:
+    external: true
+  backend-net:
+    external: true

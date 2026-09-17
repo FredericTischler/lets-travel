@@ -1,0 +1,24 @@
+---
+# Converge : joue le role sonarqube dans le conteneur Debian (docker connection).
+# Pattern identique a postgres/neo4j/traefik/jenkins : le role rend ses artefacts
+# dans /tmp de la plateforme Molecule, pas sur le controleur.
+#
+# SEULES DEUX VARIABLES SONT SURCHARGEES, et pour des raisons opposees :
+#   - sonarqube_compose_dir : pour ne pas ecrire dans le /opt/travel-plan REEL
+#     de la machine qui joue le test.
+#   - sonarqube_manage_sysctl=false : /proc/sys est en LECTURE SEULE dans un
+#     conteneur non privilegie, et vm.max_map_count n'est pas namespace — le
+#     poser depuis ici modifierait le noyau de l'HOTE, ce qu'un test de role n'a
+#     aucun droit de faire. Lacune assumee et nommee (cf. molecule.yml).
+#
+# Tout le reste (image, heaps, mem_limit, reseaux, volumes, labels Traefik) est
+# converge sur les VRAIES valeurs des defaults, pour que verify.yml prouve le
+# perimetre effectivement livre — pas un perimetre de test artificiel.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    sonarqube_compose_dir: /tmp/travel-plan-sonarqube
+    sonarqube_manage_sysctl: false
+  roles:
+    - role: sonarqube

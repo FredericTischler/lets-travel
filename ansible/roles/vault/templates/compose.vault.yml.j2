@@ -1,0 +1,46 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `vault`.
+# Orchestration assuree par docker-compose (profils core/full/ci).
+#
+# RECONCILIATION DEV MODE <-> docs/architecture-decisions.md §5 :
+# Vault tourne en DEV MODE (auto-unsealed, en memoire, NON persistant).
+#   - Root token FIXE via VAULT_DEV_ROOT_TOKEN_ID, source d'une VARIABLE
+#     (prod : chiffre ansible-vault). JAMAIS en clair commite.
+#   - Pas de logique d'unseal/persistance : dev mode est deja unsealed.
+#   - KV v2 deja monte sur secret/ par le dev mode ; le role le VERIFIE.
+# Service INTERNE : aucun port publie vers l'hote, reseau {{ vault_network }}
+# (seul Traefik expose, cf. docs §4).
+services:
+  {{ vault_service_name }}:
+    image: "{{ vault_image }}"
+    container_name: "{{ vault_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM 8 Go (cf. docs/architecture-decisions.md §4).
+    mem_limit: "{{ vault_mem_limit }}"
+    # Dev mode lance `vault server -dev` (entrypoint de l'image). On le force
+    # explicitement pour ne dependre d'aucun defaut implicite d'image.
+    command: ["server", "-dev"]
+    environment:
+      # Root token de dev FIXE depuis une variable d'env de l'hote / Vault prod.
+      # JAMAIS de valeur en clair ici : reference une variable d'environnement.
+      VAULT_DEV_ROOT_TOKEN_ID: "${VAULT_DEV_ROOT_TOKEN_ID:?set via env/ansible-vault}"
+      VAULT_DEV_LISTEN_ADDRESS: "{{ vault_dev_listen_address }}"
+      # VAULT_ADDR requis pour que `vault status` (healthcheck) trouve le serveur
+      # en HTTP (sans cela, le client vault tente https://127.0.0.1:8200 -> echec).
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    # Dev mode desactive mlock -> IPC_LOCK inutile pour demarrer.
+    networks:
+      - {{ vault_network }}
+    # Aucune publication de port : Vault n'est jamais expose a l'hote.
+    healthcheck:
+      # Dev mode = auto-unsealed -> /v1/sys/health repond 200 quand pret.
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  {{ vault_network }}:
+    # Reseau cloisonne, gere par le role docker-host ; declare externe ici.
+    external: true

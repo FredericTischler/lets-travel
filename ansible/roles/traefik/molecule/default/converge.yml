@@ -1,0 +1,13 @@
+---
+# Converge : joue le role traefik dans le conteneur Debian (docker connection).
+# Pattern identique a postgres/neo4j : le role rend certs + configs + fragment
+# dans /tmp de la plateforme Molecule (debian:bookworm-slim), pas sur le controleur.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    traefik_compose_dir: /tmp/travel-plan-traefik
+    traefik_config_dir: /tmp/travel-plan-traefik/config
+    traefik_certs_dir: /tmp/travel-plan-traefik/certs
+  roles:
+    - role: traefik

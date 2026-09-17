@@ -1,0 +1,6 @@
+---
+# ansible.posix fournit le module `sysctl` utilise par tasks/main.yml.
+# Version BORNEE (jamais `latest`) : meme discipline que les tags d'images.
+collections:
+  - name: ansible.posix
+    version: ">=2.2.0,<3.0.0"

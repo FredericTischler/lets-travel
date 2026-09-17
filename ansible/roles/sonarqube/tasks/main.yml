@@ -1,0 +1,107 @@
+---
+# roles/sonarqube/tasks/main.yml
+#
+# Modele operatoire identique a postgres/vault/neo4j/traefik/jenkins :
+#   Ansible PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE.
+#   Aucun docker_container, aucun `docker compose up` declenche depuis ce role.
+#
+# CE QUE CE ROLE FAIT :
+#   1. Pose sur l'HOTE les sysctl exiges par l'Elasticsearch embarque de
+#      SonarQube (vm.max_map_count / fs.file-max). Ce sont des reglages NOYAU
+#      non namespaces : impossibles a poser depuis Compose, donc du provisioning.
+#   2. Rend `compose.sonarqube.yml` : le fragment de service Compose (profil
+#      `ci`) declarant SonarQube + SA base Postgres dediee.
+#
+# CE QUE CE ROLE NE FAIT PAS (assume, pas un oubli) :
+#   - Il ne cree PAS de token d'analyse et ne configure PAS SonarQube via son
+#     API : toute ecriture dans SonarQube passe par son API AUTHENTIFIEE, donc
+#     par un credential. Vault n'est pas cable a la chaine CI dans cet increment
+#     (decision deja actee par le role `jenkins`) : par contrat, on ne pose ni
+#     credential en clair ni placeholder « temporaire ». La procedure manuelle
+#     est documentee dans le README du role.
+#   - Il n'ecrit PAS dans /opt/travel-plan/.env : `app-secrets` en est le
+#     proprietaire UNIQUE (deux roles templatant le meme fichier s'ecraseraient
+#     mutuellement a chaque run => idempotence violee).
+#
+# IDEMPOTENCE PAR CONSTRUCTION : uniquement assert / file / template /
+# ansible.posix.sysctl — tous natifs et idempotents. AUCUN command:, AUCUN
+# shell:. Un 2e `ansible-playbook` rapporte changed=0.
+
+# ---------------------------------------------------------------------------
+# 1) Garde fail-fast sur la coherence des heaps vs mem_limit.
+#    Une somme de heaps superieure a la cgroup ne se voit PAS au provisioning :
+#    elle se manifeste bien plus tard, par un Compute Engine OOM-kille au milieu
+#    du premier rapport d'analyse — symptome opaque (« Background task failed »
+#    dans l'UI, rien dans les logs du scanner). Mieux vaut echouer ici.
+#    `assert` est un module de verification : jamais `changed`.
+# ---------------------------------------------------------------------------
+- name: "Assert the three JVM heaps fit inside the container memory limit"
+  ansible.builtin.assert:
+    that:
+      - (sonarqube_web_max_heap | regex_replace('[^0-9]', '') | int)
+        + (sonarqube_ce_max_heap | regex_replace('[^0-9]', '') | int)
+        + (sonarqube_search_max_heap | regex_replace('[^0-9]', '') | int)
+        < (sonarqube_mem_limit | regex_replace('[^0-9]', '') | int)
+    fail_msg: >-
+      La somme des heaps (web {{ sonarqube_web_max_heap }} + CE
+      {{ sonarqube_ce_max_heap }} + search {{ sonarqube_search_max_heap }})
+      atteint ou depasse sonarqube_mem_limit ({{ sonarqube_mem_limit }}).
+      SonarQube Community fait tourner ces TROIS JVM dans le MEME conteneur,
+      donc dans la MEME cgroup ; il faut en plus loger le non-heap de chacune
+      (metaspace, code cache, stacks, buffers directs d'Elasticsearch :
+      150-250 Mo par JVM). Augmenter sonarqube_mem_limit ou baisser les heaps.
+    success_msg: >-
+      Heaps {{ sonarqube_web_max_heap }}/{{ sonarqube_ce_max_heap }}/{{ sonarqube_search_max_heap }}
+      compatibles avec mem_limit {{ sonarqube_mem_limit }}.
+  tags: [compose_fragment]
+
+# ---------------------------------------------------------------------------
+# 2) Sysctl de l'HOTE exiges par l'Elasticsearch embarque.
+#
+#    vm.max_map_count : ES mappe massivement ses segments d'index en memoire.
+#    Sous le seuil, il refuse de demarrer et SonarQube redemarre en boucle.
+#    Ce sysctl n'est PAS namespace : le poser via `sysctls:` dans Compose
+#    echouerait (« sysctl is not in a separate kernel namespace »). Il est donc
+#    pose sur l'hote, ici, et PERSISTE (sysctl_file) pour survivre au reboot.
+#
+#    IDEMPOTENCE : ansible.posix.sysctl compare la valeur courante ET le contenu
+#    du fichier ; si les deux sont deja a la bonne valeur, il ne rapporte rien.
+#    Un 2e run => changed=0.
+#
+#    `when` : desactivable la ou /proc/sys est en lecture seule (plateforme
+#    Molecule non privilegiee) ou la ou l'hote est gere autrement.
+# ---------------------------------------------------------------------------
+- name: "Ensure kernel settings required by the embedded Elasticsearch"
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value | string }}"
+    sysctl_file: "{{ sonarqube_sysctl_file }}"
+    sysctl_set: true
+    reload: true
+    state: present
+  loop:
+    - name: "vm.max_map_count"
+      value: "{{ sonarqube_vm_max_map_count }}"
+    - name: "fs.file-max"
+      value: "{{ sonarqube_fs_file_max }}"
+  loop_control:
+    label: "{{ item.name }}={{ item.value }}"
+  when: sonarqube_manage_sysctl | bool
+  tags: [sysctl]
+
+# ---------------------------------------------------------------------------
+# 3) Repertoire de rendu + fragment de service Compose (templating pur).
+# ---------------------------------------------------------------------------
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ sonarqube_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render SonarQube compose service fragment (server + dedicated database)"
+  ansible.builtin.template:
+    src: "compose.sonarqube.yml.j2"
+    dest: "{{ sonarqube_compose_dir }}/compose.sonarqube.yml"
+    mode: "0644"
+  tags: [compose_fragment]

@@ -1,0 +1,25 @@
+---
+# Converge : joue le role observability dans le conteneur Debian (docker connection).
+# Pattern identique a postgres/neo4j/traefik/jenkins/sonarqube : le role rend ses
+# artefacts dans /tmp de la plateforme Molecule, pas sur le controleur.
+#
+# TROIS VARIABLES SURCHARGEES, ET UNE SEULE RAISON : ne pas ecrire dans le
+# /opt/travel-plan REEL de la machine qui joue le test. Les trois chemins sont
+# redirigees de facon COHERENTE entre elles (config_dir et provisioning_dir sous
+# compose_dir), parce que le fragment Compose rend ces chemins en tant que
+# sources de bind-mounts : les desynchroniser produirait un fragment qui monte
+# des chemins inexistants, et verify.yml le verrait passer.
+#
+# Tout le reste (images, mem_limit, reseaux, volumes, labels Traefik, regex de
+# collecte, retention) est converge sur les VRAIES valeurs des defaults, pour
+# que verify.yml prouve le perimetre effectivement livre — pas un perimetre de
+# test artificiel.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    observability_compose_dir: /tmp/travel-plan-observability
+    observability_config_dir: /tmp/travel-plan-observability/config
+    observability_grafana_provisioning_dir: /tmp/travel-plan-observability/config/grafana-provisioning
+  roles:
+    - role: observability

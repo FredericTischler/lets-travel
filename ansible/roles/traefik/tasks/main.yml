@@ -1,0 +1,107 @@
+---
+# roles/traefik/tasks/main.yml
+#
+# La GATEWAY du projet. Modele operatoire identique aux autres roles : Ansible
+# PROVISIONNE (repertoires, certs, configs) et REND le fragment compose ;
+# docker-compose ORCHESTRE. Aucun docker_container en prod.
+#
+# Ce role couvre UNIQUEMENT le conteneur gateway :
+#   - cablage reseau edge-net (443 publie) + backend-net (§4),
+#   - terminaison TLS au bord via cert auto-signe (§5),
+#   - provider Docker (decouverte par labels, §4),
+#   - socket Docker monte READ-ONLY (:ro) dans le fragment (decision securite actee).
+#
+# HORS PERIMETRE (assume) : ForwardAuth (identity-service absent) et regles de
+# routage applicatives (aucun service a router). Cf. defaults + templates.
+#
+# IDEMPOTENCE par construction :
+#   - file/template sont idempotents nativement.
+#   - la generation de cert passe par `command:` mais avec `creates:` => elle ne
+#     s'execute JAMAIS si le cert existe deja. Un 2e converge => changed=0.
+
+# --------------------------------------------------------------------------
+# 1) Repertoires (config statique/dynamique + certs)
+# --------------------------------------------------------------------------
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ traefik_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Ensure Traefik config directories exist (static + dynamic)"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ traefik_config_dir }}"
+    - "{{ traefik_config_dir }}/dynamic"
+  tags: [config]
+
+- name: "Ensure TLS certs directory exists"
+  ansible.builtin.file:
+    path: "{{ traefik_certs_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [tls]
+
+# --------------------------------------------------------------------------
+# 2) Certificat TLS auto-signe (terminaison au bord, §5)
+#    Aucun module natif Ansible ne couvre proprement le cas "mkcert si dispo,
+#    sinon openssl" sans dependance collection lourde (community.crypto exige
+#    cryptography sur le controleur). On delegue a un script porteur de la
+#    logique de fallback, rendu IDEMPOTENT par `creates:` sur le .crt : la tache
+#    ne s'execute pas si le cert existe deja => 2e converge = changed=0.
+# --------------------------------------------------------------------------
+- name: "Install self-signed cert generator helper"
+  ansible.builtin.copy:
+    src: "gen-selfsigned-cert.sh"
+    dest: "{{ traefik_compose_dir }}/gen-selfsigned-cert.sh"
+    mode: "0755"
+  tags: [tls]
+
+- name: "Generate self-signed TLS cert (mkcert if present, else openssl)"
+  ansible.builtin.command:
+    argv:
+      - "{{ traefik_compose_dir }}/gen-selfsigned-cert.sh"
+      - "{{ traefik_tls_cert_file }}"
+      - "{{ traefik_tls_key_file }}"
+      - "{{ traefik_tls_common_name }}"
+      - "{{ traefik_tls_days | string }}"
+      - "{{ traefik_tls_san_dns | join(',') }}"
+    creates: "{{ traefik_tls_cert_file }}"
+  tags: [tls]
+
+- name: "Restrict TLS private key permissions"
+  ansible.builtin.file:
+    path: "{{ traefik_tls_key_file }}"
+    mode: "0600"
+  tags: [tls]
+
+# --------------------------------------------------------------------------
+# 3) Configs Traefik (statique + dynamique TLS) — templating pur, idempotent
+# --------------------------------------------------------------------------
+- name: "Render Traefik static config (entrypoints, providers, ping)"
+  ansible.builtin.template:
+    src: "traefik.static.yml.j2"
+    dest: "{{ traefik_config_dir }}/traefik.yml"
+    mode: "0644"
+  tags: [config]
+
+- name: "Render Traefik dynamic TLS config (fileProvider, default certificate)"
+  ansible.builtin.template:
+    src: "traefik.dynamic.tls.yml.j2"
+    dest: "{{ traefik_config_dir }}/dynamic/tls.yml"
+    mode: "0644"
+  tags: [config]
+
+# --------------------------------------------------------------------------
+# 4) Fragment de service Compose (templating pur, inoffensif)
+# --------------------------------------------------------------------------
+- name: "Render Traefik compose service fragment"
+  ansible.builtin.template:
+    src: "compose.traefik.yml.j2"
+    dest: "{{ traefik_compose_dir }}/compose.traefik.yml"
+    mode: "0644"
+  tags: [compose_fragment]

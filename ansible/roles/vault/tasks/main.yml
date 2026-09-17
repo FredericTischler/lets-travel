@@ -1,0 +1,132 @@
+---
+# roles/vault/tasks/main.yml
+#
+# Modele operatoire (identique a postgres) : Ansible PROVISIONNE et REND le
+# fragment compose ; docker-compose ORCHESTRE. Ce role rend un fragment de
+# service Compose (Vault dev mode), puis provisionne Vault via les modules
+# community.hashi_vault (idempotents).
+#
+# RECONCILIATION DEV MODE <-> docs/architecture-decisions.md §5 :
+#   Vault dev mode = auto-unsealed, en memoire, non persistant. Donc :
+#   - AUCUNE logique d'unseal/persistance (deja unsealed).
+#   - KV v2 deja monte sur secret/ -> on VERIFIE (sys/mounts), pas d'enable
+#     aveugle (activer un moteur deja monte echoue).
+#   - Root token dev FIXE via VAULT_DEV_ROOT_TOKEN_ID, source d'une VARIABLE
+#     (prod : ansible-vault ; Molecule : fixture) ; jamais commite en clair.
+
+# --------------------------------------------------------------------------
+# 1) Rendu du fragment de service Compose (templating pur, inoffensif)
+# --------------------------------------------------------------------------
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ vault_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render Vault compose service fragment"
+  ansible.builtin.template:
+    src: "compose.vault.yml.j2"
+    dest: "{{ vault_compose_dir }}/compose.vault.yml"
+    mode: "0644"
+  tags: [compose_fragment]
+
+# --------------------------------------------------------------------------
+# 2) Moteur KV v2 sur secret/ : VERIFIER, ne pas enable aveugle.
+#    En dev mode `secret/` est deja monte en KV v2 -> ok/skip, jamais changed.
+# --------------------------------------------------------------------------
+- name: "Read current secrets engines (sys/mounts)"
+  tags: [provision]
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    path: "sys/mounts"
+  register: vault_mounts
+  no_log: true
+
+- name: "Assert KV v2 is mounted on secret/ (dev mode mounts it; we verify)"
+  tags: [provision]
+  ansible.builtin.assert:
+    that:
+      - "(vault_kv_mount ~ '/') in vault_mounts.data.data"
+      - "vault_mounts.data.data[vault_kv_mount ~ '/'].type == 'kv'"
+      - "(vault_mounts.data.data[vault_kv_mount ~ '/'].options.version | string) == '2'"
+    fail_msg: >-
+      Le moteur KV v2 n'est pas monte sur '{{ vault_kv_mount }}/'. En dev mode
+      il devrait l'etre automatiquement ; ne pas enable aveugle (echouerait).
+    success_msg: "Moteur KV v2 present sur '{{ vault_kv_mount }}/' (verifie)."
+
+# --------------------------------------------------------------------------
+# 3) Secrets runtime (KV v2) en READ-BEFORE-WRITE idempotent.
+#    vault_kv2_write versionne a CHAQUE ecriture si naif -> read_before_write
+#    lit d'abord et n'ecrit QUE si data differe. 2e run => changed=0.
+#    Valeurs jamais en dur : toutes via vault_secrets (defaults).
+# --------------------------------------------------------------------------
+- name: "Write runtime secrets (KV v2, read-before-write => idempotent)"
+  tags: [provision]
+  community.hashi_vault.vault_kv2_write:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    engine_mount_point: "{{ vault_kv_mount }}"
+    path: "{{ item.path }}"
+    data: "{{ item.data }}"
+    read_before_write: true
+  loop: "{{ vault_secrets }}"
+  loop_control:
+    label: "{{ vault_kv_mount }}/{{ item.path }}"
+  no_log: true
+
+# --------------------------------------------------------------------------
+# 4) Policies PAR SERVICE (moindre privilege, cf. docs §5).
+#    vault_write sur sys/policies/acl/<nom> est un POST => changed a chaque
+#    run si naif. On LIT la policy existante, on NORMALISE (Vault canonicalise
+#    le HCL au retour : on strip/normalise les espaces des deux cotes), et on
+#    n'ecrit QUE si differe. 2e run => changed=0.
+# --------------------------------------------------------------------------
+- name: "Render desired policy HCL for each service"
+  tags: [provision]
+  ansible.builtin.set_fact:
+    vault_desired_policies: >-
+      {{ vault_desired_policies | default([]) + [{
+        'name': item.name,
+        'hcl': lookup('ansible.builtin.template', 'policy.hcl.j2')
+      }] }}
+  loop: "{{ vault_policies }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Read existing policies (tolerate absence)"
+  tags: [provision]
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    path: "sys/policies/acl/{{ item.name }}"
+  loop: "{{ vault_desired_policies }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: vault_existing_policies
+  failed_when: false
+  no_log: true
+
+# Comparaison NORMALISEE : on retire tous les blancs (espaces, sauts de ligne)
+# des deux cotes pour neutraliser la canonicalisation HCL de Vault.
+- name: "Write policy only when normalized HCL differs (idempotent)"
+  tags: [provision]
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    path: "sys/policies/acl/{{ item.0.name }}"
+    data:
+      policy: "{{ item.0.hcl }}"
+  loop: "{{ vault_desired_policies | zip(vault_existing_policies.results) | list }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+  when: >-
+    (item.1.data.data.policy | default('') | regex_replace('\s+', ''))
+    !=
+    (item.0.hcl | regex_replace('\s+', ''))
+  no_log: true

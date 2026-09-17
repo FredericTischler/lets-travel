@@ -1,0 +1,24 @@
+---
+# Playbook de test/application LOCAL du rôle app-secrets.
+# Self-contained : charge le rôle par son chemin absolu (= playbook_dir, puisque
+# ce fichier est à la racine du rôle). Aucun roles_path ni export shell requis.
+# Même modèle que ansible/roles/jenkins/test-local.yml.
+#
+# app_secrets_vault_read=true est REQUIS pour un run réel (sinon no-op intégral,
+# cf. defaults/main.yml). vault_addr doit pointer vers une adresse Vault
+# effectivement joignable depuis l'hôte Ansible — Vault ne publie aucun port
+# (docs §4), donc en dehors de Molecule il faut soit l'IP du conteneur sur
+# data-net, soit un port-forward explicite :
+#   ansible-playbook ansible/roles/app-secrets/test-local.yml \
+#     -e app_secrets_vault_read=true \
+#     -e vault_addr=http://<ip-conteneur-vault>:8200
+#
+# Pas de `become` : /opt/travel-plan/.env est déjà détenu par l'utilisateur
+# courant (créé par un run précédent du même modèle) ; le répertoire parent
+# racine /opt/travel-plan appartient à root mais le fichier .env, lui, non.
+- name: Provisionner le .env runtime depuis Vault (local)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: "{{ playbook_dir }}"

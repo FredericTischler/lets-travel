@@ -1,0 +1,17 @@
+# Genere par Ansible (roles/app-secrets) — NE PAS COMMITER.
+# Contient les secrets runtime lus depuis Vault (KV v2, mount `{{ vault_kv_mount }}`).
+# Charge automatiquement par Docker Compose au moment du `up` : les fragments
+# Compose interpolent ces variables en `${VAR:?...}` (fail-fast), aucune valeur
+# n'est bakee dans le YAML.
+# {{ ansible_managed }}
+POSTGRES_SUPERUSER_PASSWORD={{ app_secrets_postgres_superuser_password }}
+IDENTITY_DB_PASSWORD={{ app_secrets_identity_db_password }}
+PAYMENT_DB_PASSWORD={{ app_secrets_payment_db_password }}
+STRIPE_API_KEY={{ app_secrets_stripe_api_key }}
+STRIPE_SECRET_KEY={{ app_secrets_stripe_secret_key }}
+PAYPAL_CLIENT_ID={{ app_secrets_paypal_client_id }}
+PAYPAL_CLIENT_SECRET={{ app_secrets_paypal_client_secret }}
+NEO4J_PASSWORD={{ app_secrets_neo4j_password }}
+JWT_SIGNING_KEY={{ app_secrets_jwt_signing_key }}
+SONARQUBE_DB_PASSWORD={{ app_secrets_sonarqube_db_password }}
+GRAFANA_ADMIN_PASSWORD={{ app_secrets_grafana_admin_password }}

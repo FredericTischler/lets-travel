@@ -1,0 +1,204 @@
+---
+# roles/jenkins/tasks/main.yml
+#
+# Modele operatoire identique a postgres/vault/neo4j/traefik : Ansible
+# PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE. Aucun
+# docker_container, aucun `docker compose up` declenche depuis ce role.
+#
+# CE QUE CE ROLE REND (increment CI/CD n°2 : generalisation multi-jobs) :
+#   1. compose.jenkins.yml  -> fragment de service Compose (profil `ci`)
+#   2. job-<nom>-config.xml -> UNE definition de job Pipeline PAR ENTREE de
+#      `jenkins_jobs`, PRETE A POSTER (3 aujourd'hui : identity/payment/travel)
+#
+# CE QUE CE ROLE NE FAIT PAS (assume, pas un oubli) :
+#   - Il ne CREE pas les jobs dans Jenkins : cela exigerait de s'authentifier
+#     (mot de passe admin / token API) => un SECRET cote Ansible, avant que
+#     Vault ne soit cable a Jenkins. Contrat du projet : on s'arrete et on le
+#     signale plutot que d'inliner un credential. La creation est une commande
+#     CLI documentee (README), jouee par l'operateur avec le mot de passe
+#     genere a l'execution par Jenkins.
+#   - Il n'installe pas les plugins : meme raison (API authentifiee).
+#
+# IDEMPOTENCE par construction : uniquement assert / getent (modules de FAITS,
+# jamais `changed`) / set_fact / file / template. Aucun command:, aucun shell:.
+# Un 2e converge rapporte changed=0.
+
+# --------------------------------------------------------------------------
+# 1) Gardes fail-fast sur la SOURCE du checkout.
+#    Deux modes, choisis par la FORME de jenkins_scm_url (cf. defaults) :
+#      A) file://...  -> miroir local bind-monte  (DEFAUT)
+#      B) git@... / https://... -> vrai remote GitHub, credential Jenkins
+#    Chaque mode a sa propre precondition ; on echoue ICI, en clair, plutot que
+#    de rendre un fragment que Compose refuserait, ou un job qui n'echouerait
+#    qu'au checkout, loin d'ici.
+# --------------------------------------------------------------------------
+- name: "Assert the local SCM mirror path is provided (mode file:// only)"
+  ansible.builtin.assert:
+    that:
+      - jenkins_scm_repo_host_path | length > 0
+      - jenkins_scm_repo_host_path is match('^/')
+    fail_msg: >-
+      jenkins_scm_url est en file:// (mode miroir local) mais
+      jenkins_scm_repo_host_path est vide ou non absolu : il n'y a rien a
+      bind-monter. Fournir :
+      -e jenkins_scm_repo_host_path=/chemin/absolu/vers/le/checkout/travel-plan
+      — ou passer au vrai remote :
+      -e jenkins_scm_url=git@github.com:FredericTischler/travel-plan.git
+      -e jenkins_scm_credential_id=github-deploy-key
+    success_msg: "Miroir SCM local : {{ jenkins_scm_repo_host_path }}"
+  when: jenkins_scm_local_mirror | bool
+  tags: [compose_fragment]
+
+# Mode B en SSH SANS credential = checkout garanti en echec (Permission denied
+# publickey) au premier "Build Now". Le role ne peut pas creer le credential (il
+# faudrait s'authentifier aupres de Jenkins, donc un secret cote Ansible) : il
+# exige donc au moins qu'on lui donne l'ID de celui que l'operateur a depose.
+# Un remote https:// PUBLIC reste legitime sans credential : non contraint.
+- name: "Assert an SSH remote comes with a Jenkins credential ID"
+  ansible.builtin.assert:
+    that:
+      - jenkins_scm_credential_id | length > 0
+    fail_msg: >-
+      jenkins_scm_url est un remote SSH ({{ jenkins_scm_url }}) mais
+      jenkins_scm_credential_id est vide : le checkout echouerait en
+      "Permission denied (publickey)". Deposer d'abord la cle de deploiement
+      LECTURE SEULE dans Jenkins (Credentials > SSH Username with private key,
+      username `git`) puis rejouer avec
+      -e jenkins_scm_credential_id=<id-du-credential>.
+      Procedure complete : README du role, section "Mode B".
+    success_msg: >-
+      Remote SSH {{ jenkins_scm_url }} via le credential Jenkins
+      '{{ jenkins_scm_credential_id }}'.
+  when:
+    - not (jenkins_scm_local_mirror | bool)
+    - jenkins_scm_url is match('^(ssh://|[^/]+@)')
+  tags: [compose_fragment, job_definition]
+
+# --------------------------------------------------------------------------
+# 2) GID du groupe `docker` de l'hote.
+#    Le process jenkins tourne en uid 1000 SANS le groupe docker : sans
+#    `group_add`, tout acces au socket renvoie EACCES et Testcontainers echoue.
+#    `getent` est un module de FAITS -> jamais `changed` (idempotence preservee).
+#    fail_key: false pour que l'absence du groupe (ex : plateforme Molecule)
+#    n'explose pas ici : on la rattrape par une assertion parlante juste apres.
+# --------------------------------------------------------------------------
+- name: "Look up the host docker group GID (only when not pinned explicitly)"
+  ansible.builtin.getent:
+    database: group
+    key: docker
+    fail_key: false
+  when: jenkins_docker_gid | string | length == 0
+  tags: [compose_fragment]
+
+- name: "Resolve the docker GID from the explicit variable (pinned wins)"
+  ansible.builtin.set_fact:
+    jenkins_docker_gid_resolved: "{{ jenkins_docker_gid | string }}"
+  when: jenkins_docker_gid | string | length > 0
+  tags: [compose_fragment]
+
+# `default([], true)` (2e argument = true) rattrape AUSSI une valeur falsy :
+# avec fail_key: false, un groupe absent donne `docker: null`, pas une cle
+# indefinie. Sur liste vide, l'index [1] rend Undefined -> default('') -> ''
+# -> l'assertion suivante echoue avec un message parlant.
+- name: "Resolve the docker GID from the host group database (auto-discovery)"
+  ansible.builtin.set_fact:
+    jenkins_docker_gid_resolved: >-
+      {{ ((ansible_facts.getent_group | default({}, true))['docker']
+          | default([], true))[1] | default('') }}
+  when: jenkins_docker_gid | string | length == 0
+  tags: [compose_fragment]
+
+- name: "Assert a docker GID was resolved (socket write access is mandatory)"
+  ansible.builtin.assert:
+    that:
+      - jenkins_docker_gid_resolved | length > 0
+    fail_msg: >-
+      Impossible de resoudre le GID du groupe `docker` sur cet hote et
+      jenkins_docker_gid n'est pas fourni. Sans lui, le conteneur Jenkins
+      (uid 1000) ne peut pas ecrire sur {{ jenkins_docker_socket }} et les tests
+      Testcontainers des 3 services echouent en EACCES.
+      Fournir : -e jenkins_docker_gid=$(getent group docker | cut -d: -f3)
+    success_msg: "GID docker retenu : {{ jenkins_docker_gid_resolved }}"
+  tags: [compose_fragment]
+
+# --------------------------------------------------------------------------
+# 3) Repertoire de rendu + fragment de service Compose (templating pur)
+# --------------------------------------------------------------------------
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ jenkins_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render Jenkins compose service fragment"
+  ansible.builtin.template:
+    src: "compose.jenkins.yml.j2"
+    dest: "{{ jenkins_compose_dir }}/compose.jenkins.yml"
+    mode: "0644"
+  tags: [compose_fragment]
+
+# --------------------------------------------------------------------------
+# 4) Definitions des jobs Pipeline (config.xml), rendues PRETES A POSTER.
+#    Aucun secret dedans : SCM en file:// sans credential, aucun trigger.
+#
+#    Garde fail-fast AVANT la boucle : une entree incomplete de `jenkins_jobs`
+#    ne casserait pas le rendu (Jinja rendrait la chaine vide pour la cle
+#    manquante) — elle produirait un config.xml SYNTAXIQUEMENT VALIDE mais
+#    silencieusement faux (job sans scriptPath => "Build Now" echoue seulement
+#    au moment du build, loin d'ici). On prefere echouer au provisioning.
+#    `assert` est un module de verification : jamais `changed`, idempotence
+#    preservee.
+# --------------------------------------------------------------------------
+- name: "Assert every jenkins_jobs entry is complete (name/description/script_path)"
+  ansible.builtin.assert:
+    that:
+      - jenkins_jobs | length > 0
+      - jenkins_jobs | rejectattr('name', 'defined') | list | length == 0
+      - jenkins_jobs | rejectattr('description', 'defined') | list | length == 0
+      - jenkins_jobs | rejectattr('script_path', 'defined') | list | length == 0
+      # Noms uniques : deux entrees homonymes s'ecraseraient mutuellement au
+      # rendu (meme dest) et se marcheraient dessus au createItem.
+      - (jenkins_jobs | map(attribute='name') | list | unique | length)
+        == (jenkins_jobs | length)
+    fail_msg: >-
+      jenkins_jobs est vide, incomplet ou contient des noms dupliques. Chaque
+      entree doit porter name / description / script_path (cf. defaults).
+    success_msg: >-
+      {{ jenkins_jobs | length }} job(s) a rendre :
+      {{ jenkins_jobs | map(attribute='name') | join(', ') }}
+  tags: [job_definition]
+
+# Garde fail-fast du SEUL declencheur automatique du role (opt-in). Un cron vide
+# rendrait <spec></spec> : Jenkins accepte le XML mais ne polle JAMAIS — une CI
+# silencieusement morte, exactement le genre de panne qu'on ne voit qu'au moment
+# ou on comptait dessus. `assert` ne rapporte jamais `changed` : idempotence
+# preservee.
+- name: "Assert: poll SCM active => cron Jenkins non vide"
+  ansible.builtin.assert:
+    that:
+      - jenkins_scm_poll_cron | default('', true) | trim | length > 0
+    fail_msg: >-
+      jenkins_scm_poll_enabled=true mais jenkins_scm_poll_cron est vide : le job
+      serait rendu avec un <spec/> vide et ne pollerait jamais. Fournir un cron
+      Jenkins a 5 champs, ex. 'H/5 * * * *'.
+    success_msg: >-
+      Poll SCM actif : spec '{{ jenkins_scm_poll_cron }}' pour les
+      {{ jenkins_jobs | length }} jobs.
+  when: jenkins_scm_poll_enabled | bool
+  tags: [job_definition]
+
+# UN SEUL template generique pour les 3 jobs : le <triggers/> vide et l'absence
+# de credential n'existent qu'a UN endroit, donc aucun job ne peut deriver sans
+# que les 3 derivent (et Molecule asserte les 3).
+# `label:` pour que la sortie affiche le nom du job et pas le dict entier.
+- name: "Render each Pipeline job definition (config.xml, one per service)"
+  ansible.builtin.template:
+    src: "job-pipeline.xml.j2"
+    dest: "{{ jenkins_compose_dir }}/job-{{ job.name }}-config.xml"
+    mode: "0644"
+  loop: "{{ jenkins_jobs }}"
+  loop_control:
+    loop_var: job
+    label: "{{ job.name }}"
+  tags: [job_definition]

@@ -1,0 +1,87 @@
+---
+# roles/neo4j/molecule/default/verify.yml
+#
+# SCOPE HONNETE des assertions.
+# Contrairement a postgres / vault, ce scenario NE teste PAS le cloisonnement
+# ni le refus inter-perimetre (un compte A ne doit pas acceder au perimetre de
+# B). Ce n'est pas un oubli :
+#   - Neo4j Community Edition ne supporte NI le RBAC granulaire NI le multi-base
+#     (Enterprise uniquement).
+#   - Le modele est mono-utilisateur : il n'existe qu'un principal (neo4j), donc
+#     aucun cloisonnement a verifier. Tester un "refus inter-perimetre" ici
+#     serait mentir sur des garanties que Community n'offre pas.
+# On verifie donc uniquement ce qui EST reellement garanti : port Bolt interne,
+# auth fonctionnelle, et conformite du fragment Compose rendu.
+
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    # --- 1. Port Bolt accessible en interne ---------------------------------
+    - name: "Assert Bolt port 7687 is listening"
+      ansible.builtin.wait_for:
+        port: 7687
+        host: localhost
+        timeout: 5
+      changed_when: false
+
+    # --- 2. Auth fonctionne (pas de module natif Neo4j -> cypher-shell) -----
+    - name: "Check Neo4j auth via cypher-shell (no native Ansible module for Neo4j)"
+      ansible.builtin.command:
+        argv:
+          - cypher-shell
+          - -a
+          - bolt://localhost:7687
+          - -u
+          - neo4j
+          - -p
+          - changeme_neo4j
+          - "RETURN 1 AS ok"
+      changed_when: false
+      register: cypher_auth
+
+    - name: "Assert auth succeeded"
+      ansible.builtin.assert:
+        that:
+          - cypher_auth.rc == 0
+          - "'ok' in cypher_auth.stdout"
+        fail_msg: "Auth Neo4j echouee : {{ cypher_auth.stderr }}"
+        success_msg: "Auth Neo4j OK."
+
+    # --- 3. Fragment Compose : assertions VALEURS (pas juste presence) -------
+    - name: "Read rendered compose fragment"
+      ansible.builtin.slurp:
+        src: /tmp/travel-plan-neo4j/compose.neo4j.yml
+      register: fragment_b64
+
+    - name: "Assert image epinglee dans le fragment"
+      ansible.builtin.assert:
+        that:
+          - "'neo4j:5.26.6-community' in (fragment_b64.content | b64decode)"
+        fail_msg: "Image non epinglee ou incorrecte."
+        success_msg: "Image epinglee OK."
+
+    - name: "Assert env vars memoire presentes avec valeurs correctes (critique 8 Go)"
+      ansible.builtin.assert:
+        that:
+          - "'NEO4J_server_memory_heap_max__size' in (fragment_b64.content | b64decode)"
+          - "'512m' in (fragment_b64.content | b64decode)"
+          - "'NEO4J_server_memory_pagecache_size' in (fragment_b64.content | b64decode)"
+          - "'256m' in (fragment_b64.content | b64decode)"
+        fail_msg: "Env vars memoire manquantes ou valeurs incorrectes."
+        success_msg: "Env vars memoire 5.x OK (heap 512m, pagecache 256m)."
+
+    - name: "Assert data-net et mem_limit presents"
+      ansible.builtin.assert:
+        that:
+          - "'data-net' in (fragment_b64.content | b64decode)"
+          - "'mem_limit' in (fragment_b64.content | b64decode)"
+        fail_msg: "data-net ou mem_limit absent du fragment."
+        success_msg: "data-net et mem_limit OK."
+
+    - name: "Assert aucun port hote publie (securite)"
+      ansible.builtin.assert:
+        that:
+          - "'ports:' not in (fragment_b64.content | b64decode)"
+        fail_msg: "Fragment publie des ports vers l'hote — interdit."
+        success_msg: "Aucun port hote publie OK."

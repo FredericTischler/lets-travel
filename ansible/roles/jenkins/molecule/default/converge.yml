@@ -1,0 +1,68 @@
+---
+# Converge : joue le role jenkins dans le conteneur Debian (docker connection).
+# Pattern identique a postgres/neo4j/traefik : le role rend ses artefacts dans
+# /tmp de la plateforme Molecule, pas sur le controleur.
+#
+# `jenkins_jobs` n'est PAS surcharge ici : on veut converger sur la valeur REELLE
+# des defaults (les 3 jobs identity/payment/travel), pour que verify.yml prouve
+# le perimetre effectivement livre — pas un perimetre de test artificiel.
+- name: Converge
+  hosts: all
+  gather_facts: false
+  vars:
+    jenkins_compose_dir: /tmp/travel-plan-jenkins
+    # Chemin absolu bidon mais PLAUSIBLE : le role ne stat pas ce chemin (il
+    # n'existe qu'au moment ou Compose monte le bind), il le rend tel quel.
+    # Sa presence prouve que la garde fail-fast passe et que le bind-mount
+    # lecture seule est bien rendu.
+    jenkins_scm_repo_host_path: /srv/molecule/travel-plan
+    # GID epingle explicitement : la plateforme Debian n'a pas de groupe
+    # `docker`, et c'est exactement le cas "controleur Ansible != hote Docker".
+    # Couvre la branche "variable explicite" de la resolution du GID.
+    jenkins_docker_gid: "999"
+  roles:
+    - role: jenkins
+
+# 2e convergence, dans un repertoire SEPARE : le mode OPT-IN "vrai remote
+# GitHub". Il n'est jamais actif par defaut ; sans ce 2e passage, la branche
+# `{% if jenkins_scm_credential_id %}` du template ne serait jamais exercee et
+# pourrait etre cassee sans que rien ne le dise.
+#
+# Ce qui est teste ici est EXACTEMENT ce que l'operateur jouera en production du
+# role : les deux memes `-e`. `jenkins_scm_repo_host_path` n'est VOLONTAIREMENT
+# pas fourni : prouver qu'il n'est plus requis en mode remote fait partie du
+# contrat (la garde fail-fast doit etre skippee, pas satisfaite).
+#
+# L'ID de credential n'est PAS un secret : c'est le nom d'une entree du
+# credential store de Jenkins. Aucune cle n'est generee, stockee ni rendue.
+- name: Converge (mode opt-in remote GitHub)
+  hosts: all
+  gather_facts: false
+  vars:
+    jenkins_compose_dir: /tmp/travel-plan-jenkins-github
+    jenkins_scm_url: "git@github.com:FredericTischler/travel-plan.git"
+    jenkins_scm_credential_id: "github-deploy-key"
+    jenkins_docker_gid: "999"
+  roles:
+    - role: jenkins
+
+# 3e convergence, repertoire SEPARE encore : le declenchement automatique OPT-IN
+# par poll SCM. Sans ce passage, la branche "if jenkins_scm_poll_enabled" du
+# template ne serait jamais exercee — et c'est precisement la branche qui, mal
+# rendue, produirait un job qui ne se declenche jamais (spec vide) ou qui se
+# declenche en boucle.
+#
+# Combinee au mode remote GitHub, parce que c'est le SEUL couple qui a un sens :
+# poller le miroir local file:// ne verrait que les commits du checkout de la
+# machine, pas ce qui est pousse sur la source de verite.
+- name: Converge (mode opt-in poll SCM sur le remote GitHub)
+  hosts: all
+  gather_facts: false
+  vars:
+    jenkins_compose_dir: /tmp/travel-plan-jenkins-poll
+    jenkins_scm_url: "git@github.com:FredericTischler/travel-plan.git"
+    jenkins_scm_credential_id: "github-deploy-key"
+    jenkins_scm_poll_enabled: true
+    jenkins_docker_gid: "999"
+  roles:
+    - role: jenkins

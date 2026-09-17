@@ -1,0 +1,43 @@
+---
+# defaults/main.yml — role docker-host
+# Prépare l'HÔTE Ubuntu : installe Docker CE + Compose v2 (plugin) depuis le dépôt
+# APT officiel Docker (format deb822). Aucune config démon, aucun réseau ici.
+
+# Liste des paquets distro conflictuels à détecter (pré-check NON destructif).
+# Si l'un d'eux est installé, le rôle ÉCHOUE et demande un retrait manuel.
+# On ne supprime jamais rien soi-même (machine réelle).
+docker_host_conflicting_packages:
+  - docker.io
+  - docker-compose
+  - docker-compose-v2
+  - docker-doc
+  - podman-docker
+  - containerd
+  - runc
+
+# Paquets Docker CE officiels (Compose v2 = plugin "docker compose", PAS docker-compose v1).
+docker_host_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Emplacement de la clé GPG du dépôt Docker (format ASCII armored, conforme docs.docker.com).
+docker_host_keyring_dir: /etc/apt/keyrings
+docker_host_gpg_key_path: /etc/apt/keyrings/docker.asc
+docker_host_gpg_key_url: https://download.docker.com/linux/ubuntu/gpg
+
+# URI de base du dépôt Docker pour Ubuntu.
+docker_host_repo_uri: https://download.docker.com/linux/ubuntu
+docker_host_repo_component: stable
+
+# Utilisateurs à ajouter au groupe "docker" (accès au socket sans sudo).
+# Par défaut : l'utilisateur RÉEL qui invoque le playbook.
+# - lookup('env','USER') est évalué sur le CONTRÔLEUR : sous `sudo ansible-playbook`
+#   ou `ansible-playbook -K`, USER reste l'utilisateur d'origine (pas root), ce qui
+#   est exactement ce qu'on veut. C'est plus fiable que SUDO_USER (absent si pas sudo)
+#   et qu'ansible_facts['user_id'] (= root sous become).
+# Surchargez cette liste si besoin (ex. -e '{"docker_host_users":["alice","bob"]}').
+docker_host_users:
+  - "{{ lookup('ansible.builtin.env', 'USER') }}"

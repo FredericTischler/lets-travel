@@ -1,0 +1,10 @@
+---
+# Collections requises par le scenario Molecule (driver docker).
+# community.hashi_vault N'EST PAS listee volontairement : le chemin Vault du
+# role est skipe par defaut (app_secrets_vault_read: false), ce scenario ne
+# l'execute donc jamais. Meme choix que roles/postgres.
+collections:
+  - name: community.docker
+    version: ">=5.2.1,<6.0.0"
+  - name: ansible.posix
+    version: ">=2.2.0,<3.0.0"

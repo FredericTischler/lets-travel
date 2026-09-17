@@ -1,0 +1,40 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Install python3 (raw: python pas encore present dans l'image neo4j)"
+      ansible.builtin.raw: >-
+        apt-get update -qq &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3
+      register: apt_install
+      changed_when: false
+
+    - name: "Gather facts now that python3 is available"
+      ansible.builtin.setup:
+
+    - name: "Wait for Neo4j Bolt port 7687 to be reachable"
+      ansible.builtin.wait_for:
+        port: 7687
+        host: localhost
+        delay: 5
+        timeout: 120
+
+    # Neo4j peut ecouter sur le port Bolt avant d'etre pret a authentifier :
+    # on attend donc qu'une requete Cypher aboutisse reellement.
+    - name: "Wait for Neo4j to accept Cypher queries"
+      ansible.builtin.command:
+        argv:
+          - cypher-shell
+          - -a
+          - bolt://localhost:7687
+          - -u
+          - neo4j
+          - -p
+          - changeme_neo4j
+          - "RETURN 1 AS ok"
+      register: cypher_wait
+      until: cypher_wait.rc == 0
+      retries: 20
+      delay: 5
+      changed_when: false

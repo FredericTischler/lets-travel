@@ -1,0 +1,138 @@
+---
+# tasks/main.yml — role docker-host
+# Ordre : pré-check conflits -> prérequis -> clé GPG -> dépôt deb822
+#         -> refresh APT CIBLÉ Docker -> install -> démon systemd -> groupe docker.
+# Modules natifs partout (idempotents) ; une seule exception command justifiée
+# (refresh APT par-dépôt, cf. tâche dédiée plus bas).
+#
+# HYPOTHÈSE / LIMITE ASSUMÉE (déploiement mono-machine de démo) :
+#   Ce rôle SUPPOSE un hôte SANS configuration Docker préexistante.
+#   Sur une machine ayant DÉJÀ un dépôt et/ou un keyring Docker (ancienne install,
+#   PPA tiers, fichier sources.list.d/docker.* hérité), un conflit `Signed-By` peut
+#   survenir au rafraîchissement APT (deux sources Docker pointant des clés
+#   différentes). Le rôle ne tente PAS de détecter ni nettoyer cet existant :
+#   l'opérateur doit supprimer MANUELLEMENT l'ancienne source et l'ancien keyring
+#   AVANT de lancer ce rôle. Ce n'est pas un bug à corriger, c'est un choix de
+#   périmètre (on ne touche pas destructivement à la config APT d'une machine réelle).
+
+# 1) Pré-check NON DESTRUCTIF des paquets distro conflictuels.
+- name: Collecter les facts paquets installés
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Échouer si des paquets Docker conflictuels (distro) sont présents
+  ansible.builtin.fail:
+    msg: >-
+      Des paquets conflictuels sont installés :
+      {{ docker_host_conflicting_packages | select('in', ansible_facts.packages) | list }}.
+      Retirez-les MANUELLEMENT avant de relancer ce rôle
+      (ex. `sudo apt-get remove <paquet>` puis `sudo apt-get autoremove`).
+      Le rôle ne supprime rien lui-même (sécurité sur machine réelle).
+  when: >-
+    docker_host_conflicting_packages
+    | select('in', ansible_facts.packages)
+    | list | length > 0
+
+# 2) Prérequis du dépôt APT : ca-certificates (validation TLS du téléchargement
+#    de la clé GPG par get_url).
+#    - curl RETIRÉ : get_url utilise urllib (Python), pas curl -> dépendance inutile.
+#    - update_cache RETIRÉ ici (et partout dans le rôle) : un apt-get update GLOBAL
+#      lirait TOUTES les sources APT et échouerait si une source tierce est cassée
+#      (ex. Jenkins sans clé) -> couplage parasite. ca-certificates est présent par
+#      défaut sur Ubuntu (jammy/noble) ; on l'installe en state:present SANS rafraîchir
+#      le cache global. Si le paquet est déjà là (cas nominal) : aucun changement,
+#      aucune lecture de dépôt. S'il manquait vraiment, apt utilisera le cache existant.
+- name: Installer les prérequis (ca-certificates) sans refresh global du cache APT
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: false
+
+# 3) Clé GPG officielle Docker.
+- name: Créer le répertoire des keyrings APT
+  ansible.builtin.file:
+    path: "{{ docker_host_keyring_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Télécharger la clé GPG Docker
+  ansible.builtin.get_url:
+    url: "{{ docker_host_gpg_key_url }}"
+    dest: "{{ docker_host_gpg_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    # get_url ne re-télécharge pas si la destination existe déjà -> idempotent.
+
+# 4) Dépôt Docker au format deb822.
+- name: Configurer le dépôt APT Docker (deb822)
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: "{{ docker_host_repo_uri }}"
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: "{{ docker_host_repo_component }}"
+    architectures: "{{ docker_host_arch }}"
+    signed_by: "{{ docker_host_gpg_key_path }}"
+    enabled: true
+    state: present
+  vars:
+    # Mapping arch Ansible -> arch dpkg/APT (.get() pour ne pas lever de KeyError
+    # si l'arch n'est pas dans la table : on retombe sur l'arch brute des facts).
+    docker_host_arch: >-
+      {{ {'x86_64': 'amd64', 'aarch64': 'arm64', 'armv7l': 'armhf'}.get(ansible_facts['architecture'], ansible_facts['architecture']) }}
+
+# 4bis) Refresh APT CIBLÉ sur le SEUL dépôt Docker (découplage des autres sources).
+# JUSTIFICATION du command (pas de module équivalent) :
+#   ansible.builtin.apt n'a AUCUNE option de refresh par-dépôt (vérifié via
+#   `ansible-doc ansible.builtin.apt` : update_cache exécute toujours un
+#   `apt-get update` GLOBAL). deb822_repository ne rafraîchit pas non plus le cache.
+#   On utilise donc apt-get avec un ciblage explicite ; ce n'est PAS un update global
+#   déguisé :
+#     - Dir::Etc::sourcelist="sources.list.d/docker.sources" -> apt ne lit QUE ce fichier
+#       (créé par deb822_repository name=docker -> sources.list.d/docker.sources).
+#     - Dir::Etc::sourceparts="-" -> DÉSACTIVE le scan de sources.list.d/ (le "-" est un
+#       chemin inexistant) : AUCUN autre dépôt n'est lu. Donc un Jenkins/PPA cassé NE PEUT
+#       PAS faire échouer ce refresh -> couplage parasite éliminé.
+#     - APT::Get::List-Cleanup="0" -> apt ne purge pas les index en cache des AUTRES dépôts
+#       (sinon il les considérerait "absents des sources" et les supprimerait).
+#   Vérifié read-only (`apt-get update --print-uris -o ...`) : seules des URIs
+#   download.docker.com sont listées, rien d'autre.
+#   changed_when: false -> un refresh de cache est neutre pour l'idempotence (préserve
+#   changed=0) ; il s'exécute à chaque run mais ne modifie aucun état applicatif.
+- name: Rafraîchir le cache APT pour le SEUL dépôt Docker (découplé des autres sources)
+  ansible.builtin.command:
+    cmd: >-
+      apt-get update
+      -o Dir::Etc::sourcelist="sources.list.d/docker.sources"
+      -o Dir::Etc::sourceparts="-"
+      -o APT::Get::List-Cleanup="0"
+  changed_when: false
+
+# 5) Installation des paquets Docker CE + Compose v2.
+#    update_cache: false -> le cache du dépôt Docker vient d'être rafraîchi en ciblé ;
+#    pas de refresh global (qui réintroduirait le couplage aux autres sources).
+- name: Installer Docker CE, CLI, containerd, buildx et compose plugin
+  ansible.builtin.apt:
+    name: "{{ docker_host_packages }}"
+    state: present
+    update_cache: false
+
+# 6) Démon Docker : activé au boot + démarré.
+- name: Activer et démarrer le service docker
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+# 7) Accès au socket Docker sans sudo (re-login requis pour prise d'effet).
+- name: Ajouter les utilisateurs au groupe docker
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_host_users }}"
+  when: item | length > 0

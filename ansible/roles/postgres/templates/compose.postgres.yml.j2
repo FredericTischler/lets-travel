@@ -1,0 +1,36 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `postgres`.
+# Orchestration assuree par docker-compose (profils core/full/ci).
+# Base INTERNE : aucun port publie vers l'hote, reseau {{ postgres_network }}.
+services:
+  {{ postgres_service_name }}:
+    image: "{{ postgres_image }}"
+    container_name: "{{ postgres_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM 8 Go (cf. docs/architecture-decisions.md §4).
+    mem_limit: "{{ postgres_mem_limit }}"
+    environment:
+      # Superuser de provisioning uniquement ; secrets runtime via Vault en prod.
+      POSTGRES_USER: "{{ postgres_superuser }}"
+      POSTGRES_PASSWORD: "${POSTGRES_SUPERUSER_PASSWORD:?set via env/Vault}"
+      # Force scram-sha-256 (defaut en 17, explicite pour la coherence du hash).
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - "{{ postgres_data_volume }}:/var/lib/postgresql/data"
+    networks:
+      - {{ postgres_network }}
+    # Aucune publication de port : la base n'est jamais exposee a l'hote.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ postgres_superuser }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  {{ postgres_data_volume }}:
+
+networks:
+  {{ postgres_network }}:
+    # Reseau cloisonne, gere par le role docker-host ; declare externe ici.
+    external: true

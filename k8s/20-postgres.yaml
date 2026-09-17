@@ -1,0 +1,219 @@
+# PostgreSQL : Service headless + ConfigMap d'init + StatefulSet.
+#
+# POURQUOI STATEFULSET ET PAS DEPLOYMENT : un Deployment traite ses Pods comme
+# interchangeables et, en strategie RollingUpdate, peut demarrer le nouveau Pod
+# AVANT de terminer l'ancien. Deux postmaster sur le meme repertoire de donnees,
+# c'est une corruption. Le StatefulSet garantit (a) une identite stable
+# (`postgres-0`), (b) un PVC attache a CETTE identite, (c) une mise a jour
+# strictement sequentielle ancien-arrete-puis-nouveau-demarre.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  # clusterIP: None => Service HEADLESS. Deux consequences voulues :
+  #  1) C'est le "governing service" exige par le StatefulSet (spec.serviceName)
+  #     qui cree les entrees DNS stables `postgres-0.postgres.travel-plan.svc`.
+  #  2) `postgres` resout directement vers l'IP du Pod, sans passer par la VIP
+  #     kube-proxy. Pour une base mono-instance c'est ce qu'on veut : aucun
+  #     interet a load-balancer vers un unique backend, et on evite le cas
+  #     desagreable ou une VIP accepte la connexion TCP alors qu'aucun backend
+  #     n'est pret.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+# Script d'initialisation execute UNE SEULE FOIS par l'entrypoint de l'image
+# postgres, au tout premier demarrage sur un repertoire de donnees vide.
+#
+# EQUIVALENT ANSIBLE : ce script rejoue ce que fait le role `postgres`
+# (postgres_databases / postgres_app_users) via les modules community.postgresql.
+# Cote Kubernetes il n'y a pas d'Ansible pour converger l'etat de la base : on
+# s'appuie sur le hook natif de l'image. La contrepartie est assumee et
+# documentee dans le README : ce script n'est PAS idempotent au sens Ansible, il
+# est simplement IGNORE si le volume est deja initialise (l'entrypoint ne le
+# lance que si PGDATA est vide). Modifier ce ConfigMap n'a donc aucun effet sur
+# une base existante ; il faut supprimer le PVC pour le rejouer.
+#
+# Les mots de passe ne sont PAS dans ce ConfigMap : ils arrivent par variables
+# d'environnement issues du Secret (voir le StatefulSet ci-dessous).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: travel-plan
+data:
+  10-app-databases.sh: |
+    #!/bin/bash
+    # set -e : toute erreur SQL fait echouer l'init, donc le demarrage du
+    # conteneur. Fail-fast volontaire — une base a moitie provisionnee
+    # produirait des erreurs d'authentification au runtime, bien plus tard.
+    set -euo pipefail
+
+    # ON_ERROR_STOP=1 : sans cela psql continue apres une erreur et sort 0.
+    # Les mots de passe transitent par -v (variable psql) et sont cites avec
+    # :'...' : c'est le quoting SQL gere par psql, pas une interpolation shell
+    # dans la chaine SQL (qui casserait sur une apostrophe dans le secret).
+    #
+    # Heredoc <<'EOSQL' QUOTE (et non <<-EOSQL) : le shell ne doit toucher a
+    # rien dans ce corps, sinon `:'identity_pw'` et les `--` seraient reinterpretes.
+    # Le delimiteur est donc en colonne 0 du script (`<<-` ne supprime que des
+    # TABULATIONS, pas les espaces d'indentation YAML : un piege silencieux).
+    psql -v ON_ERROR_STOP=1 \
+         --username "$POSTGRES_USER" \
+         --dbname postgres \
+         -v identity_pw="$IDENTITY_DB_PASSWORD" \
+         -v payment_pw="$PAYMENT_DB_PASSWORD" <<'EOSQL'
+    -- Comptes applicatifs a droits limites : identity_user ne peut pas lire
+    -- payment_db et reciproquement (cloisonnement par proprietaire de base).
+    -- Memes noms que le role Ansible postgres et que les fragments Compose.
+    CREATE ROLE identity_user LOGIN PASSWORD :'identity_pw';
+    CREATE ROLE payment_user  LOGIN PASSWORD :'payment_pw';
+    CREATE DATABASE identity_db OWNER identity_user;
+    CREATE DATABASE payment_db  OWNER payment_user;
+    EOSQL
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: travel-plan
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: travel-plan
+spec:
+  serviceName: postgres
+  # 1 replica, DELIBEREMENT. Repliquer PostgreSQL demande de la replication
+  # streaming + un mecanisme de bascule (Patroni, ou un operateur type
+  # CloudNativePG). C'est hors perimetre d'une demonstration du bonus, et ce
+  # serait une fausse haute-disponibilite de mettre `replicas: 2` sur ce
+  # StatefulSet : on obtiendrait deux bases independantes, pas un cluster.
+  # Le load-balancing du sujet porte sur les microservices (2 replicas chacun),
+  # pas sur les bases.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: travel-plan
+    spec:
+      containers:
+        - name: postgres
+          # Meme tag exact que ansible/roles/postgres/defaults/main.yml.
+          # Jamais `latest` : une image non figee rend le deploiement non
+          # reproductible et peut changer de version majeure sous les pieds.
+          image: "postgres:17.5-bookworm"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: POSTGRES_SUPERUSER_PASSWORD
+            # Consommes par 10-app-databases.sh uniquement (initdb).
+            - name: IDENTITY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: IDENTITY_DB_PASSWORD
+            - name: PAYMENT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: travel-plan-secrets
+                  key: PAYMENT_DB_PASSWORD
+            - name: POSTGRES_INITDB_ARGS
+              value: "--auth-host=scram-sha-256"
+            # PGDATA dans un SOUS-REPERTOIRE du point de montage : obligatoire
+            # ici. La plupart des provisioners de volume creent un `lost+found`
+            # (ext4) a la racine du volume, et initdb REFUSE de s'initialiser
+            # dans un repertoire non vide. Monter le volume sur /var/lib/
+            # postgresql/data et pointer PGDATA un cran plus bas contourne ce
+            # piege classique — qui ne se voit pas avec un volume Docker.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          # Meme sonde que le healthcheck Compose (pg_isready). `-h 127.0.0.1`
+          # force une connexion TCP : sans cela pg_isready passe par la socket
+          # Unix et repond OK pendant la phase d'init, alors que le serveur
+          # n'ecoute pas encore sur le reseau — les clients verraient un
+          # "connection refused" sur un Pod declare Ready.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            # requests = ce que le scheduler reserve ; limits = plafond applique
+            # par le cgroup. Aligne sur postgres_mem_limit du role Ansible et sur
+            # le garde-fou 8 Go de docs/architecture-decisions.md §4.
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+      volumes:
+        - name: initdb
+          configMap:
+            name: postgres-initdb
+            # 0555 : l'entrypoint de l'image n'execute les fichiers .sh de
+            # /docker-entrypoint-initdb.d que s'ils sont executables (sinon il
+            # les `source`, ce qui marcherait aussi, mais on ne depend pas de ce
+            # detail). Le defaut d'un ConfigMap monte est 0644.
+            defaultMode: 0555
+  volumeClaimTemplates:
+    # volumeClaimTemplates et PAS un PersistentVolumeClaim autonome : le PVC est
+    # alors LIE a l'identite du Pod (`data-postgres-0`) et survit a la
+    # suppression/recreation du Pod. C'est l'idiome StatefulSet ; un PVC externe
+    # partage serait recycle par n'importe quel Pod et casserait la garantie
+    # "une identite = un volume".
+    #
+    # Corollaire assume : `kubectl delete -f k8s/` NE supprime PAS ces PVC
+    # (protection volontaire de Kubernetes contre la perte de donnees). Voir la
+    # section Nettoyage du README.
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/part-of: travel-plan
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # PAS de storageClassName : on laisse la StorageClass par defaut du
+        # cluster (`standard` sur kind/minikube, `hostpath` sur Docker Desktop).
+        # Coder en dur un nom de StorageClass rendrait ces manifestes
+        # non-portables d'un cluster a l'autre.
+        resources:
+          requests:
+            storage: 2Gi

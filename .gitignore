@@ -1,0 +1,88 @@
+# =============================================================================
+# Travel-Plan — .gitignore
+# Source versionnée : code, rôles Ansible, templates, docs, READMEs.
+# Ignoré : outillage local, artefacts générés (build/cache), secrets runtime.
+# =============================================================================
+
+# --- Secrets & configuration locale (JAMAIS commiter) -----------------------
+# Les fichiers ansible-vault CHIFFRÉS (vault.yml…) restent versionnés ;
+# c'est le mot de passe et les secrets en clair qui sont ignorés.
+.env
+*.env
+!*.env.example
+.vault-pass
+.vault_pass*
+vault-password*
+*.vault-pass
+*.token
+*.pem
+*.key
+*.p12
+*.keystore
+secrets.yml
+secrets.yaml
+sujet/
+
+# --- Outillage / environnements Python (Ansible, Molecule) ------------------
+.venv-ansible/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- Ansible / Molecule -----------------------------------------------------
+*.retry
+.ansible/
+.molecule/
+# Collections/roles installés localement (réinstallables via requirements.yml)
+ansible/collections/
+ansible/roles/**/files/*.tar.gz
+
+# --- Java / Maven (services Spring Boot) ------------------------------------
+target/
+build/
+out/
+bin/
+*.class
+.mvn/timing.properties
+# Conserver le wrapper Maven (binaire nécessaire au build reproductible)
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# --- Node / Angular (admin-dashboard) ---------------------------------------
+node_modules/
+dist/
+.angular/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# --- Logs & divers ----------------------------------------------------------
+*.log
+logs/
+*.pid
+*.seed
+tmp/
+temp/
+
+# --- IDE / éditeurs ---------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# --- Claude Code -------------------------------------------------------------
+.claude/

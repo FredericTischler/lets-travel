@@ -1,0 +1,183 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Point d'entree Compose pour Travel-Plan.
+# Assemble les fragments rendus par les roles Ansible postgres / vault / neo4j.
+# Réseaux créés par Ansible (community.docker.docker_network) — externes à Compose.
+#
+# PROFILS (cf. docs/architecture-decisions.md §4) :
+#   core : postgres + vault (dev quotidien, ~350 Mo, laisse place à IDE + navigateur)
+#   full : postgres + vault + neo4j (intégration + démo, IDE fermé)
+#   ci   : jenkins + sonarqube (+ traefik pour joindre leurs UI) — À LA DEMANDE
+#          (docs §8) : la stack CI ne cohabite PAS avec la stack applicative
+#          sur 8 Go. Les deux montent ENSEMBLE : le pipeline enchaîne
+#          `mvn verify` puis `sonar:sonar`.
+#   observability : loki + promtail + grafana (+ traefik pour l'UI Grafana).
+#          Profil ADDITIF, à combiner avec core/full — il observe la stack
+#          applicative, donc il n'a d'intérêt que si elle tourne.
+#
+# USAGE :
+#   docker compose --profile core up -d    # dev quotidien
+#   docker compose --profile full up -d    # stack complète
+#   docker compose --profile ci   up -d    # CI seule (stack applicative down)
+#   docker compose --profile full --profile observability up -d   # + logs
+#   docker compose --profile full down     # nettoyage
+
+include:
+  - path: {{ assembly_postgres_fragment }}
+  - path: {{ assembly_vault_fragment }}
+  - path: {{ assembly_neo4j_fragment }}
+  # traefik : la GATEWAY, rôle Ansible stable (fragment rendu sous
+  # {{ assembly_compose_dir }}/traefik/). Inclus SANS flag conditionnel — contrairement
+  # à identity, ce n'est pas un fragment statique optionnel du dépôt à chemin variable.
+  - path: {{ assembly_traefik_fragment }}
+{% if assembly_jenkins_enabled %}
+  # jenkins : fragment RENDU par le rôle Ansible `jenkins` sous
+  # {{ assembly_compose_dir }}/jenkins/ — donc chemin RELATIF, comme postgres/
+  # vault/neo4j/traefik (et NON un chemin absolu comme identity/payment/travel).
+  # Gardé derrière un flag car les `include:` sont résolus quel que soit le
+  # --profile : sans le rôle joué, l'include casserait AUSSI core et full.
+  - path: {{ assembly_jenkins_fragment }}
+{% endif %}
+{% if assembly_sonarqube_enabled %}
+  # sonarqube : fragment RENDU par le rôle Ansible `sonarqube` sous
+  # {{ assembly_compose_dir }}/sonarqube/ — chemin RELATIF, même statut que
+  # jenkins. Le fragment déclare AUSSI la base dédiée `sonarqube-db` et le
+  # réseau privé `sonarqube-net` (seul réseau du projet possédé par Compose).
+  # Même flag protecteur que jenkins : sans le rôle joué, l'include casserait
+  # core et full, pas seulement ci.
+  - path: {{ assembly_sonarqube_fragment }}
+{% endif %}
+{% if assembly_observability_enabled %}
+  # observability : fragment RENDU par le rôle Ansible `observability` sous
+  # {{ assembly_compose_dir }}/observability/ — chemin RELATIF (loki, promtail,
+  # grafana + le réseau privé `observability-net`). Même flag protecteur.
+  - path: {{ assembly_observability_fragment }}
+{% endif %}
+{% if assembly_identity_enabled %}
+  # identity-service : fragment STATIQUE du dépôt (build depuis les sources),
+  # référencé par CHEMIN ABSOLU (co-localisé avec Dockerfile + src/), pas rendu
+  # sous {{ assembly_compose_dir }}. Activé via assembly_identity_enabled=true.
+  - path: {{ assembly_identity_fragment }}
+{% endif %}
+{% if assembly_payment_enabled %}
+  # payment-service : fragment STATIQUE du dépôt (build depuis les sources),
+  # référencé par CHEMIN ABSOLU (co-localisé avec Dockerfile + src/), pas rendu
+  # sous {{ assembly_compose_dir }}. DÉFAUT désactivé (intégration pas encore
+  # prouvée bout-en-bout) — activé via assembly_payment_enabled=true.
+  - path: {{ assembly_payment_fragment }}
+{% endif %}
+{% if assembly_travel_enabled %}
+  # travel-service : fragment STATIQUE du dépôt (build depuis les sources),
+  # référencé par CHEMIN ABSOLU (co-localisé avec Dockerfile + src/), pas rendu
+  # sous {{ assembly_compose_dir }}. DÉFAUT désactivé (intégration pas encore
+  # prouvée bout-en-bout) — activé via assembly_travel_enabled=true.
+  - path: {{ assembly_travel_fragment }}
+{% endif %}
+
+services:
+  # Profils appliqués par merge sur les services inclus (Compose spec : les attributs
+  # du fichier top-level FUSIONNENT avec les services inclus de même nom).
+  postgres:
+    profiles: [core, full]
+
+  vault:
+    profiles: [core, full]
+
+  # Neo4j = poste RAM le plus lourd (~600 Mo–1 Go, cf. §4).
+  # Exclu du profil core pour libérer ~1 Go en dev quotidien.
+  neo4j:
+    profiles: [full]
+
+  # traefik : profil [core, full] — présent MÊME en core.
+  # Justification : Traefik est le SEUL point d'entrée du système (le seul port
+  # publié, 443). Sans lui, aucun service routé n'est joignable, même en dev
+  # quotidien. Il doit donc rester dans "core" ; l'exclure rendrait la stack core
+  # inaccessible de l'extérieur. Profils appliqués par merge sur le service inclus
+  # (même mécanisme que postgres/vault ci-dessus).
+{% set traefik_profiles = ['core', 'full'] %}
+{% if assembly_jenkins_enabled or assembly_sonarqube_enabled %}
+{%   set _ = traefik_profiles.append('ci') %}
+{% endif %}
+{% if assembly_observability_enabled %}
+{%   set _ = traefik_profiles.append('observability') %}
+{% endif %}
+  # RÈGLE : tout profil qui contient un service routé par Traefik doit figurer
+  # ici, sinon `--profile <ce profil>` seul monterait le service SANS la gateway
+  # qui l'expose, et son UI serait injoignable. Le piège est silencieux — le
+  # conteneur démarre, healthy, simplement personne ne peut l'atteindre.
+  #   `ci`            : UI Jenkins et UI SonarQube, toutes deux routées par labels.
+  #   `observability` : UI Grafana, routée par labels (Loki et Promtail, eux, ne
+  #                     sont routés par rien — délibérément, cf. rôle observability).
+  # core/full restent inconditionnels ; les ajouts ne sont émis que si le flag
+  # correspondant est actif => le rendu par défaut reste strictement inchangé.
+  traefik:
+    profiles: [{{ traefik_profiles | join(', ') }}]
+{% if assembly_identity_enabled %}
+
+  # identity-service : profil [full] uniquement pour l'instant (pas core).
+  # Pas encore de raison de le charger dans le dev quotidien ; à revalider si le
+  # service devient utilisé au quotidien. Profils appliqués par merge sur le
+  # service inclus (même mécanisme que postgres/vault/neo4j ci-dessus).
+  identity-service:
+    profiles: [full]
+{% endif %}
+{% if assembly_payment_enabled %}
+
+  # payment-service : profil [full] uniquement (pas core), même raisonnement
+  # qu'identity-service. Bloc émis uniquement si assembly_payment_enabled=true.
+  # Profils appliqués par merge sur le service inclus (même mécanisme que
+  # postgres/vault/neo4j ci-dessus).
+  payment-service:
+    profiles: [full]
+{% endif %}
+{% if assembly_travel_enabled %}
+
+  # travel-service : profil [full] uniquement (pas core). Dépend de neo4j (lui-même
+  # profil [full] uniquement) : le charger en core n'aurait pas de sens sans sa base.
+  # Bloc émis uniquement si assembly_travel_enabled=true. Profils appliqués par merge
+  # sur le service inclus (même mécanisme que postgres/vault/neo4j ci-dessus).
+  travel-service:
+    profiles: [full]
+{% endif %}
+{% if assembly_jenkins_enabled %}
+
+  # jenkins : profil [ci] EXCLUSIVEMENT — jamais core, jamais full.
+  # docs/architecture-decisions.md §8 : Jenkins (~700 Mo au repos, 1,6 Go de
+  # mem_limit ici car les builds tournent sur le controleur) NE COHABITE PAS
+  # avec la stack applicative sur une machine à 8 Go. La CI se lance à la
+  # demande, idéalement stack applicative down, puis on l'arrête.
+  # Profils appliqués par merge sur le service inclus (même mécanisme que
+  # postgres/vault/neo4j ci-dessus).
+  jenkins:
+    profiles: [ci]
+{% endif %}
+{% if assembly_sonarqube_enabled %}
+
+  # sonarqube + sa base dédiée : profil [ci] EXCLUSIVEMENT, le MÊME que jenkins.
+  # docs/architecture-decisions.md §8 : la stack CI ne cohabite pas avec la
+  # stack applicative. SonarQube est le poste le plus lourd du projet (~2,1 Go
+  # mesurés : Web + Compute Engine + Elasticsearch, trois JVM dans une cgroup).
+  # Les DEUX services portent le profil : sans profil sur la base, `--profile ci`
+  # monterait SonarQube seul et sa migration de schéma échouerait faute de base.
+  sonarqube:
+    profiles: [ci]
+
+  sonarqube-db:
+    profiles: [ci]
+{% endif %}
+{% if assembly_observability_enabled %}
+
+  # loki / promtail / grafana : profil [observability] EXCLUSIVEMENT.
+  # Profil ADDITIF, jamais fusionné dans core/full/ci — cf. le rôle
+  # `observability` pour le chiffrage (~450 Mo mesurés, trois binaires Go).
+  # Les TROIS services le portent : un stack de collecte amputé d'un maillon
+  # (Promtail sans Loki, Grafana sans source) ne rend aucun service.
+  loki:
+    profiles: [observability]
+
+  promtail:
+    profiles: [observability]
+
+  grafana:
+    profiles: [observability]
+{% endif %}

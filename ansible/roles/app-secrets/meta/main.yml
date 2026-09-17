@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: app_secrets
+  author: travel-plan
+  description: >-
+    Proprietaire UNIQUE du fichier /opt/travel-plan/.env : lit les secrets
+    runtime dans Vault (KV v2) — superuser Postgres, mot de passe payment_user,
+    mot de passe Neo4j, cle de signature JWT partagee — et les materialise dans
+    le .env auto-charge par Docker Compose. Aucun secret en clair, aucun secret
+    bake dans un fragment Compose.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - vault
+    - secrets
+    - infrastructure
+dependencies: []

@@ -1,0 +1,60 @@
+---
+# Scenario Molecule du role `app-secrets`.
+#
+# COUVERTURE HONNETE : ce scenario teste le comportement MOLECULE-SAFE du role
+# (app_secrets_vault_read: false => no-op integral, aucun .env ecrit, aucune
+# lecture Vault) et son idempotence. Il NE teste PAS le chemin Vault : celui-ci
+# exige un Vault provisionne ET des secrets reels, donc des credentials — hors
+# perimetre d'un scenario Molecule (cf. meme choix dans roles/postgres).
+#
+# Driver docker (molecule-plugins) : conteneur frere sur le demon hote
+# (Linux natif, PAS de DinD).
+dependency:
+  name: galaxy
+  options:
+    requirements-file: requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: travel-plan-app-secrets-molecule
+    # Image generique : le role ne pilote aucun service, il ecrit un fichier.
+    # Tag patch epingle, verifie via `docker manifest inspect debian:12.12-slim`.
+    image: debian:12.12-slim
+    pre_build_image: true
+    # Pas de PID1 applicatif : on garde le conteneur vivant.
+    command: "sleep infinity"
+    published_ports: []
+
+# Voir roles/postgres/molecule/default/molecule.yml pour le detail :
+# MOLECULE_SCENARIO_DIRECTORY est interpole par Molecule lui-meme ;
+# <scenario>/../../.. => <repo>/ansible/roles, donc `- role: app-secrets`
+# se resout quel que soit le repertoire de lancement.
+ansible:
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_SCENARIO_DIRECTORY}/../../.."
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      interpreter_python: auto_silent
+
+verifier:
+  name: ansible
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - cleanup
+    - destroy

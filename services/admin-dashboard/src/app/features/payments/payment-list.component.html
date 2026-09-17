@@ -1,0 +1,110 @@
+<div class="flex flex-col gap-6">
+  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Paiements</h1>
+
+  <app-card title="Créer un paiement">
+    <form class="flex flex-col gap-4 sm:flex-row sm:items-end" (ngSubmit)="createPayment()">
+      <app-input
+        class="flex-1"
+        fieldId="createAmount"
+        name="createAmount"
+        label="Montant"
+        type="number"
+        [(ngModel)]="createAmount"
+        [required]="true"
+        autocomplete="off"
+      />
+
+      <app-input
+        class="flex-1"
+        fieldId="createCurrency"
+        name="createCurrency"
+        label="Devise"
+        type="text"
+        [(ngModel)]="createCurrency"
+        [required]="true"
+        autocomplete="off"
+      />
+
+      <app-button type="submit" [disabled]="creating()">
+        {{ creating() ? 'Création…' : 'Créer' }}
+      </app-button>
+    </form>
+
+    @if (createError()) {
+      <app-alert variant="error" class="mt-3 block">{{ createError() }}</app-alert>
+    }
+  </app-card>
+
+  <app-card title="Liste">
+    @if (updateError()) {
+      <app-alert variant="error" class="mb-3 block">{{ updateError() }}</app-alert>
+    }
+
+    @if (deleteError()) {
+      <app-alert variant="error" class="mb-3 block">{{ deleteError() }}</app-alert>
+    }
+
+    @if (loading()) {
+      <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+    } @else if (error()) {
+      <app-alert variant="error">{{ error() }}</app-alert>
+    } @else {
+      <div class="table-shell">
+        <table class="table-base">
+          <thead>
+            <tr class="table-head-row">
+              <th class="table-head-cell">Id</th>
+              <th class="table-head-cell">Montant</th>
+              <th class="table-head-cell">Devise</th>
+              <th class="table-head-cell">Statut</th>
+              <th class="table-head-cell">Référence externe</th>
+              <th class="table-head-cell">Créé le</th>
+              <th class="table-head-cell">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (payment of payments(); track payment.id) {
+              <tr class="table-row">
+                <td class="table-cell">{{ payment.id }}</td>
+                <td class="table-cell">{{ payment.amount }}</td>
+                <td class="table-cell">{{ payment.currency }}</td>
+                <td class="table-cell">{{ payment.status }}</td>
+                <td class="table-cell">{{ payment.externalReference }}</td>
+                <td class="table-cell">{{ payment.createdAt }}</td>
+                <td class="table-cell">
+                  <div class="flex flex-wrap gap-2">
+                    @if (payment.status === 'PENDING') {
+                      <app-button
+                        variant="secondary"
+                        [disabled]="updatingPaymentId() === payment.id"
+                        (clicked)="markCompleted(payment)"
+                        >Marquer complété</app-button
+                      >
+                      <app-button
+                        variant="secondary"
+                        [disabled]="updatingPaymentId() === payment.id"
+                        (clicked)="markFailed(payment)"
+                        >Marquer échoué</app-button
+                      >
+                    }
+                    <app-button
+                      variant="danger"
+                      [disabled]="deletingPaymentId() === payment.id"
+                      (clicked)="deletePayment(payment)"
+                    >
+                      {{ deletingPaymentId() === payment.id ? 'Suppression…' : 'Supprimer' }}
+                    </app-button>
+                  </div>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td class="table-empty-cell" colspan="7">Aucun paiement.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </app-card>
+</div>

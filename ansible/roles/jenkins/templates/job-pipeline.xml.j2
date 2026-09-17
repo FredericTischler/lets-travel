@@ -1,0 +1,112 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+{#
+  Template GENERIQUE d'un job Pipeline Travel-Plan (increment CI/CD n°2 :
+  generalisation multi-jobs). Il est rendu UNE FOIS PAR ENTREE de la liste
+  `jenkins_jobs` (defaults/main.yml), via un loop dans tasks/main.yml. Les
+  variables de boucle disponibles ici sont exactement : `job.name`,
+  `job.description`, `job.script_path`. Tout le reste (URL SCM, branche,
+  retention) est COMMUN aux 3 jobs et vient des variables du role — c'est
+  deliberé : ce qui doit rester identique entre services n'est ecrit qu'une fois.
+
+  Ce fichier est un config.xml Jenkins PRET A POSTER (CLI create-job ou POST
+  /createItem) — Ansible ne le pousse PAS lui-meme : creer le job exige de
+  s'authentifier aupres de Jenkins, donc un secret cote Ansible, refuse tant que
+  Vault n'est pas cable a Jenkins (cf. tasks/main.yml).
+
+  POINTS NON NEGOCIABLES, VISIBLES DANS LE XML — ET VRAIS POUR LES 3 JOBS,
+  puisqu'ils sont ecrits ICI, dans l'unique source de tous les config.xml :
+    - DECLENCHEMENT : par DEFAUT <triggers/> VIDE => manuel strict. Aucun
+      pollSCM, aucun webhook, aucun scan multibranch. C'est la preuve
+      structurelle, pas une promesse en commentaire, et il n'y a qu'UN endroit a
+      auditer pour les 3 jobs.
+      SEULE derogation possible, OPT-IN et explicite : `jenkins_scm_poll_enabled`
+      rend un SCMTrigger (poll SCM) avec le cron `jenkins_scm_poll_cron`. Jamais
+      de webhook rendu ici : un webhook suppose que GitHub.com puisse JOINDRE ce
+      Jenkins, qui n'a pas d'URL publique (local, derriere Traefik, cert
+      auto-signe). Le poll est le seul declencheur automatique realisable
+      entierement cote Jenkins.
+    - Aucun <credentialsId> dans userRemoteConfigs TANT QUE
+      `jenkins_scm_credential_id` est vide (defaut) => ZERO secret : le SCM est
+      alors un miroir local monte en lecture seule, transport file://.
+      Si l'operateur fournit un ID (mode remote GitHub), ce qui est rendu ici est
+      l'IDENTIFIANT d'une entree du credential store de Jenkins — jamais la cle
+      elle-meme, qui n'existe que dans JENKINS_HOME et n'entre pas dans ce depot.
+    - Aucune etape d'analyse qualite, aucun build/push d'image : ce que fait
+      reellement un job est decrit par le Jenkinsfile VERSIONNE du service
+      (scriptPath), pas par ce XML.
+-#}
+<?xml version='1.1' encoding='UTF-8'?>
+<!-- {{ ansible_managed }} -->
+<flow-definition plugin="workflow-job">
+  <description>{{ job.description | trim }}</description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <jenkins.model.BuildDiscarderProperty>
+      <!-- Historique borne : sur une machine 8 Go, on ne laisse pas
+           JENKINS_HOME grossir sans limite dans le volume nomme. -->
+      <strategy class="hudson.tasks.LogRotator">
+        <daysToKeep>-1</daysToKeep>
+        <numToKeep>10</numToKeep>
+        <artifactDaysToKeep>-1</artifactDaysToKeep>
+        <artifactNumToKeep>-1</artifactNumToKeep>
+      </strategy>
+    </jenkins.model.BuildDiscarderProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+{% if jenkins_scm_local_mirror | bool %}
+          <!-- Miroir LOCAL monte en lecture seule dans le conteneur Jenkins.
+               Transport file:// => AUCUNE authentification requise, donc aucun
+               identifiant a referencer ici ni a stocker dans Jenkins. -->
+{% else %}
+          <!-- Remote distant : le job clone la source de verite. Le checkout
+               s'authentifie via l'entree du credential store referencee
+               ci-dessous (cle privee stockee par l'operateur DANS Jenkins,
+               jamais dans ce depot). Ce meme credential sert AUSSI au poll SCM
+               quand il est actif (le poll fait un `git ls-remote` authentifie).
+               -->
+{% endif %}
+          <url>{{ jenkins_scm_url }}</url>
+{% if jenkins_scm_credential_id | length > 0 %}
+          <credentialsId>{{ jenkins_scm_credential_id }}</credentialsId>
+{% endif %}
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>*/{{ jenkins_scm_branch }}</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <extensions/>
+    </scm>
+    <!-- Jenkinsfile versionne DANS le depot, a la racine du module teste. Le
+         chemin est RELATIF A LA RACINE DU MONOREPO : le checkout ramene tout le
+         depot, pas le sous-repertoire du service. -->
+    <scriptPath>{{ job.script_path }}</scriptPath>
+    <lightweight>false</lightweight>
+  </definition>
+{% if jenkins_scm_poll_enabled | bool %}
+  <!-- POLL SCM ACTIF (opt-in `jenkins_scm_poll_enabled=true`, identique pour les
+       3 jobs). Jenkins interroge le SCM selon le cron ci-dessous et ne declenche
+       un build QUE si le SHA de la branche suivie a change : un poll sans commit
+       ne cree aucun build. Toujours AUCUN webhook (Jenkins n'a pas d'URL
+       publique joignable depuis GitHub.com) et aucun scan multibranch.
+       `ignorePostCommitHooks` false : sans consequence ici (aucun hook
+       /git/notifyCommit n'est emis vers ce Jenkins), on garde la valeur par
+       defaut du plugin plutot qu'un reglage sans effet. -->
+  <triggers>
+    <hudson.triggers.SCMTrigger>
+      <spec>{{ jenkins_scm_poll_cron }}</spec>
+      <ignorePostCommitHooks>false</ignorePostCommitHooks>
+    </hudson.triggers.SCMTrigger>
+  </triggers>
+{% else %}
+  <!-- VIDE : declenchement MANUEL uniquement (bouton "Build Now" / CLI `build`).
+       C'est le DEFAUT du role, et il vaut pour les trois jobs a la fois. -->
+  <triggers/>
+{% endif %}
+  <disabled>false</disabled>
+</flow-definition>

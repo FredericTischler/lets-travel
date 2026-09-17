@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: vault
+  author: travel-plan
+  description: >-
+    Provisionne Vault (dev mode) pour Travel-Plan : rend un fragment de service
+    Compose, verifie le moteur KV v2 sur secret/, ecrit les secrets runtime
+    (creds DB, cles Stripe/PayPal) en read-before-write idempotent, et pose les
+    policies par service (moindre privilege). Root token dev source d'une
+    variable, jamais commite en clair.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Alpine
+      versions:
+        - all
+  galaxy_tags:
+    - vault
+    - secrets
+    - infrastructure
+dependencies: []

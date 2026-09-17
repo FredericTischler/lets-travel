@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: jenkins
+  author: travel-plan
+  description: >-
+    Provisionne le controleur Jenkins de Travel-Plan (profil Compose `ci`, a la
+    demande — cf. docs/architecture-decisions.md §8). Rend un fragment de service
+    Compose (image epinglee jenkins/jenkins:2.568.3-lts-jdk21, JENKINS_HOME sur
+    volume nomme persistant, backend-net, aucun port publie, route Traefik par
+    labels) + le config.xml d'UN job Pipeline declenche MANUELLEMENT qui joue
+    `./mvnw test` sur identity-service. Le socket Docker est monte en
+    LECTURE-ECRITURE (obligatoire : les tests utilisent Testcontainers).
+    Declenchement automatique possible en opt-in via poll SCM
+    (jenkins_scm_poll_enabled). Hors perimetre a ce stade : SonarQube, webhooks
+    (Jenkins n'a pas d'URL publique joignable depuis GitHub.com), jobs
+    multibranch / Pull Requests, build & push d'image, agents Jenkins distincts.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - jenkins
+    - ci
+    - cd
+    - pipeline
+    - infrastructure
+dependencies: []

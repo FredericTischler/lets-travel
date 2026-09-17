@@ -1,0 +1,8 @@
+---
+# handlers/main.yml — role docker-host
+# Aucun handler.
+# Le rafraîchissement du cache APT n'est PLUS un handler global (ansible.builtin.apt
+# update_cache est forcément GLOBAL et couplerait l'install Docker aux autres dépôts).
+# Il est désormais fait en ligne dans tasks/main.yml via un apt-get CIBLÉ sur le seul
+# dépôt Docker (Dir::Etc::sourcelist / sourceparts), changed_when:false.
+[]

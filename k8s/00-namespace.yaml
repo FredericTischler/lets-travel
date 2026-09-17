@@ -1,0 +1,17 @@
+# Namespace dedie a la demonstration Kubernetes (bonus du sujet).
+#
+# POURQUOI UN NAMESPACE DEDIE : ces manifestes sont une DEMONSTRATION
+# additionnelle, pas la solution de deploiement du projet (qui reste
+# Ansible + Docker Compose, cf. README racine). Un namespace isole garantit
+# qu'un `kubectl delete namespace travel-plan` suffit a tout nettoyer sans
+# risquer de toucher autre chose sur le cluster.
+#
+# Tous les autres manifestes de ce repertoire portent explicitement
+# `metadata.namespace: travel-plan` : `kubectl apply -f k8s/` fonctionne donc
+# sans `-n`, et ne depend PAS du namespace courant du kubeconfig.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: travel-plan
+  labels:
+    app.kubernetes.io/part-of: travel-plan

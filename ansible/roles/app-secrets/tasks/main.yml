@@ -1,0 +1,127 @@
+---
+# roles/app-secrets/tasks/main.yml
+#
+# Modele operatoire : Ansible LIT les secrets dans Vault et les MATERIALISE
+# dans /opt/travel-plan/.env ; docker-compose les INTERPOLE au `up`.
+# Aucun secret n'est rendu dans un fragment Compose (jamais bake dans le YAML).
+#
+# --------------------------------------------------------------------------
+# CHEMIN NON COUVERT PAR MOLECULE : app_secrets_vault_read: false par defaut
+# skipe TOUTES les taches ci-dessous (le role est alors un no-op integral).
+# Le scenario Molecule verifie precisement cette propriete (aucun .env ecrit,
+# idempotence triviale). Non-regression du chemin Vault = re-jouer la sequence
+# manuelle (`-e app_secrets_vault_read=true` contre un Vault provisionne) apres
+# toute modification de cette logique.
+# --------------------------------------------------------------------------
+
+- name: "Read runtime secrets from Vault (app_secrets_vault_read=true seulement)"
+  community.hashi_vault.vault_kv2_get:
+    url: "{{ vault_addr }}"
+    auth_method: token
+    token: "{{ vault_dev_root_token }}"
+    engine_mount_point: "{{ vault_kv_mount }}"
+    path: "{{ item }}"
+  loop:
+    - "{{ app_secrets_vault_path_postgres_superuser }}"
+    - "{{ app_secrets_vault_path_identity_db }}"
+    - "{{ app_secrets_vault_path_payment_db }}"
+    - "{{ app_secrets_vault_path_payment_stripe }}"
+    - "{{ app_secrets_vault_path_payment_paypal }}"
+    - "{{ app_secrets_vault_path_travel_db }}"
+    - "{{ app_secrets_vault_path_shared_jwt }}"
+    # Secrets d'outillage (SonarQube / Grafana) : memes lecture et
+    # materialisation que les autres, cf. defaults/main.yml.
+    - "{{ app_secrets_vault_path_sonarqube_db }}"
+    - "{{ app_secrets_vault_path_observability_grafana }}"
+  register: _vault_app_secrets
+  no_log: true
+  when: app_secrets_vault_read | bool
+  tags: [compose_fragment]
+
+# selectattr('item', 'equalto', ...) : on ne se repose PAS sur l'ordre des
+# resultats de boucle, on retrouve chaque secret par son chemin.
+- name: "Set runtime secret facts from Vault payloads"
+  ansible.builtin.set_fact:
+    app_secrets_postgres_superuser_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_postgres_superuser)
+         | map(attribute='secret.password')
+         | first }}
+    app_secrets_identity_db_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_identity_db)
+         | map(attribute='secret.password')
+         | first }}
+    app_secrets_payment_db_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_db)
+         | map(attribute='secret.password')
+         | first }}
+    # payment/stripe et payment/paypal : UN chemin -> DEUX cles chacun.
+    # map(attribute='secret.<cle>') sur le MEME resultat de boucle.
+    app_secrets_stripe_api_key: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_stripe)
+         | map(attribute='secret.api_key')
+         | first }}
+    app_secrets_stripe_secret_key: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_stripe)
+         | map(attribute='secret.secret_key')
+         | first }}
+    app_secrets_paypal_client_id: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_paypal)
+         | map(attribute='secret.client_id')
+         | first }}
+    app_secrets_paypal_client_secret: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_paypal)
+         | map(attribute='secret.client_secret')
+         | first }}
+    app_secrets_neo4j_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_travel_db)
+         | map(attribute='secret.password')
+         | first }}
+    app_secrets_jwt_signing_key: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_shared_jwt)
+         | map(attribute='secret.signing_key')
+         | first }}
+    app_secrets_sonarqube_db_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_sonarqube_db)
+         | map(attribute='secret.password')
+         | first }}
+    app_secrets_grafana_admin_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_observability_grafana)
+         | map(attribute='secret.password')
+         | first }}
+  no_log: true
+  when: app_secrets_vault_read | bool
+  tags: [compose_fragment]
+
+# Le repertoire parent est aussi celui du docker-compose.yml top-level
+# (assembly_compose_dir, role compose-assembly). `state: directory` avec les
+# memes mode/proprietaire implicites est idempotent quel que soit l'ordre des
+# roles : aucun des deux ne "reprend" le repertoire a l'autre.
+- name: "Ensure runtime .env parent directory exists"
+  ansible.builtin.file:
+    path: "{{ app_secrets_runtime_env_path | dirname }}"
+    state: directory
+    mode: "0755"
+  when: app_secrets_vault_read | bool
+  tags: [compose_fragment]
+
+- name: "Write Vault secrets to .env (Compose les resout au up, pas bake dans le YAML)"
+  ansible.builtin.template:
+    src: "dotenv.j2"
+    dest: "{{ app_secrets_runtime_env_path }}"
+    mode: "0600"
+    owner: "{{ app_secrets_env_owner }}"
+    group: "{{ app_secrets_env_owner }}"
+  no_log: true
+  when: app_secrets_vault_read | bool
+  tags: [compose_fragment]

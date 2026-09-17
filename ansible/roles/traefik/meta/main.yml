@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: traefik
+  author: travel-plan
+  description: >-
+    Provisionne la gateway Traefik de Travel-Plan : point d'entree unique,
+    terminaison TLS au bord (certs auto-signes), provider Docker (decouverte par
+    labels). Rend un fragment de service Compose + configs statique/dynamique.
+    SEUL role du projet a publier un port (443, sur edge-net). Chevauche
+    edge-net ET backend-net. Socket Docker monte en LECTURE SEULE (:ro).
+    Hors perimetre a ce stade : ForwardAuth (identity-service absent) et regles
+    de routage applicatives (aucun service a router).
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - traefik
+    - gateway
+    - reverse-proxy
+    - tls
+    - infrastructure
+dependencies: []

@@ -1,0 +1,272 @@
+---
+# verify.yml : assertions EXPLICITES (echoue si une garantie d'infra manque).
+# Pattern identique a postgres/neo4j/traefik/jenkins : docker connection,
+# assertions sur les fichiers rendus dans /tmp de la plateforme Molecule.
+#
+# CHOIX DE METHODE : le fragment est PARSE (`from_yaml`) avant d'etre asserte,
+# pas grep-e. Une assertion textuelle sur un fichier bourre de commentaires est
+# fragile dans les deux sens (un commentaire qui cite "data-net" ferait passer
+# un "pas de data-net" pour un echec, et un `ports:` commente passerait pour
+# publie). On asserte donc la STRUCTURE reellement vue par Compose.
+#
+# PERIMETRE HONNETE : on verifie que le role rend le bon artefact avec les
+# bonnes valeurs, ET que les interdits du projet sont STRUCTURELLEMENT absents
+# (aucun port publie, aucun mot de passe en clair, base Sonar hors data-net).
+# On ne prouve PAS ici que SonarQube demarre ni qu'une analyse passe : ca exige
+# Elasticsearch + un schema Postgres complet + Maven Central, hors d'atteinte
+# d'une boucle `molecule test`. C'est prouve hors Molecule (README du role).
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    sdir: /tmp/travel-plan-sonarqube
+  tasks:
+
+    # =====================================================================
+    # 0) L'artefact existe
+    # =====================================================================
+    - name: "Read rendered compose fragment"
+      ansible.builtin.slurp:
+        src: "{{ sdir }}/compose.sonarqube.yml"
+      register: fragment_b64
+
+    - name: "Parse the rendered fragment as YAML (assert on structure, not on text)"
+      ansible.builtin.set_fact:
+        frag: "{{ fragment_b64.content | b64decode | from_yaml }}"
+
+    - name: "Extract the two service blocks"
+      ansible.builtin.set_fact:
+        svc: "{{ frag.services.sonarqube }}"
+        db: "{{ frag.services['sonarqube-db'] }}"
+
+    # =====================================================================
+    # 1) PERIMETRE : exactement DEUX services, le serveur et SA base
+    # =====================================================================
+    - name: "Assert: exactement deux services (le serveur + sa base dediee)"
+      ansible.builtin.assert:
+        that:
+          - "frag.services.keys() | list | sort == ['sonarqube', 'sonarqube-db']"
+        fail_msg: >-
+          Le fragment ne declare pas exactement {sonarqube, sonarqube-db}. Ce
+          role apporte le serveur d'analyse ET sa base DEDIEE, rien d'autre.
+        success_msg: "Services sonarqube + sonarqube-db OK."
+
+    # =====================================================================
+    # 2) IMAGES EPINGLEES (contrat du projet : jamais `latest`)
+    # =====================================================================
+    - name: "Assert: images EPINGLEES (jamais latest), Community Edition"
+      ansible.builtin.assert:
+        that:
+          - "svc.image == 'sonarqube:26.9.0.129388-community'"
+          - "db.image == 'postgres:17.5-bookworm'"
+          - "not svc.image.endswith(':latest')"
+          - "not db.image.endswith(':latest')"
+          # Community = la seule edition gratuite. Un tag sans `-community`
+          # serait une edition payante : echec commercial silencieux au
+          # demarrage (« license required »), pas une erreur technique visible.
+          - "'-community' in svc.image"
+        fail_msg: "Images non epinglees, ou edition SonarQube non Community."
+        success_msg: "Images epinglees (sonarqube 26.9.x-community + postgres 17.5) OK."
+
+    # =====================================================================
+    # 3) LE POINT SPECIFIQUE DE CE ROLE : trois JVM dans une seule cgroup
+    # =====================================================================
+    - name: "Assert: les TROIS heaps sont bornees explicitement"
+      ansible.builtin.assert:
+        that:
+          - "'-Xmx512m' in svc.environment.SONAR_WEB_JAVAOPTS"
+          - "'-Xmx512m' in svc.environment.SONAR_CE_JAVAOPTS"
+          - "'-Xmx512m' in svc.environment.SONAR_SEARCH_JAVAOPTS"
+          # Flag non-heap indispensable a Elasticsearch : ces variables
+          # REMPLACENT la ligne entiere de sonar.properties, l'omettre le ferait
+          # perdre silencieusement.
+          - "'-XX:MaxDirectMemorySize=256m' in svc.environment.SONAR_SEARCH_JAVAOPTS"
+        fail_msg: >-
+          Une des trois heaps (Web / Compute Engine / Elasticsearch) n'est pas
+          bornee. Sans -Xmx, chaque JVM container-aware revendique 25 % de la
+          cgroup : trois JVM => OOM au premier rapport d'analyse traite.
+        success_msg: "Heaps Web/CE/Search bornees a 512m + MaxDirectMemorySize OK."
+
+    - name: "Assert: mem_limit pose, et STRICTEMENT superieur a la somme des heaps"
+      ansible.builtin.assert:
+        that:
+          - "svc.mem_limit == '2600m'"
+          - "db.mem_limit == '384m'"
+          - "(svc.mem_limit | regex_replace('[^0-9]', '') | int) > 1536"
+        fail_msg: >-
+          mem_limit absent ou incoherent avec la somme des trois heaps (1536m)
+          + leur non-heap.
+        success_msg: "mem_limit 2600m (serveur) / 384m (base) OK."
+
+    - name: "Assert: ulimits exiges par l'Elasticsearch embarque"
+      ansible.builtin.assert:
+        that:
+          - "svc.ulimits.nofile.soft == 131072"
+          - "svc.ulimits.nofile.hard == 131072"
+          - "svc.ulimits.nproc == 8192"
+        fail_msg: >-
+          ulimits absents : sous ces seuils l'Elasticsearch embarque refuse de
+          demarrer et le conteneur redemarre en boucle.
+        success_msg: "ulimits nofile 131072 / nproc 8192 OK."
+
+    # =====================================================================
+    # 4) PERSISTANCE : volumes NOMMES (sinon tout est perdu au `compose down`)
+    # =====================================================================
+    - name: "Assert: les quatre volumes nommes sont montes ET declares"
+      ansible.builtin.assert:
+        that:
+          - "'travel-plan-sonarqube-data:/opt/sonarqube/data' in svc.volumes"
+          - "'travel-plan-sonarqube-extensions:/opt/sonarqube/extensions' in svc.volumes"
+          - "'travel-plan-sonarqube-logs:/opt/sonarqube/logs' in svc.volumes"
+          - "'travel-plan-sonarqube-db-data:/var/lib/postgresql/data' in db.volumes"
+          - >-
+            (frag.volumes.keys() | list | sort)
+            == ['travel-plan-sonarqube-data', 'travel-plan-sonarqube-db-data',
+                'travel-plan-sonarqube-extensions', 'travel-plan-sonarqube-logs']
+        fail_msg: >-
+          Volumes nommes incomplets. Sans eux, chaque `compose down` reinitialise
+          SonarQube : re-wizard, perte de l'historique d'analyses ET du token
+          genere manuellement.
+        success_msg: "4 volumes nommes (data+es / extensions / logs / base) OK."
+
+    # =====================================================================
+    # 5) CLOISONNEMENT RESEAU — le coeur de la decision « base dediee »
+    # =====================================================================
+    - name: "Assert: le serveur est sur backend-net (Traefik) + le reseau prive"
+      ansible.builtin.assert:
+        that:
+          - "svc.networks | sort == ['backend-net', 'sonarqube-net']"
+          - "frag.networks['backend-net'].external | bool"
+        fail_msg: >-
+          Cablage reseau du serveur non conforme : backend-net (pour que Traefik
+          le decouvre, declare externe car possede par Ansible) + sonarqube-net
+          (lien prive vers sa base).
+        success_msg: "sonarqube sur backend-net (external) + sonarqube-net OK."
+
+    - name: "Assert: la base dediee est ISOLEE (un seul reseau, prive et internal)"
+      ansible.builtin.assert:
+        that:
+          - "db.networks == ['sonarqube-net']"
+          - "frag.networks['sonarqube-net'].internal | bool"
+          # Le point qui justifie tout le choix « base dediee » : la base Sonar
+          # ne doit toucher NI le reseau des donnees metier, NI le reseau de
+          # bord, NI celui des services applicatifs.
+          - "'data-net' not in (frag.networks.keys() | list)"
+          - "'edge-net' not in (frag.networks.keys() | list)"
+          - "'data-net' not in db.networks"
+          - "'backend-net' not in db.networks"
+        fail_msg: >-
+          La base SonarQube n'est pas isolee. Elle ne doit vivre QUE sur
+          sonarqube-net, declare `internal` (aucune route sortante), et jamais
+          toucher data-net (reseau des donnees metier, docs §4).
+        success_msg: "Base Sonar isolee sur sonarqube-net internal, hors data-net OK."
+
+    # =====================================================================
+    # 6) CONVENTION DU PROJET : SEUL Traefik publie un port
+    # =====================================================================
+    - name: "Assert: AUCUN port publie, ni par le serveur ni par la base"
+      ansible.builtin.assert:
+        that:
+          - "'ports' not in svc"
+          - "'ports' not in db"
+        fail_msg: >-
+          Le fragment publie un port : interdit, seul Traefik publie (docs §4).
+          Pour la base c'est en plus une exigence du sujet (« accessible only
+          within the internal network »).
+        success_msg: "Aucun port publie OK (UI joignable via la route Traefik)."
+
+    - name: "Assert: route Traefik complete (c'est CA qui rend l'UI joignable)"
+      ansible.builtin.assert:
+        that:
+          - "'traefik.enable=true' in svc.labels"
+          - "'traefik.docker.network=backend-net' in svc.labels"
+          - "'traefik.http.routers.sonarqube.rule=Host(`sonarqube.localhost`)' in svc.labels"
+          - "'traefik.http.routers.sonarqube.entrypoints=websecure' in svc.labels"
+          - "'traefik.http.routers.sonarqube.tls=true' in svc.labels"
+          - "'traefik.http.services.sonarqube.loadbalancer.server.port=9000' in svc.labels"
+          # La base n'a RIEN a exposer : un label traefik.enable dessus serait
+          # une faute de securite, pas une commodite.
+          - "'labels' not in db"
+        fail_msg: >-
+          Route Traefik de l'UI SonarQube incomplete, ou la base porte des
+          labels Traefik (elle ne doit JAMAIS etre routable).
+        success_msg: "Route Traefik sonarqube.localhost (websecure/TLS, 9000) OK."
+
+    - name: "Assert: serverBaseURL aligne sur la route Traefik (URLs absolues)"
+      ansible.builtin.assert:
+        that:
+          - "svc.environment.SONAR_CORE_SERVERBASEURL == 'https://sonarqube.localhost'"
+        fail_msg: >-
+          SONAR_CORE_SERVERBASEURL absent ou desaligne : SonarQube fabriquerait
+          ses URLs absolues en http://<hostname-conteneur>:9000, injoignable
+          depuis le navigateur puisqu'aucun port n'est publie.
+        success_msg: "serverBaseURL https://sonarqube.localhost OK."
+
+    # =====================================================================
+    # 7) ORDRE DE DEMARRAGE
+    # =====================================================================
+    - name: "Assert: le serveur attend que sa base soit HEALTHY (pas seulement demarree)"
+      ansible.builtin.assert:
+        that:
+          - "svc.depends_on['sonarqube-db'].condition == 'service_healthy'"
+          - "'pg_isready' in (db.healthcheck.test | join(' '))"
+          # -U/-d explicites : sans eux pg_isready sonde la base `postgres` avec
+          # l'utilisateur systeme du conteneur et repondrait « pret » trop tot.
+          - "'-U sonar' in (db.healthcheck.test | join(' '))"
+          - "'-d sonar' in (db.healthcheck.test | join(' '))"
+        fail_msg: >-
+          depends_on/healthcheck non conformes : SonarQube lance sa migration de
+          schema des le demarrage ; contre un postgres encore en initdb, elle
+          echoue et le serveur s'arrete.
+        success_msg: "depends_on service_healthy + pg_isready -U/-d OK."
+
+    - name: "Assert: healthcheck serveur base sur /api/system/status == UP"
+      ansible.builtin.assert:
+        that:
+          - "'/api/system/status' in (svc.healthcheck.test | join(' '))"
+          # Le grep n'est PAS decoratif : pendant DB_MIGRATION_RUNNING
+          # l'endpoint renvoie deja HTTP 200, donc `curl -f` seul declarerait
+          # SonarQube healthy avant qu'il ne soit utilisable.
+          - "'status' in (svc.healthcheck.test | join(' '))"
+          - "'UP' in (svc.healthcheck.test | join(' '))"
+        fail_msg: >-
+          Le healthcheck ne distingue pas « le port 9000 repond » de
+          « SonarQube est utilisable » (migration terminee, CE operationnel).
+        success_msg: "Healthcheck /api/system/status == UP OK."
+
+    # =====================================================================
+    # 8) CONTRAT DU PROJET : ZERO SECRET EN CLAIR
+    #    Assertions TEXTUELLES ici, et c'est VOLONTAIRE : on cherche l'absence
+    #    d'une chaine dans le FICHIER ENTIER (commentaires compris), pas une
+    #    propriete de structure. Un mot de passe laisse dans un commentaire
+    #    serait tout aussi commite.
+    # =====================================================================
+    - name: "Assert: le mot de passe n'est qu'une REFERENCE d'environnement"
+      ansible.builtin.assert:
+        that:
+          - "svc.environment.SONAR_JDBC_PASSWORD == '${SONARQUBE_DB_PASSWORD}'"
+          - "db.environment.POSTGRES_PASSWORD == '${SONARQUBE_DB_PASSWORD}'"
+          # Les deux DOIVENT etre la MEME reference : deux variables distinctes
+          # deriveraient et SonarQube ne pourrait plus se connecter.
+          - "svc.environment.SONAR_JDBC_PASSWORD == db.environment.POSTGRES_PASSWORD"
+        fail_msg: >-
+          Le mot de passe de la base est inline (ou les deux cotes divergent).
+          Contrat du projet : aucun credential en clair, aucun placeholder.
+        success_msg: "Mot de passe = reference ${SONARQUBE_DB_PASSWORD} des deux cotes OK."
+
+    - name: "Assert: aucun token d'analyse Sonar n'a ete fabrique"
+      ansible.builtin.assert:
+        that:
+          # `squ_` est le prefixe des tokens utilisateur SonarQube, `sqa_`/`sqp_`
+          # ceux des tokens d'analyse globale/de projet. Aucun ne doit exister
+          # dans un fichier commite : leur generation est MANUELLE (README).
+          - "'squ_' not in (fragment_b64.content | b64decode)"
+          - "'sqa_' not in (fragment_b64.content | b64decode)"
+          - "'sqp_' not in (fragment_b64.content | b64decode)"
+          - "'SONAR_TOKEN=' not in (fragment_b64.content | b64decode)"
+        fail_msg: >-
+          Un token SonarQube (ou une valeur SONAR_TOKEN) apparait dans le
+          fragment. Meme decision que le role jenkins : Vault n'est pas cable a
+          la chaine CI, donc ni credential en clair ni placeholder — la
+          generation du token est une procedure manuelle documentee.
+        success_msg: "Aucun token Sonar dans l'artefact rendu OK."

@@ -1,0 +1,285 @@
+---
+# verify.yml : assertions EXPLICITES (echoue si une garantie d'infra manque).
+# APPROCHE CONTROLEUR : `connection: local` => modules community.hashi_vault
+# executes sur le controleur, Vault joint via le port de TEST localhost:8200.
+- name: Verify
+  hosts: all
+  gather_facts: false
+  # ansible_connection en var pour surcharger le `ansible_connection: docker`
+  # injecte par molecule dans l'inventaire (cf. converge.yml).
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    vault_addr: "http://localhost:8200"
+    root_token: molecule-root-token
+    kv_mount: secret
+  tasks:
+
+    # ---- 1) Moteur KV v2 monte sur secret/ (version 2) ----------------------
+    - name: "Read sys/mounts"
+      community.hashi_vault.vault_read:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        path: "sys/mounts"
+      register: mounts
+      no_log: true
+
+    - name: "Assert KV v2 mounted on secret/ (version 2)"
+      ansible.builtin.assert:
+        that:
+          - "'secret/' in mounts.data.data"
+          - "mounts.data.data['secret/'].type == 'kv'"
+          - "(mounts.data.data['secret/'].options.version | string) == '2'"
+        fail_msg: "KV v2 absent ou mauvaise version sur secret/."
+        success_msg: "Moteur KV v2 (version 2) monte sur secret/."
+
+    # ---- 2) Les 5 chemins existent AVEC les cles attendues ------------------
+    - name: "Read identity/db"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "identity/db"
+      register: s_identity_db
+      no_log: true
+
+    - name: "Read payment/db"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "payment/db"
+      register: s_payment_db
+      no_log: true
+
+    - name: "Read payment/stripe"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "payment/stripe"
+      register: s_stripe
+      no_log: true
+
+    - name: "Read payment/paypal"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "payment/paypal"
+      register: s_paypal
+      no_log: true
+
+    - name: "Read travel/db"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "travel/db"
+      register: s_travel_db
+      no_log: true
+
+    - name: "Read shared/jwt"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "shared/jwt"
+      register: s_shared_jwt
+      no_log: true
+
+    - name: "Assert the 6 secret paths exist with expected keys"
+      ansible.builtin.assert:
+        that:
+          # identity/db : contrat coherent avec le role postgres.
+          - "['dbname','host','password','port','username'] | difference(s_identity_db.data.data.keys() | list) | length == 0"
+          - "s_identity_db.data.data.username == 'identity_user'"
+          - "s_identity_db.data.data.dbname == 'identity_db'"
+          - "s_identity_db.data.data.host == 'postgres'"
+          # payment/db
+          - "['dbname','host','password','port','username'] | difference(s_payment_db.data.data.keys() | list) | length == 0"
+          - "s_payment_db.data.data.username == 'payment_user'"
+          - "s_payment_db.data.data.dbname == 'payment_db'"
+          # payment/stripe
+          - "['api_key','secret_key'] | difference(s_stripe.data.data.keys() | list) | length == 0"
+          # payment/paypal
+          - "['client_id','client_secret'] | difference(s_paypal.data.data.keys() | list) | length == 0"
+          # travel/db : creds Neo4j placeholder, memes NOMS de cles.
+          - "['host','password','port','username'] | difference(s_travel_db.data.data.keys() | list) | length == 0"
+          - "s_travel_db.data.data.username == 'neo4j'"
+          - "s_travel_db.data.data.host == 'neo4j'"
+          # shared/jwt : cle HS256 PARTAGEE (identity emet, payment/travel verifient).
+          # Contrainte jjwt/HS256 (RFC 7518 §3.2) : >= 32 octets.
+          - "['signing_key'] | difference(s_shared_jwt.data.data.keys() | list) | length == 0"
+          - "s_shared_jwt.data.data.signing_key | length >= 32"
+        fail_msg: "Un chemin de secret manque ou ses cles ne correspondent pas au contrat."
+        success_msg: "Les 6 chemins existent avec les cles attendues."
+
+    # ---- 2bis) Secret d'administration infra/postgres-superuser -------------
+    - name: "Read infra/postgres-superuser (admin secret, hors policies service)"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "infra/postgres-superuser"
+      register: s_pg_super
+      no_log: true
+
+    - name: "Assert infra/postgres-superuser present avec cle password"
+      ansible.builtin.assert:
+        that:
+          - "'password' in s_pg_super.data.data"
+        fail_msg: "infra/postgres-superuser absent ou sans cle password."
+        success_msg: "infra/postgres-superuser OK (cle password presente)."
+
+    # ---- 2ter) Secrets d'OUTILLAGE (SonarQube, Grafana) ---------------------
+    # Meme statut que infra/postgres-superuser : lus par Ansible seul (token
+    # root), volontairement hors des policies par service. On verifie donc leur
+    # PRESENCE et leur cle `password` — pas qu'une policy y donne acces, ce qui
+    # serait au contraire une regression.
+    - name: "Read tooling secrets (sonarqube/db, observability/grafana)"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "{{ item }}"
+      loop:
+        - "sonarqube/db"
+        - "observability/grafana"
+      register: s_tooling
+      no_log: true
+
+    - name: "Assert tooling secrets present avec cle password"
+      ansible.builtin.assert:
+        that:
+          - "s_tooling.results | map(attribute='data.data') | selectattr('password', 'defined') | list | length == 2"
+        fail_msg: >-
+          sonarqube/db ou observability/grafana absent, ou sans cle password :
+          le .env rendu par app-secrets aurait une variable VIDE et
+          `docker compose up` echouerait (ou pire, Grafana repartirait sur
+          admin/admin).
+        success_msg: "sonarqube/db et observability/grafana OK (cle password presente)."
+
+    # ---- 3) Les 3 policies par service existent -----------------------------
+    - name: "Read the 3 service policies"
+      community.hashi_vault.vault_read:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        path: "sys/policies/acl/{{ item }}"
+      loop:
+        - identity-policy
+        - payment-policy
+        - travel-policy
+      register: policies_read
+      failed_when: false
+      no_log: true
+
+    - name: "Assert the 3 policies exist and target their own scope only"
+      ansible.builtin.assert:
+        that:
+          # chaque lecture a reussi (policy presente)
+          - "policies_read.results | rejectattr('data', 'defined') | list | length == 0"
+          # identity-policy : vise identity, PAS payment ni travel
+          - "'secret/data/identity/*' in (policies_read.results[0].data.data.policy)"
+          - "'payment' not in (policies_read.results[0].data.data.policy)"
+          - "'travel' not in (policies_read.results[0].data.data.policy)"
+          # payment-policy : vise payment, PAS identity ni travel
+          - "'secret/data/payment/*' in (policies_read.results[1].data.data.policy)"
+          - "'identity' not in (policies_read.results[1].data.data.policy)"
+          - "'travel' not in (policies_read.results[1].data.data.policy)"
+          # travel-policy : vise travel, PAS identity ni payment
+          - "'secret/data/travel/*' in (policies_read.results[2].data.data.policy)"
+          - "'identity' not in (policies_read.results[2].data.data.policy)"
+          - "'payment' not in (policies_read.results[2].data.data.policy)"
+        fail_msg: "Une policy manque ou fuit sur le perimetre d'un autre service."
+        success_msg: "Les 3 policies existent et restent cloisonnees sur leur perimetre."
+
+    - name: "Assert infra/* absent de toutes les policies service (perimetre admin uniquement)"
+      ansible.builtin.assert:
+        that:
+          - "'infra' not in (policies_read.results[0].data.data.policy)"
+          - "'infra' not in (policies_read.results[1].data.data.policy)"
+          - "'infra' not in (policies_read.results[2].data.data.policy)"
+        fail_msg: "infra/* accessible depuis une policy service — violation de perimetre."
+        success_msg: "infra/* absent de toutes les policies service (acces admin uniquement)."
+
+    # ---- 4) REFUS (mirror du cloisonnement postgres) ------------------------
+    # Token limite a identity-policy : lecture identity/db DOIT reussir,
+    # lecture payment/db DOIT ECHOUER (permission denied).
+    - name: "Create a token limited to identity-policy"
+      community.hashi_vault.vault_token_create:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        policies: ["identity-policy"]
+        no_default_policy: true
+        ttl: "5m"
+      register: identity_token
+      no_log: true
+
+    - name: "identity token -> read identity/db (legitime, doit reussir)"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ identity_token.login.auth.client_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "identity/db"
+      register: limited_legit
+      ignore_errors: true
+      no_log: true
+
+    - name: "identity token -> read payment/db (interdit, doit echouer)"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ identity_token.login.auth.client_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "payment/db"
+      register: limited_cross
+      ignore_errors: true
+      no_log: true
+
+    - name: "Assert least-privilege: legit read OK, cross read DENIED"
+      ansible.builtin.assert:
+        that:
+          # lecture legitime reussie
+          - "not (limited_legit.failed | default(false))"
+          # lecture croisee refusee (permission denied)
+          - "limited_cross.failed | default(false)"
+          - "'denied' in (limited_cross.msg | default('') | lower) or 'forbidden' in (limited_cross.msg | default('') | lower)"
+        fail_msg: >-
+          Cloisonnement viole : legit_failed={{ limited_legit.failed | default('?') }},
+          cross_failed={{ limited_cross.failed | default('?') }},
+          cross_msg={{ limited_cross.msg | default('') }}
+        success_msg: "Moindre privilege OK : identity lit identity/db, refus sur payment/db."
+
+    # ---- 5) Fragment Compose rendu conforme ---------------------------------
+    - name: "Read rendered compose fragment"
+      ansible.builtin.slurp:
+        src: /tmp/travel-plan-vault/compose.vault.yml
+      register: fragment_b64
+
+    - name: "Assert fragment: pinned image, dev mode, data-net, mem_limit, NO host port"
+      ansible.builtin.assert:
+        that:
+          - "'hashicorp/vault:1.18.3' in (fragment_b64.content | b64decode)"
+          - "'server' in (fragment_b64.content | b64decode)"
+          - "'-dev' in (fragment_b64.content | b64decode)"
+          - "'data-net' in (fragment_b64.content | b64decode)"
+          - "'mem_limit' in (fragment_b64.content | b64decode)"
+          # VAULT_ADDR present -> healthcheck `vault status` en HTTP.
+          - "'VAULT_ADDR' in (fragment_b64.content | b64decode)"
+          # AUCUN port publie vers l'hote : pas de cle `ports:`.
+          - "'ports:' not in (fragment_b64.content | b64decode)"
+        fail_msg: "Le fragment compose ne reflete pas l'infra attendue."
+        success_msg: "Fragment conforme (image epinglee, dev mode, data-net, mem_limit, sans port hote)."

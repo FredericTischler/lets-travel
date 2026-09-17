@@ -1,0 +1,14 @@
+---
+# Prepare : python3 dans la plateforme Debian (requis par les modules Ansible).
+# Volontairement PAS de groupe `docker` cree ici : le converge epingle
+# jenkins_docker_gid explicitement, ce qui est justement le chemin de code
+# a couvrir quand le controleur Ansible n'est pas l'hote Docker cible.
+- name: Prepare platform (python3 for Molecule lifecycle)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: "Install python3 in the Debian platform (raw: python not present yet)"
+      ansible.builtin.raw: >-
+        apt-get update -qq &&
+        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3
+      changed_when: false

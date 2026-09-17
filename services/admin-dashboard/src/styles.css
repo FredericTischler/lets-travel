@@ -1,0 +1,39 @@
+/* You can add global styles to this file, and also import other style files */
+
+@import 'tailwindcss';
+
+/* Manual class-based dark mode (toggled by ThemeService via the `dark`
+   class on <html>), instead of Tailwind v4's default `prefers-color-scheme`
+   strategy. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Shared table classes for the three list screens (users/payments/
+   destinations). A generic table *component* was considered and rejected:
+   the three tables differ too much in shape (the users table swaps two
+   cells for an inline edit <form>, the payments table shows conditional
+   per-row action buttons based on status, the destinations table has no
+   edit at all) for a single generic API to stay simple. Plain shared
+   classes give visual consistency without forcing that abstraction. */
+@layer components {
+  .table-shell {
+    @apply w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700;
+  }
+  .table-base {
+    @apply w-full border-collapse text-left text-sm;
+  }
+  .table-head-row {
+    @apply bg-slate-50 dark:bg-slate-800;
+  }
+  .table-head-cell {
+    @apply px-4 py-2 font-medium text-slate-600 dark:text-slate-300;
+  }
+  .table-row {
+    @apply border-t border-slate-200 dark:border-slate-700;
+  }
+  .table-cell {
+    @apply px-4 py-2 align-middle text-slate-700 dark:text-slate-200;
+  }
+  .table-empty-cell {
+    @apply px-4 py-6 text-center text-slate-500 dark:text-slate-400;
+  }
+}

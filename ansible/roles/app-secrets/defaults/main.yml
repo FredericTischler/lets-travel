@@ -1,0 +1,93 @@
+---
+# roles/app-secrets/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role app-secrets.
+#
+# RESPONSABILITE UNIQUE : ce role est le SEUL PROPRIETAIRE du fichier
+# /opt/travel-plan/.env (charge automatiquement par Docker Compose depuis le
+# repertoire du docker-compose.yml top-level). Il lit les secrets runtime dans
+# Vault et les materialise dans CE fichier unique.
+#
+# POURQUOI UN SEUL ROLE : `.env` est un fichier UNIQUE, rendu integralement par
+# un `template`. Si deux roles (payment + travel, ou postgres + autre) le
+# templataient chacun, chaque run reecrirait le fichier de l'autre =>
+# `changed` a chaque passage, idempotence Ansible violee. Un fichier, un
+# proprietaire.
+
+# --- Lecture Vault (flag de securite, meme pattern que postgres_vault_read) --
+# app_secrets_vault_read: false (defaut) => Molecule-safe : AUCUNE lecture
+#   Vault, AUCUN fichier .env ecrit. Le role devient un no-op integral.
+# app_secrets_vault_read: true  => run reel (passer via -e), Vault requis.
+#
+# FLAG CANONIQUE : postgres_vault_read derive DESORMAIS par defaut de CETTE
+# variable (`postgres_vault_read: "{{ app_secrets_vault_read | default(false) }}"`
+# dans roles/postgres/defaults/main.yml). Raison : le .env rendu ici fournit
+# POSTGRES_SUPERUSER_PASSWORD au conteneur Postgres, tandis que le role postgres
+# utilise le meme secret pour SE CONNECTER lors du provisioning. Activer l'un
+# sans l'autre => conteneur avec le vrai secret Vault vs provisioning avec le
+# placeholder => echec d'authentification (et mismatch silencieux pour
+# identity_user / payment_user).
+#
+# CONSEQUENCE OPERATIONNELLE : il n'y a pas de site.yml, chaque role est joue par
+# une invocation `ansible-playbook` distincte et AUCUN etat n'est partage entre
+# ces processus. En run reel, l'operateur doit donc passer `-e
+# app_secrets_vault_read=true` sur LES DEUX invocations (role `postgres` ET role
+# `app-secrets`), avec le MEME nom de variable. Le nom partage ne cree pas d'etat
+# commun, il reduit le risque d'oubli : une seule chose a retenir au lieu de deux
+# flags distincts a garder synchronises.
+app_secrets_vault_read: false
+
+# --- Fichier .env runtime ----------------------------------------------------
+# Meme chemin que l'ancien postgres_runtime_env_path (dont ce role reprend la
+# responsabilite). DOIT etre dans le meme repertoire que le docker-compose.yml
+# top-level (assembly_compose_dir) pour etre auto-charge par Compose.
+# Ne commiter JAMAIS ce fichier (.gitignore).
+app_secrets_runtime_env_path: "/opt/travel-plan/.env"
+
+# Proprietaire du .env genere (lu par Docker Compose, qui tourne en tant
+# qu'utilisateur normal — pas root). Utilise lookup('env', ...) pour ne PAS
+# dependre de gather_facts : ansible_env et ansible_user_id sont des facts
+# indisponibles si gather_facts: false.
+# SUDO_USER (vide si pas de sudo) -> USER (toujours present en shell Linux/macOS).
+# Le second argument `true` de default() traite la chaine vide comme "non defini".
+app_secrets_env_owner: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
+
+# --- Chemins Vault lus (KV v2, mount `secret`) -------------------------------
+# Contrat de nommage coherent avec ansible/roles/vault/defaults/main.yml.
+# infra/postgres-superuser -> password    (secret d'administration Postgres)
+# identity/db              -> password    (compte applicatif identity_user)
+# payment/db               -> password    (compte applicatif payment_user)
+# payment/stripe           -> api_key, secret_key      (credentials Stripe)
+# payment/paypal           -> client_id, client_secret (credentials PayPal)
+# travel/db                -> password    (compte admin Neo4j, unique en CE)
+# shared/jwt               -> signing_key (cle HS256 PARTAGEE identity/payment/travel)
+#
+# NOTE payment/stripe et payment/paypal portent DEUX cles chacun : un seul
+# chemin Vault alimente donc deux facts (et deux lignes de .env). Les NOMS de
+# cles sont ceux ecrits par roles/vault/defaults/main.yml — ne pas les deviner.
+app_secrets_vault_path_postgres_superuser: "infra/postgres-superuser"
+app_secrets_vault_path_identity_db: "identity/db"
+app_secrets_vault_path_payment_db: "payment/db"
+app_secrets_vault_path_payment_stripe: "payment/stripe"
+app_secrets_vault_path_payment_paypal: "payment/paypal"
+app_secrets_vault_path_travel_db: "travel/db"
+app_secrets_vault_path_shared_jwt: "shared/jwt"
+
+# --- Chemins Vault d'OUTILLAGE (hors chaine applicative) ---------------------
+# sonarqube/db            -> password    (base dediee SonarQube, profil `ci`)
+# observability/grafana   -> password    (compte admin Grafana, profil `observability`)
+#
+# Ces deux secrets ne servent AUCUN service applicatif : ils alimentent des
+# conteneurs d'outillage que Compose monte a la demande. Ils passent malgre tout
+# par ici, et pas par un export shell, pour une raison simple : `.env` a UN
+# proprietaire (ce role). Un secret fourni a la main hors de ce fichier
+# disparait au premier re-run d'app-secrets, qui reecrit le .env en entier.
+app_secrets_vault_path_sonarqube_db: "sonarqube/db"
+app_secrets_vault_path_observability_grafana: "observability/grafana"
+
+# --- Variables Vault pour le run reel ---------------------------------------
+# Ignorees quand app_secrets_vault_read: false. A surcharger via -e en prod.
+# Coherentes avec vault/defaults/main.yml et postgres/defaults/main.yml.
+vault_addr: "http://localhost:8200"
+vault_kv_mount: "secret"
+vault_dev_root_token: "changeme_vault_root_token"  # noqa: surcharger via ansible-vault

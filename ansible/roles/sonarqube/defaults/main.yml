@@ -1,0 +1,181 @@
+---
+# roles/sonarqube/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role `sonarqube` (increment QUALITE DE CODE).
+#
+# Modele operatoire identique a tous les autres roles du projet :
+#   Ansible PROVISIONNE et REND des fichiers ; docker-compose ORCHESTRE.
+#   Aucun `docker_container`, aucun `docker compose up` declenche depuis Ansible.
+#
+# EXIGENCE COUVERTE (docs/sujet.md §1) : « Employ SonarQube to automate code
+# quality checks ». Jusqu'ici `ci/sonarqube/README.md` n'etait qu'un placeholder
+# Phase 0 ; ce role rend le service REEL.
+#
+# PERIMETRE DE CET INCREMENT (assume, pas un oubli) :
+#   - UN serveur SonarQube Community Edition + SA PROPRE base Postgres dediee.
+#   - Profil Compose `ci` : le MEME que jenkins, donc `--profile ci` fait monter
+#     Jenkins + SonarQube + sa base + Traefik, ensemble et A LA DEMANDE.
+#   - Route Traefik pour l'UI (sonarqube.localhost), aucun port publie.
+#   - PAS de token d'analyse provisionne (cf. section TOKEN plus bas) : c'est une
+#     decision deja actee par le role `jenkins` (Vault n'est pas cable a Jenkins
+#     dans cet increment => par contrat on ne pose ni credential en clair ni
+#     placeholder). La generation du token est une procedure MANUELLE documentee.
+#   - PAS de quality gate personnalise ni de quality profile pousse par Ansible :
+#     ce sont des objets applicatifs de SonarQube crees via son API AUTHENTIFIEE,
+#     donc soumis au meme blocage token que ci-dessus. On reste sur le
+#     « Sonar way » par defaut.
+#   - PAS de couverture de code (JaCoCo) : ajouter jacoco-maven-plugin aux 3
+#     pom.xml releve du build applicatif et n'est pas dans le perimetre infra.
+#     Consequence HONNETE : le quality gate « Sonar way » evalue le NEW CODE ;
+#     la condition de couverture y est evaluee a 0 % tant que JaCoCo n'est pas
+#     branche. C'est une limite documentee, pas un test truque.
+
+# === Image (tag epingle, JAMAIS latest) =====================================
+# Verifie via `docker manifest inspect` (EXISTS) et via l'API Docker Hub
+# (dernier tag `*-community` publie de la ligne 26.x au moment de l'ecriture).
+# Community Edition = la seule edition gratuite ; Developer/Enterprise sont
+# payantes et hors sujet ici.
+sonarqube_image: "sonarqube:26.9.0.129388-community"
+
+# Base DEDIEE a SonarQube. Meme image que la Postgres APPLICATIVE du projet
+# (postgres:17.5-bookworm, role `postgres`) — mais c'est un CONTENEUR DIFFERENT,
+# avec un volume different, sur un reseau different.
+#
+# POURQUOI UNE BASE DEDIEE et pas `identity_db`-style dans la Postgres du projet :
+#   1. CYCLE DE VIE. La Postgres applicative appartient aux profils core/full et
+#      tourne au quotidien ; SonarQube appartient au profil `ci` et ne tourne
+#      qu'a la demande. Les coupler ferait de la base applicative un PREREQUIS
+#      de la CI (et inversement : un `docker compose --profile ci down` ne doit
+#      pas pouvoir toucher aux donnees d'identity/payment).
+#   2. VOLUMETRIE ET USAGE. SonarQube ecrit beaucoup (issues, mesures,
+#      historique d'analyses) avec un profil de charge sans rapport avec le CRUD
+#      applicatif. Partager l'instance, c'est partager le `mem_limit: 256m` du
+#      role postgres — dimensionne pour deux petites bases CRUD, pas pour Sonar.
+#   3. SURFACE. La base applicative vit sur `data-net` avec les services metier.
+#      Y faire entrer un outil de CI elargit la surface de ce reseau sans raison.
+sonarqube_db_image: "postgres:17.5-bookworm"
+
+# === Services / conteneurs rendus dans le fragment Compose ==================
+sonarqube_service_name: "sonarqube"
+sonarqube_container_name: "travel-plan-sonarqube"
+sonarqube_db_service_name: "sonarqube-db"
+sonarqube_db_container_name: "travel-plan-sonarqube-db"
+
+# === Budget RAM (MESURE, pas suppose — cf. README du role) ==================
+# SonarQube Community embarque TROIS process JVM dans le meme conteneur :
+#   - Web server      (l'UI + l'API REST)
+#   - Compute Engine  (le traitement des rapports d'analyse pousses par le
+#                      scanner : c'est lui qui calcule les issues et le quality
+#                      gate, APRES que `sonar:sonar` a rendu la main)
+#   - Elasticsearch   (index interne des issues/mesures — SonarQube 26.x embarque
+#                      son propre ES, il n'est PAS externalisable en Community)
+# C'est cette triple JVM qui fait de SonarQube un poste bien plus lourd que
+# Jenkins seul, et ce que la doc du projet (§8) estimait a « ~1,5 Go avec sa
+# base ». La mesure empirique est reportee dans README.md du role.
+#
+# Chaque heap est bornee EXPLICITEMENT (meme discipline que toutes les JVM du
+# projet, docs §4) : sans -Xmx, une JVM container-aware prend 25 % de la cgroup,
+# soit ici 3 JVM se disputant la meme limite => OOM au premier rapport traite.
+sonarqube_web_max_heap: "512m"
+sonarqube_ce_max_heap: "512m"
+sonarqube_search_max_heap: "512m"
+# mem_limit = somme des 3 heaps (1536m) + non-heap des 3 JVM (metaspace, code
+# cache, stacks, buffers directs d'ES : compter 150-250 Mo par JVM) + marge.
+# 2600m est le plus petit palier ou l'analyse d'un service passe SANS OOM-kill
+# du Compute Engine (voir README pour le protocole de mesure).
+sonarqube_mem_limit: "2600m"
+# La base dediee n'heberge QUE Sonar : meme ordre de grandeur que la Postgres
+# applicative du projet (256m), un peu plus large car Sonar ecrit davantage.
+sonarqube_db_mem_limit: "384m"
+
+# === Reseaux ================================================================
+# backend-net : reseau PARTAGE, cree et possede par Ansible (role
+# compose-assembly), declare `external: true` cote fragment. SonarQube y est
+# present pour UNE seule raison : que Traefik le decouvre et route son UI.
+sonarqube_backend_network: "backend-net"
+
+# DEVIATION ASSUMEE de la convention « Ansible possede les reseaux ».
+# Le lien SonarQube <-> sa base dediee passe par un 4e reseau, celui-ci
+# declare DANS le fragment (donc cree et detruit par Compose, pas par Ansible).
+# Justification :
+#   - Ce reseau est un DETAIL D'IMPLEMENTATION prive du couple sonarqube/sa base.
+#     Aucun autre conteneur du projet n'a de raison d'y entrer. Le promouvoir au
+#     rang de reseau partage possede par Ansible lui donnerait une visibilite et
+#     une duree de vie (survivre a `compose down`) qu'il ne merite pas.
+#   - L'alternative « brancher la base Sonar sur data-net » a ete rejetee : elle
+#     ferait entrer un outil de CI dans le reseau des donnees metier, exactement
+#     ce que la segmentation en 3 reseaux (docs §4, moindre privilege) evite.
+# `internal: true` : ce reseau n'a AUCUNE route sortante. La base Sonar n'a donc
+# aucun acces au monde exterieur, et n'est joignable que par SonarQube.
+sonarqube_private_network: "sonarqube-net"
+
+# === Volumes nommes (persistance) ===========================================
+# Sans eux, chaque `docker compose down` reinitialiserait le serveur : re-wizard
+# de premier demarrage, perte de l'historique d'analyses, perte du token genere.
+# `data` contient AUSSI l'index Elasticsearch interne (sous data/es*/) : c'est
+# le meme volume, pas un oubli de volume separe.
+sonarqube_data_volume: "travel-plan-sonarqube-data"
+sonarqube_extensions_volume: "travel-plan-sonarqube-extensions"
+sonarqube_logs_volume: "travel-plan-sonarqube-logs"
+sonarqube_db_data_volume: "travel-plan-sonarqube-db-data"
+
+# === Port HTTP INTERNE (jamais publie sur l'hote) ===========================
+# Convention du projet : SEUL Traefik publie un port (docs §4).
+sonarqube_http_port: 9000
+
+# === Exposition de l'UI : route Traefik (meme idiome que jenkins) ===========
+sonarqube_traefik_enabled: true
+sonarqube_traefik_router_name: "sonarqube"
+sonarqube_traefik_host_rule: "sonarqube.localhost"
+sonarqube_traefik_entrypoint: "websecure"
+# SonarQube fabrique des URLs absolues (liens d'emails, badges, redirections
+# OAuth). Derriere un reverse proxy TLS, sans serverBaseURL il les fabriquerait
+# en http://<hostname-du-conteneur>:9000 — injoignable depuis le navigateur.
+sonarqube_server_base_url: "https://{{ sonarqube_traefik_host_rule }}"
+
+# === Identifiants de la base DEDIEE =========================================
+# ATTENTION — LIRE AVANT DE CRIER AU SECRET EN CLAIR.
+# Ce couple user/mot de passe n'est PAS un secret au sens du contrat du projet :
+#   - il n'ouvre l'acces a AUCUNE donnee metier (base dediee a SonarQube seul) ;
+#   - la base n'est joignable que depuis `sonarqube-net`, reseau `internal: true`
+#     (aucune route sortante, aucun port publie, aucun autre conteneur dessus) ;
+#   - il n'est donc pas exfiltrable sans acces prealable au demon Docker de
+#     l'hote — auquel cas le mot de passe est le dernier de vos problemes.
+# Il reste malgre tout INTERPOLE depuis l'environnement Compose et NON ecrit en
+# dur dans le fragment : le fragment rendu ne contient que `${SONARQUBE_DB_PASSWORD}`.
+# La valeur vient du `.env` de /opt/travel-plan, dont le role `app-secrets` est
+# le proprietaire UNIQUE et qu'il alimente depuis Vault.
+#
+# CE ROLE N'ECRIT RIEN DANS LE .env — c'est structurel, pas un oubli : deux roles
+# templatant le meme fichier s'ecraseraient mutuellement a chaque run (idempotence
+# violee, cf. ansible/README.md, section app-secrets). La procedure d'ajout du
+# chemin Vault `ci/sonarqube-db` est documentee dans le README de ce role.
+sonarqube_db_name: "sonar"
+sonarqube_db_user: "sonar"
+# Nom de la variable d'environnement Compose portant le mot de passe. Le fragment
+# rend la REFERENCE, jamais la valeur.
+sonarqube_db_password_env_var: "SONARQUBE_DB_PASSWORD"
+
+# === Reglages systeme exiges par l'Elasticsearch embarque ===================
+# L'ES embarque refuse de demarrer si vm.max_map_count est trop bas :
+#   « max virtual memory areas vm.max_map_count [65530] is too low, increase to
+#     at least [524288] »
+# et le conteneur SonarQube s'arrete alors en boucle. Ce sysctl n'est PAS
+# namespace par conteneur sous Linux : il ne peut pas etre pose via `sysctls:`
+# dans Compose, il doit l'etre sur l'HOTE. C'est donc bien du provisioning, donc
+# bien le travail d'Ansible — d'ou sa presence dans ce role.
+#
+# Flag pour pouvoir le desactiver la ou l'ecriture dans /proc/sys est impossible
+# (conteneur Molecule non privilegie) ou non souhaitee (hote gere autrement).
+sonarqube_manage_sysctl: true
+sonarqube_vm_max_map_count: 524288
+sonarqube_fs_file_max: 131072
+# Fichier de persistance du sysctl (survit au reboot).
+sonarqube_sysctl_file: "/etc/sysctl.d/99-travel-plan-sonarqube.conf"
+# ulimits poses cote conteneur (ceux-la SONT par-conteneur, contrairement au
+# sysctl ci-dessus). Valeurs minimales documentees par SonarQube.
+sonarqube_ulimit_nofile: 131072
+sonarqube_ulimit_nproc: 8192
+
+# === Repertoire de rendu (coherent avec les autres roles) ===================
+sonarqube_compose_dir: "/opt/travel-plan/sonarqube"

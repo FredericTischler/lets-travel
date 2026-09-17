@@ -1,0 +1,121 @@
+<div class="flex flex-col gap-6">
+  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Utilisateurs</h1>
+
+  <app-card title="Créer un utilisateur">
+    <form class="flex flex-col gap-4 sm:flex-row sm:items-end" (ngSubmit)="createUser()">
+      <app-input
+        class="flex-1"
+        fieldId="createEmail"
+        name="createEmail"
+        label="Email"
+        type="email"
+        [(ngModel)]="createEmail"
+        [required]="true"
+        autocomplete="off"
+      />
+
+      <app-input
+        class="flex-1"
+        fieldId="createPassword"
+        name="createPassword"
+        label="Mot de passe"
+        type="password"
+        [(ngModel)]="createPassword"
+        [required]="true"
+        autocomplete="new-password"
+      />
+
+      <app-button type="submit" [disabled]="creating()">
+        {{ creating() ? 'Création…' : 'Créer' }}
+      </app-button>
+    </form>
+
+    @if (createError()) {
+      <app-alert variant="error" class="mt-3 block">{{ createError() }}</app-alert>
+    }
+  </app-card>
+
+  <app-card title="Liste">
+    @if (deleteError()) {
+      <app-alert variant="error" class="mb-3 block">{{ deleteError() }}</app-alert>
+    }
+
+    @if (loading()) {
+      <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+    } @else if (error()) {
+      <app-alert variant="error">{{ error() }}</app-alert>
+    } @else {
+      <div class="table-shell">
+        <table class="table-base">
+          <thead>
+            <tr class="table-head-row">
+              <th class="table-head-cell">Id</th>
+              <th class="table-head-cell">Email</th>
+              <th class="table-head-cell">Créé le</th>
+              <th class="table-head-cell">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (user of users(); track user.id) {
+              <tr class="table-row">
+                <td class="table-cell">{{ user.id }}</td>
+                @if (editingUserId() === user.id) {
+                  <td class="table-cell" colspan="2">
+                    <form class="flex flex-wrap items-end gap-2" (ngSubmit)="saveEdit(user)">
+                      <app-input
+                        class="flex-1"
+                        fieldId="editEmail"
+                        name="editEmail"
+                        label="Email"
+                        type="email"
+                        [(ngModel)]="editEmail"
+                        [required]="true"
+                        autocomplete="off"
+                      />
+
+                      <app-button type="submit" [disabled]="editing()">
+                        {{ editing() ? 'Enregistrement…' : 'Enregistrer' }}
+                      </app-button>
+                      <app-button
+                        type="button"
+                        variant="secondary"
+                        [disabled]="editing()"
+                        (clicked)="cancelEdit()"
+                        >Annuler</app-button
+                      >
+                    </form>
+
+                    @if (editError()) {
+                      <app-alert variant="error" class="mt-2 block">{{ editError() }}</app-alert>
+                    }
+                  </td>
+                } @else {
+                  <td class="table-cell">{{ user.email }}</td>
+                  <td class="table-cell">{{ user.createdAt }}</td>
+                }
+                <td class="table-cell">
+                  @if (editingUserId() !== user.id) {
+                    <div class="flex gap-2">
+                      <app-button variant="secondary" (clicked)="startEdit(user)">Éditer</app-button>
+                      <app-button
+                        variant="danger"
+                        [disabled]="deletingUserId() === user.id"
+                        (clicked)="deleteUser(user)"
+                      >
+                        {{ deletingUserId() === user.id ? 'Suppression…' : 'Supprimer' }}
+                      </app-button>
+                    </div>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td class="table-empty-cell" colspan="4">Aucun utilisateur.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </app-card>
+</div>

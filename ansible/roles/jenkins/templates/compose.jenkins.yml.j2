@@ -1,0 +1,117 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `jenkins`.
+# Orchestration assuree par docker-compose, profil `ci` (applique par merge dans
+# le docker-compose.yml top-level rendu par le role compose-assembly).
+#
+# PROFIL `ci` = A LA DEMANDE (docs/architecture-decisions.md §8) : la stack CI ne
+# cohabite pas avec la stack applicative complete sur une machine a 8 Go.
+#
+# DECISION SECURITE ACTEE (documenter, pas debattre) :
+#   Le socket Docker est monte en LECTURE-ECRITURE — contrairement au role
+#   traefik ou `:ro` suffit. Ce n'est PAS un relachement par confort : les tests
+#   d'identity-service utilisent Testcontainers (PostgreSQLContainer), qui doit
+#   CREER, DEMARRER et SUPPRIMER des conteneurs freres. `:ro` rendrait le job
+#   structurellement impossible. Risque quasi-root ACCEPTE et BORNE par le fait
+#   que le profil `ci` ne tourne qu'a la demande, sur une machine de dev, et que
+#   l'UI n'est joignable que derriere Traefik. A reevaluer si ce projet visait
+#   une vraie prod (agent Jenkins dedie / docker-socket-proxy / rootless).
+#
+# AUCUN PORT PUBLIE : convention du projet, seul Traefik publie (docs §4).
+# L'UI passe par la route Traefik declaree en labels plus bas.
+services:
+  {{ jenkins_service_name }}:
+    image: "{{ jenkins_image }}"
+    container_name: "{{ jenkins_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM : ~700 Mo (§8) couvrent le controleur AU REPOS ; ici les
+    # builds tournent SUR le controleur (pas d'agent separe), il faut loger en
+    # plus la JVM Maven + la JVM forkee par Surefire. Cf. defaults pour le detail
+    # de l'addition. Les conteneurs Testcontainers sont des FRERES sur le demon
+    # hote : ils ne comptent pas dans cette cgroup.
+    mem_limit: "{{ jenkins_mem_limit }}"
+    # Le process jenkins est uid 1000 dans l'image. On lui AJOUTE le groupe
+    # `docker` de l'HOTE (GID {{ jenkins_docker_gid_resolved }}, resolu par
+    # Ansible via `getent group docker`) : sans cela, tout acces au socket
+    # renvoie EACCES et Testcontainers echoue au premier test.
+    group_add:
+      - "{{ jenkins_docker_gid_resolved }}"
+    environment:
+      # Heap du controleur borne explicitement (meme discipline que les JVM du
+      # projet, §4). Sans -Xmx, la JVM prendrait 25% de mem_limit et laisserait
+      # trop peu de place aux JVM de build dans la meme cgroup.
+      # -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true : SANS cette
+      # propriete, le git-plugin refuse net un remote file:// ("references a
+      # local directory, which may be insecure") et le job echoue au checkout.
+      # Garde-fou leve EN CONNAISSANCE DE CAUSE (Jenkins solo, un seul compte,
+      # bind-mount lecture seule) — cf. defaults/main.yml pour le detail.
+      # N'apparait QUE si jenkins_scm_url est en file:// : sur un vrai remote
+      # (git@github.com:...) elle ne sert a rien, donc le garde-fou amont se
+      # retablit tout seul.
+      JAVA_OPTS: "-Xmx{{ jenkins_controller_max_heap }} -Djava.awt.headless=true{% if jenkins_allow_local_checkout | bool %} -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true{% endif %}"
+      # Testcontainers : le job tourne DANS ce conteneur mais cree ses conteneurs
+      # de test sur le demon de l'HOTE. Par defaut getHost() renvoie `localhost`,
+      # qui designerait CE conteneur — jamais l'hote ou le port du postgres de
+      # test est publie. L'override + extra_hosts ci-dessous font pointer
+      # Testcontainers sur la passerelle de l'hote.
+      TESTCONTAINERS_HOST_OVERRIDE: "{{ jenkins_testcontainers_host_override }}"
+      DOCKER_HOST: "unix://{{ jenkins_docker_socket }}"
+    extra_hosts:
+      # host-gateway = IP de l'hote vue depuis le conteneur. Indispensable au
+      # couple TESTCONTAINERS_HOST_OVERRIDE ci-dessus.
+      - "{{ jenkins_testcontainers_host_override }}:host-gateway"
+    volumes:
+      # JENKINS_HOME sur volume NOMME : config, plugins, jobs, historique de
+      # builds et cache ~/.m2 survivent aux cycles down/up et aux redemarrages.
+      - "{{ jenkins_home_volume }}:/var/jenkins_home"
+      # Socket Docker en LECTURE-ECRITURE : exige par Testcontainers (voir
+      # l'en-tete de ce fichier). Volontairement SANS `:ro`.
+      - "{{ jenkins_docker_socket }}:{{ jenkins_docker_socket }}"
+{% if jenkins_scm_local_mirror | bool %}
+      # Miroir LOCAL du depot, en LECTURE SEULE : source du `checkout scm` du
+      # job (transport file://). Evite une cle de deploiement SSH = evite un
+      # secret dans Jenkins tant que Vault n'y est pas cable.
+      # ABSENT quand jenkins_scm_url pointe sur un vrai remote : le job clone
+      # alors GitHub, il n'y a plus rien a monter (et monter le checkout de
+      # l'hote pour rien elargirait la surface du conteneur sans contrepartie).
+      - "{{ jenkins_scm_repo_host_path }}:{{ jenkins_scm_mount_path }}:ro"
+{% endif %}
+    networks:
+      # UN SEUL reseau : necessaire et suffisant pour que Traefik decouvre et
+      # route l'UI. Jenkins ne parle a aucune base du projet (pas besoin du
+      # reseau de donnees) et ne publie rien (pas besoin du reseau de bord).
+      # Cf. defaults/main.yml pour le raisonnement complet.
+      - {{ jenkins_backend_network }}
+    # Aucune section `ports:` — seul Traefik publie un port (docs §4).
+    healthcheck:
+      # /login est servi des que le conteneur de servlets est pret, AVANT toute
+      # authentification (donc 200 meme wizard non termine) : c'est la sonde la
+      # plus honnete pour "Jenkins repond". curl est present dans l'image.
+      # start_period genereux : un premier demarrage (expansion du war) prend
+      # facilement 60-90 s.
+      test: ["CMD", "curl", "-fsS", "http://localhost:{{ jenkins_http_port }}/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+{% if jenkins_traefik_enabled %}
+    # --- Routage Traefik par LABELS (meme idiome qu'identity/payment/travel) --
+    # providers.docker est deja actif cote role traefik (exposedByDefault=false,
+    # network=backend-net) : le routage se declare ICI, par labels.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ jenkins_backend_network }}"
+      - "traefik.http.routers.{{ jenkins_traefik_router_name }}.rule=Host(`{{ jenkins_traefik_host_rule }}`)"
+      - "traefik.http.routers.{{ jenkins_traefik_router_name }}.entrypoints={{ jenkins_traefik_entrypoint }}"
+      - "traefik.http.routers.{{ jenkins_traefik_router_name }}.tls=true"
+      - "traefik.http.services.{{ jenkins_traefik_router_name }}.loadbalancer.server.port={{ jenkins_http_port }}"
+{% endif %}
+
+volumes:
+  {{ jenkins_home_volume }}:
+
+networks:
+  {{ jenkins_backend_network }}:
+    # Reseau cloisonne, cree et possede par Ansible (role compose-assembly) ;
+    # declare externe ici (Compose ne le gere pas).
+    external: true

@@ -1,0 +1,27 @@
+---
+# roles/neo4j/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du role neo4j.
+# Le role ne fait QUE : rendre un fragment de service Compose (dir + template).
+# Aucun schema / contrainte / index / provisioning d'utilisateurs : d'une part
+# ca releve du travel-service (applicatif), d'autre part Neo4j Community Edition
+# ne supporte NI le RBAC granulaire NI le multi-base (Enterprise uniquement).
+# Pas de mot de passe ici : le secret NEO4J_PASSWORD est injecte par Docker
+# Compose (interpolation ${...}), jamais rendu par Jinja2.
+
+# --- Image (tag epingle, jamais latest) -------------------------------------
+# Tag verifie via `docker manifest inspect neo4j:5.26.6-community` (EXISTS).
+# 5.27.0 n'existe pas encore ; 5.26.6 = patch stable de la serie 5.x.
+neo4j_image: "neo4j:5.26.6-community"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+neo4j_service_name: "neo4j"
+neo4j_container_name: "travel-plan-neo4j"
+# Reseau interne : base JAMAIS exposee a l'hote (cf. docs §4, data-net).
+neo4j_network: "data-net"
+# Garde-fou RAM 8 Go (cf. docs §4) : heap 512m + pagecache 256m + overhead JVM.
+neo4j_mem_limit: "1g"
+# Repertoire ou Ansible rend le fragment compose (surcharge en prod / molecule).
+neo4j_compose_dir: "/opt/travel-plan/neo4j"
+# Volume nomme pour la persistance des donnees (/data dans le conteneur).
+neo4j_data_volume: "travel-plan-neo4j-data"
