@@ -7,6 +7,7 @@ import io.jsonwebtoken.JwtException;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Bearer token validation for {@link com.travelplan.travel.controller.DestinationController}
@@ -26,6 +27,15 @@ import java.util.Set;
  * (create/update/delete a destination or a transport link) stays restricted
  * to {@code ADMIN}/{@code TRAVEL_MANAGER} ({@link #requireManagerOrAdmin}) —
  * ordinary Travelers do not manage the catalogue.</p>
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §2, a destination also
+ * carries a {@code managerId} (it doubles as the subject's "Travel" entity),
+ * so mutation is ownership-aware on top of the role check: a
+ * {@code TRAVEL_MANAGER} may only create/update/delete their own travels,
+ * {@code ADMIN} bypasses ownership entirely. {@link #requireManagerOrAdmin}
+ * now returns the parsed {@link Claims} so callers can chain
+ * {@link #requireOwnerOrAdmin(Claims, UUID)} — same two-step pattern as
+ * payment-service's {@code TokenValidationService.requireOwnerOrAdmin}.</p>
  */
 @Service
 public class TokenValidationService {
@@ -80,12 +90,41 @@ public class TokenValidationService {
      * @throws InsufficientRoleException if the token is otherwise valid but
      *         does not carry the {@code ADMIN} or {@code TRAVEL_MANAGER} role
      */
-    public void requireManagerOrAdmin(String authorizationHeader) {
+    public Claims requireManagerOrAdmin(String authorizationHeader) {
         Claims claims = validateAndParse(authorizationHeader);
         String role = claims.get(CLAIM_ROLE, String.class);
         if (role == null || !MANAGER_ROLES.contains(role)) {
             throw new InsufficientRoleException("Administrator or Travel Manager role required");
         }
+        return claims;
+    }
+
+    /**
+     * Reject unless {@code claims} carries the {@code ADMIN} role (implicit
+     * full oversight, docs/lets-travel-architecture-decisions.md §1) or its
+     * subject is exactly {@code resourceManagerId} — the ownership half of
+     * RBAC that {@link #requireManagerOrAdmin} alone cannot express, since a
+     * travel's manager is data, not a token claim. Mirrors payment-service's
+     * {@code TokenValidationService.requireOwnerOrAdmin}.
+     *
+     * @throws InsufficientRoleException if the caller is neither the owning manager nor an admin
+     */
+    public void requireOwnerOrAdmin(Claims claims, UUID resourceManagerId) {
+        if (isAdmin(claims)) {
+            return;
+        }
+        if (resourceManagerId == null || !claims.getSubject().equals(resourceManagerId.toString())) {
+            throw new InsufficientRoleException("Not allowed to manage another manager's travel");
+        }
+    }
+
+    public boolean isAdmin(Claims claims) {
+        return ROLE_ADMIN.equals(claims.get(CLAIM_ROLE, String.class));
+    }
+
+    /** The caller's user id — the JWT subject, parsed once callers have already validated the token. */
+    public UUID callerId(Claims claims) {
+        return UUID.fromString(claims.getSubject());
     }
 
     private Claims validateAndParse(String authorizationHeader) {

@@ -8,6 +8,7 @@ import com.travelplan.travel.dto.DestinationResponse;
 import com.travelplan.travel.dto.UpdateDestinationRequest;
 import com.travelplan.travel.entity.Destination;
 import com.travelplan.travel.exception.DestinationNotFoundException;
+import com.travelplan.travel.exception.InsufficientRoleException;
 import com.travelplan.travel.exception.InvalidDestinationRequestException;
 import com.travelplan.travel.repository.AccommodationInput;
 import com.travelplan.travel.repository.AccommodationRepository;
@@ -41,6 +42,16 @@ import java.util.stream.Collectors;
  * unreachable, since the only read path goes through
  * {@link #findById}/{@link #findAll}, which both filter out soft-deleted
  * destinations before any activity/accommodation is fetched.
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §2, {@code update}/
+ * {@code delete} are ownership-aware: a {@code TRAVEL_MANAGER} caller may
+ * only act on a destination whose {@code managerId} is their own id, an
+ * {@code ADMIN} caller bypasses this check entirely. Reads stay open to any
+ * role (the catalogue is public) — ownership is not checked there. The
+ * {@code managerId}/ownership check for creation is the controller's
+ * responsibility ({@code TokenValidationService.requireOwnerOrAdmin} against
+ * the request body's {@code managerId}), the same split payment-service uses
+ * for {@code CreateManualPaymentRequest.userId}.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -70,7 +81,8 @@ public class DestinationService {
         validateAccommodations(request.getAccommodations());
 
         Destination destination = new Destination(
-                request.getName(), request.getCountry(), request.getStartDate(), request.getEndDate());
+                request.getName(), request.getCountry(), request.getStartDate(), request.getEndDate(),
+                request.getManagerId(), request.getPrice(), request.getCapacity());
         Destination saved = destinationRepository.save(destination);
 
         activityRepository.replaceForDestination(saved.getId(), request.getActivities());
@@ -101,17 +113,21 @@ public class DestinationService {
 
     /**
      * Replace the mutable fields ({@code name}, {@code country},
-     * {@code startDate}, {@code endDate}) and the whole activity/
-     * accommodation lists of an active destination.
+     * {@code startDate}, {@code endDate}, {@code price}, {@code capacity})
+     * and the whole activity/accommodation lists of an active destination.
+     * {@code managerId} is never touched — see the class-level Javadoc.
      *
      * @throws DestinationNotFoundException if the destination does not exist or is soft-deleted
+     * @throws InsufficientRoleException if {@code isAdmin} is false and the
+     *         destination's {@code managerId} is not {@code callerId}
      * @throws InvalidDestinationRequestException if endDate is before startDate,
      *         or an accommodation's checkOut is before its checkIn
      */
     @Transactional
-    public DestinationResponse update(UUID id, UpdateDestinationRequest request) {
+    public DestinationResponse update(UUID id, UpdateDestinationRequest request, UUID callerId, boolean isAdmin) {
         Destination destination = destinationRepository.findActiveById(id)
                 .orElseThrow(() -> new DestinationNotFoundException(id));
+        requireOwnership(destination, callerId, isAdmin);
 
         validateDates(request.getStartDate(), request.getEndDate());
         validateAccommodations(request.getAccommodations());
@@ -120,6 +136,8 @@ public class DestinationService {
         destination.setCountry(request.getCountry());
         destination.setStartDate(request.getStartDate());
         destination.setEndDate(request.getEndDate());
+        destination.setPrice(request.getPrice());
+        destination.setCapacity(request.getCapacity());
         Destination saved = destinationRepository.save(destination);
 
         activityRepository.replaceForDestination(id, request.getActivities());
@@ -134,13 +152,31 @@ public class DestinationService {
      * class-level Javadoc.
      *
      * @throws DestinationNotFoundException if the destination does not exist or is already soft-deleted
+     * @throws InsufficientRoleException if {@code isAdmin} is false and the
+     *         destination's {@code managerId} is not {@code callerId}
      */
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, UUID callerId, boolean isAdmin) {
         Destination destination = destinationRepository.findActiveById(id)
                 .orElseThrow(() -> new DestinationNotFoundException(id));
+        requireOwnership(destination, callerId, isAdmin);
         destination.setDeletedAt(OffsetDateTime.now());
         destinationRepository.save(destination);
+    }
+
+    /**
+     * Enforces the ownership half of RBAC (docs/lets-travel-architecture-decisions.md
+     * §2): an {@code ADMIN} caller always passes (full oversight); otherwise
+     * the caller must be the destination's own {@code managerId}. Reads never
+     * call this — the catalogue is public, only mutation is ownership-aware.
+     */
+    private void requireOwnership(Destination destination, UUID callerId, boolean isAdmin) {
+        if (isAdmin) {
+            return;
+        }
+        if (destination.getManagerId() == null || !destination.getManagerId().equals(callerId)) {
+            throw new InsufficientRoleException("Not allowed to manage another manager's travel");
+        }
     }
 
     private DestinationResponse buildResponse(Destination destination) {

@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,12 +63,15 @@ class TravelCatalogueRbacIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
-    private static Map<String, Object> destinationPayload(String name) {
+    private static Map<String, Object> destinationPayload(String name, UUID managerId) {
         return Map.of(
                 "name", name,
                 "country", "France",
                 "startDate", "2027-06-01",
-                "endDate", "2027-06-10");
+                "endDate", "2027-06-10",
+                "managerId", managerId.toString(),
+                "price", 199.00,
+                "capacity", 25);
     }
 
     @Test
@@ -78,22 +82,38 @@ class TravelCatalogueRbacIntegrationTest {
 
         ResponseEntity<Map> response = restTemplate.exchange(
                 "/destinations", HttpMethod.POST,
-                new HttpEntity<>(destinationPayload("Lyon"), headers), Map.class);
+                new HttpEntity<>(destinationPayload("Lyon", UUID.randomUUID()), headers), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(response.getBody()).containsEntry("error", "Administrator or Travel Manager role required");
     }
 
     @Test
-    void travelManagerCanCreateADestination() {
+    void travelManagerCanCreateADestinationInTheirOwnName() {
+        UUID managerId = UUID.randomUUID();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", managerId));
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/destinations", HttpMethod.POST,
+                new HttpEntity<>(destinationPayload("Marseille", managerId), headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).containsEntry("managerId", managerId.toString());
+    }
+
+    @Test
+    void travelManagerCannotCreateADestinationInSomeoneElsesName() {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(TestJwtTokens.tokenWithRole("TRAVEL_MANAGER"));
         headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
 
         ResponseEntity<Map> response = restTemplate.exchange(
                 "/destinations", HttpMethod.POST,
-                new HttpEntity<>(destinationPayload("Marseille"), headers), Map.class);
+                new HttpEntity<>(destinationPayload("Nantes", UUID.randomUUID()), headers), Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody()).containsEntry("error", "Not allowed to manage another manager's travel");
     }
 }

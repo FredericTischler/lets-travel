@@ -106,6 +106,76 @@ recommandations (§7) — `Travel` doit être un nœud du même graphe que les
 relations `SUBSCRIBED`/`GAVE_FEEDBACK` pour que les requêtes de
 recommandation restent un seul parcours Cypher.
 
+### Correctif — ce que le code dit vraiment (relu avant d'implémenter §2)
+
+Le texte ci-dessus a été rédigé sur la foi d'un `services/README.md` obsolète
+("Non implémenté : pas de `Travel`, `Activity`, `Accommodation`"). En relisant
+le code de travel-service avant de coder cette phase, ce n'est plus vrai :
+`Destination` a déjà `startDate`/`endDate`/`durationDays` (dérivé), et possède
+déjà `Activity` et `Accommodation` via `HAS_ACTIVITY`/`HAS_ACCOMMODATION`
+(voir `CreateDestinationRequest.java`, `Destination.java`, `Activity.java`,
+`Accommodation.java`, `ActivityRepository.java`, `AccommodationRepository.java`).
+Il ne manque, par rapport à ce que le sujet exige d'un "Travel" (destination(s),
+dates, durée, activités, hébergement, transport, manager propriétaire,
+capacité/prix pour permettre l'abonnement), que trois champs : `managerId`,
+`price`, `capacity`. Le reste — dates, durée dérivée, activités, hébergements,
+et même le transport inter-étapes via `TRANSPORT` — existe déjà sur
+`Destination`.
+
+**Décision révisée : option (a), pas (b).** `Destination` est étendue avec
+`managerId` (UUID, référence applicative vers un `User` `TRAVEL_MANAGER`
+côté identity-service — même principe que `userId` sur `Payment`, pas de FK
+cross-store), `price` (`BigDecimal`, >= 0) et `capacity` (`Integer`, >= 1).
+Elle devient de fait l'entité "Travel" du sujet — **sans renommer** la classe
+Java ni le label Neo4j : `Destination` reste `Destination`, seul son rôle
+métier s'élargit. La relation `TRANSPORT` entre deux `Destination` reste
+inchangée (elle modélise déjà le trajet entre étapes d'un même voyage, exactement
+ce qu'un `Travel` multi-destinations demande). CRUD suit le pattern déjà en
+place : `Neo4jRepository` pour le nœud simple (`managerId`/`price`/`capacity`
+sont de simples propriétés scalaires, `RETURN d` les rapatrie sans rien
+changer aux requêtes existantes), `Neo4jClient` + Cypher explicite déjà en
+place pour `HAS_ACTIVITY`/`HAS_ACCOMMODATION`/`TRANSPORT` inchangé.
+
+**Ownership** : `TRAVEL_MANAGER` ne peut créer un voyage qu'en son propre nom
+(`managerId` du body doit être égal au `sub` du token, sinon 403 — vérifié en
+première ligne de contrôleur, même pattern que
+`PaymentController.create`/`TokenValidationService.requireOwnerOrAdmin` côté
+payment-service) et ne peut modifier/supprimer que les voyages dont il est le
+`managerId` (`ADMIN` outrepasse, oversight complet exigé par le sujet). Les
+lectures (`GET`) restent ouvertes à tout rôle connu, inchangé depuis §1 — le
+catalogue est public, seule la gestion est ownership-aware.
+
+### Ce que je sacrifie (mise à jour)
+
+Pas de nouveau nœud `Travel` ni de relation `HAS_DESTINATION` : un
+`TRAVEL_MANAGER` qui veut proposer un voyage sur plusieurs destinations doit
+créer plusieurs `Destination` (une par étape) reliées par `TRANSPORT`, il n'y
+a pas de nœud "voyage" englobant distinct des étapes elles-mêmes — une
+`Destination` avec `managerId`/`price`/`capacity` est en elle-même
+"réservable". C'est un choix délibérément plus simple que (b) : dupliquer un
+nœud `Travel` autour de `Destination` pour porter les trois champs
+manquants aurait recréé, avec une relation en plus à maintenir sous
+soft-delete sur chaque hop, exactement les champs que `Destination` peut
+porter nativement. Reconsidérer uniquement si un besoin réel de "voyage
+multi-destinations vendu comme un seul package avec un prix/capacité
+communs" apparaît plus tard — non demandé explicitement par le sujet, qui
+parle de "travel" au singulier avec "destination(s)" comme un de ses
+attributs, pas comme une collection de sous-voyages indépendants.
+
+### Alternative rejetée (mise à jour)
+
+Introduire un nœud `Travel` distinct wrappant une ou plusieurs `Destination`
+via `HAS_DESTINATION` (idée initiale de ce document, §2 ci-dessus). Rejetée
+maintenant que le code réel est relu : `Destination` porte déjà tout ce qui
+justifierait normalement un nœud séparé (dates, durée, activités,
+hébergements, transport). Ajouter `Travel` par-dessus aurait été de la
+duplication pure — un nœud supplémentaire, une relation `HAS_DESTINATION` à
+maintenir sous soft-delete sur deux hops, pour ne porter au final que trois
+propriétés scalaires (`managerId`/`price`/`capacity`) que `Destination`
+peut porter elle-même. Va à l'encontre de la culture du repo (Phase 0,
+`docs/architecture-decisions.md`) qui rejette systématiquement la complexité
+non justifiée par un besoin réel.
+
 ---
 
 ## 3. Abonnements (subscribe/unsubscribe, cutoff 3 jours)

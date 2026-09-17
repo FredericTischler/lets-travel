@@ -63,6 +63,7 @@ class DestinationLifecycleIntegrationTest {
         Map<String, Object> createBody = Map.of(
                 "name", "Lisbon", "country", "Portugal",
                 "startDate", "2026-06-01", "endDate", "2026-06-05",
+                "managerId", UUID.randomUUID().toString(), "price", 499.99, "capacity", 20,
                 "activities", List.of("Tram 28 ride", "Belem Tower"),
                 "accommodations", List.of(Map.of(
                         "name", "Hotel Lisboa", "type", "HOTEL",
@@ -76,6 +77,8 @@ class DestinationLifecycleIntegrationTest {
         assertThat(createResponse.getBody()).containsEntry("startDate", "2026-06-01");
         assertThat(createResponse.getBody()).containsEntry("endDate", "2026-06-05");
         assertThat(createResponse.getBody()).containsEntry("durationDays", 5);
+        assertThat(createResponse.getBody()).containsEntry("capacity", 20);
+        assertThat(createResponse.getBody()).containsKey("managerId");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> createdActivities = (List<Map<String, Object>>) createResponse.getBody().get("activities");
         assertThat(createdActivities).hasSize(2);
@@ -103,6 +106,7 @@ class DestinationLifecycleIntegrationTest {
         Map<String, Object> updateBody = Map.of(
                 "name", "Porto", "country", "Portugal",
                 "startDate", "2026-07-10", "endDate", "2026-07-12",
+                "price", 399.50, "capacity", 15,
                 "activities", List.of("Port wine cellar tour"),
                 "accommodations", List.of());
         ResponseEntity<Map> updateResponse = restTemplate.exchange(
@@ -111,6 +115,7 @@ class DestinationLifecycleIntegrationTest {
         assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updateResponse.getBody()).containsEntry("name", "Porto");
         assertThat(updateResponse.getBody()).containsEntry("durationDays", 3);
+        assertThat(updateResponse.getBody()).containsEntry("capacity", 15);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> updatedActivities = (List<Map<String, Object>>) updateResponse.getBody().get("activities");
         assertThat(updatedActivities).hasSize(1);
@@ -143,7 +148,8 @@ class DestinationLifecycleIntegrationTest {
     void endDateBeforeStartDateIsRejected() {
         Map<String, Object> body = Map.of(
                 "name", "Kyoto", "country", "Japan",
-                "startDate", "2026-09-10", "endDate", "2026-09-05");
+                "startDate", "2026-09-10", "endDate", "2026-09-05",
+                "managerId", UUID.randomUUID().toString(), "price", 599.00, "capacity", 10);
         ResponseEntity<Map> response = restTemplate.exchange(
                 "/destinations", HttpMethod.POST, authorizedJsonEntity(body), Map.class);
 
@@ -155,6 +161,7 @@ class DestinationLifecycleIntegrationTest {
         Map<String, Object> body = Map.of(
                 "name", "Seville", "country", "Spain",
                 "startDate", "2026-09-01", "endDate", "2026-09-05",
+                "managerId", UUID.randomUUID().toString(), "price", 299.00, "capacity", 12,
                 "accommodations", List.of(Map.of(
                         "name", "Hostal Sevilla", "type", "HOSTEL",
                         "checkIn", "2026-09-03", "checkOut", "2026-09-02")));
@@ -169,6 +176,7 @@ class DestinationLifecycleIntegrationTest {
         Map<String, Object> createBody = Map.of(
                 "name", "Oslo", "country", "Norway",
                 "startDate", "2026-08-01", "endDate", "2026-08-03",
+                "managerId", UUID.randomUUID().toString(), "price", 349.00, "capacity", 8,
                 "activities", List.of("Vigeland Park"),
                 "accommodations", List.of(Map.of("name", "Oslo Inn", "type", "HOTEL")));
         ResponseEntity<Map> createResponse = restTemplate.exchange(
