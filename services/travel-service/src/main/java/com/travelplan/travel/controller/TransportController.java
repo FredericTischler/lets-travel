@@ -30,8 +30,10 @@ import java.util.UUID;
  *
  * Increment 2 scope: create a single-hop directed transport link, and list
  * destinations reachable in exactly one hop. No pathfinding, no
- * update/delete on transports. Both methods require a valid Bearer token —
- * same uniform-protection reasoning as {@link DestinationController}.
+ * update/delete on transports. Since docs/lets-travel-architecture-decisions.md
+ * §1, {@code create} (mutation) is restricted to {@code ADMIN}/
+ * {@code TRAVEL_MANAGER} and {@code getOutgoing} (read) is open to any of the
+ * three known roles — same split as {@link DestinationController}.
  */
 @RestController
 @RequestMapping("/destinations")
@@ -60,7 +62,7 @@ public class TransportController {
             @PathVariable UUID fromId,
             @Valid @RequestBody CreateTransportRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
         TransportResponse created = transportService.create(fromId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -77,7 +79,7 @@ public class TransportController {
     public ResponseEntity<List<TransportResponse>> getOutgoing(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireAnyRole(authorizationHeader);
         return ResponseEntity.ok(transportService.findOutgoing(id));
     }
 }

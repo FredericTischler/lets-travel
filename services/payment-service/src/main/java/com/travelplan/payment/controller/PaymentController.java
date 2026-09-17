@@ -6,6 +6,7 @@ import com.travelplan.payment.dto.PaymentResponse;
 import com.travelplan.payment.dto.UpdateStatusRequest;
 import com.travelplan.payment.service.PaymentService;
 import com.travelplan.payment.service.TokenValidationService;
+import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +37,15 @@ import java.util.UUID;
  * use case for any of create/read/update/delete here — unlike identity's
  * {@code POST /users}, there is no chicken-and-egg reason to leave any of
  * these open.
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §1, this is
+ * role-and-ownership aware rather than ADMIN-only: {@code TRAVEL_MANAGER}
+ * and {@code TRAVELER} callers may create/read/delete their own payments
+ * (enforced via {@link TokenValidationService#requireOwnerOrAdmin}), an
+ * {@code ADMIN} caller may act on any payment. {@code PATCH /{id}/status}
+ * stays {@code ADMIN}-only: letting a resource owner force their own
+ * payment's status would be a financial-integrity issue, not an ownership
+ * question.</p>
  */
 @RestController
 @RequestMapping("/payments")
@@ -60,7 +70,8 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> create(
             @Valid @RequestBody CreateManualPaymentRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        tokenValidationService.requireOwnerOrAdmin(claims, request.getUserId());
         PaymentResponse created = paymentService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -75,8 +86,9 @@ public class PaymentController {
     public ResponseEntity<PaymentResponse> getById(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
-        return ResponseEntity.ok(paymentService.findById(id));
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(paymentService.findById(
+                id, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims)));
     }
 
     /**
@@ -88,8 +100,9 @@ public class PaymentController {
     @GetMapping
     public ResponseEntity<List<PaymentResponse>> getAll(
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
-        return ResponseEntity.ok(paymentService.findAll());
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(paymentService.findAll(
+                tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims)));
     }
 
     /**
@@ -105,7 +118,7 @@ public class PaymentController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateStatusRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireAdminRole(authorizationHeader);
         return ResponseEntity.ok(paymentService.updateStatus(id, request));
     }
 
@@ -119,8 +132,8 @@ public class PaymentController {
     public ResponseEntity<Void> delete(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
-        paymentService.delete(id);
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        paymentService.delete(id, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims));
         return ResponseEntity.noContent().build();
     }
 
@@ -138,7 +151,7 @@ public class PaymentController {
      * dedicated service-to-service token identity-service mints for this one
      * call (see {@code JwtService.generateServiceToken()} there) — in
      * addition to a normal user token. That token is scoped exclusively to
-     * this endpoint: {@link TokenValidationService#requireValidToken} used by
+     * this endpoint: {@link TokenValidationService#requireAnyRole} used by
      * every other route explicitly rejects it. See
      * {@link TokenValidationService#requireUserOrServiceToken}.</p>
      *

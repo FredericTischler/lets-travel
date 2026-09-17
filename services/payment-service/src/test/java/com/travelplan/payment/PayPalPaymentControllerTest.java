@@ -54,7 +54,7 @@ class PayPalPaymentControllerTest {
 
         var result = controller.capture(orderId, "Bearer valid-token");
 
-        verify(tokenValidationService).requireValidToken("Bearer valid-token");
+        verify(tokenValidationService).requireAnyRole("Bearer valid-token");
         assertThat(result.getStatusCode().value()).isEqualTo(200);
         assertThat(result.getBody()).isSameAs(response);
     }

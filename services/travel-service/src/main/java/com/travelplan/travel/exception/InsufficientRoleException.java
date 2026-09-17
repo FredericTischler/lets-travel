@@ -15,4 +15,8 @@ public class InsufficientRoleException extends RuntimeException {
     public InsufficientRoleException() {
         super("Administrator role required");
     }
+
+    public InsufficientRoleException(String message) {
+        super(message);
+    }
 }

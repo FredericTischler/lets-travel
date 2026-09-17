@@ -43,10 +43,11 @@ public class User {
     private String passwordHash;
 
     /**
-     * Single-role authorization field (see V3__add_role.sql). This is an
-     * Admin Dashboard: every account created today is an administrator, so
-     * every {@link User} is constructed with {@code "ADMIN"} — no role
-     * hierarchy, no setter, not settable through any API request.
+     * Role authorization field (see V3__add_role.sql, V4__restrict_role_values.sql).
+     * One of {@code ADMIN}/{@code TRAVEL_MANAGER}/{@code TRAVELER} — see
+     * {@link com.travelplan.identity.service.JwtService#KNOWN_ROLES} and
+     * docs/lets-travel-architecture-decisions.md §1. No setter: a user's role
+     * is fixed at creation, never changed through {@code PATCH /users/{id}}.
      */
     @Column(name = "role", nullable = false)
     private String role;
@@ -55,11 +56,11 @@ public class User {
         // required by JPA
     }
 
-    public User(String email, String passwordHash) {
+    public User(String email, String passwordHash, String role) {
         this.email = email;
         this.passwordHash = passwordHash;
         this.createdAt = OffsetDateTime.now();
-        this.role = "ADMIN";
+        this.role = role;
     }
 
     public UUID getId() {

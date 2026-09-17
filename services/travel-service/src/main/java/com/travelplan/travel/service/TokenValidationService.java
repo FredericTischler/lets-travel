@@ -6,6 +6,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 /**
  * Bearer token validation for {@link com.travelplan.travel.controller.DestinationController}
  * and {@link com.travelplan.travel.controller.TransportController}.
@@ -15,11 +17,15 @@ import org.springframework.stereotype.Service;
  * either), minus the final step: identity-service additionally looks up the
  * token's subject against its own user table, but travel-service has no
  * access to identity-service's database, so it stops at signature +
- * expiration validation, plus (new) an explicit role check: this service
- * only needs to know "is this a token identity-service really issued, is it
- * still valid, and does it carry the ADMIN role", not who the caller is —
- * least-privilege enforcement required by docs/sujet.md §4, on top of mere
- * token validity.
+ * expiration validation plus a role check read straight from the claims.
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §1, destinations are
+ * not ADMIN-only any more: any of the three known roles may browse them
+ * ({@link #requireAnyRole}), a subject requirement (Travelers must be able
+ * to browse destinations/travels). Only mutation
+ * (create/update/delete a destination or a transport link) stays restricted
+ * to {@code ADMIN}/{@code TRAVEL_MANAGER} ({@link #requireManagerOrAdmin}) —
+ * ordinary Travelers do not manage the catalogue.</p>
  */
 @Service
 public class TokenValidationService {
@@ -27,6 +33,10 @@ public class TokenValidationService {
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String CLAIM_ROLE = "role";
     private static final String ROLE_ADMIN = "ADMIN";
+    private static final String ROLE_TRAVEL_MANAGER = "TRAVEL_MANAGER";
+    private static final String ROLE_TRAVELER = "TRAVELER";
+    private static final Set<String> KNOWN_ROLES = Set.of(ROLE_ADMIN, ROLE_TRAVEL_MANAGER, ROLE_TRAVELER);
+    private static final Set<String> MANAGER_ROLES = Set.of(ROLE_ADMIN, ROLE_TRAVEL_MANAGER);
 
     private final JwtService jwtService;
 
@@ -37,28 +47,56 @@ public class TokenValidationService {
     /**
      * Reject the request unless the {@code Authorization} header carries a
      * Bearer token that identity-service signed, that has not expired, and
-     * that carries the {@code ADMIN} role claim.
+     * that carries one of the three known roles. Reserved for read-only
+     * endpoints — any authenticated, recognized-role caller may browse the
+     * catalogue.
      *
-     * @param authorizationHeader raw header value, may be {@code null}
      * @throws InvalidTokenException if the header is absent, not a
      *         {@code Bearer} value, or the token fails signature/expiration
      *         validation
      * @throws InsufficientRoleException if the token is otherwise valid but
-     *         does not carry the {@code ADMIN} role claim
+     *         does not carry a recognized role claim
      */
-    public void requireValidToken(String authorizationHeader) {
+    public void requireAnyRole(String authorizationHeader) {
+        Claims claims = validateAndParse(authorizationHeader);
+        String role = claims.get(CLAIM_ROLE, String.class);
+        // Set.of(...).contains(null) throws NPE (immutable sets reject null
+        // elements) rather than returning false — guard explicitly, a token
+        // with no role claim at all must be a 403, not a 500.
+        if (role == null || !KNOWN_ROLES.contains(role)) {
+            throw new InsufficientRoleException();
+        }
+    }
+
+    /**
+     * Reject the request unless the {@code Authorization} header carries a
+     * Bearer token that identity-service signed, that has not expired, and
+     * that carries the {@code ADMIN} or {@code TRAVEL_MANAGER} role.
+     * Reserved for mutating endpoints (create/update/delete).
+     *
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, or the token fails signature/expiration
+     *         validation
+     * @throws InsufficientRoleException if the token is otherwise valid but
+     *         does not carry the {@code ADMIN} or {@code TRAVEL_MANAGER} role
+     */
+    public void requireManagerOrAdmin(String authorizationHeader) {
+        Claims claims = validateAndParse(authorizationHeader);
+        String role = claims.get(CLAIM_ROLE, String.class);
+        if (role == null || !MANAGER_ROLES.contains(role)) {
+            throw new InsufficientRoleException("Administrator or Travel Manager role required");
+        }
+    }
+
+    private Claims validateAndParse(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith(BEARER_PREFIX)) {
             throw new InvalidTokenException();
         }
         String token = authorizationHeader.substring(BEARER_PREFIX.length());
-        Claims claims;
         try {
-            claims = jwtService.validate(token);
+            return jwtService.validate(token);
         } catch (JwtException | IllegalArgumentException ex) {
             throw new InvalidTokenException();
-        }
-        if (!ROLE_ADMIN.equals(claims.get(CLAIM_ROLE, String.class))) {
-            throw new InsufficientRoleException();
         }
     }
 }

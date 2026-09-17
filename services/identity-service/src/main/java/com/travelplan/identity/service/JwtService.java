@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.Set;
 
 /**
  * Generates and validates JWTs for {@code POST /login} and {@code GET /me}.
@@ -51,8 +52,18 @@ public class JwtService {
     /** Name of the role claim carried by every user token (see {@link #generateToken}). */
     public static final String CLAIM_ROLE = "role";
 
-    /** The single role this system grants today — see {@code User.role} javadoc. */
+    /**
+     * The three roles this system grants (see {@code User.role} javadoc and
+     * docs/lets-travel-architecture-decisions.md §1). {@code ADMIN} implicitly
+     * has every capability of {@code TRAVEL_MANAGER} and {@code TRAVELER} —
+     * enforced by each caller of these constants, not by this class.
+     */
     public static final String ROLE_ADMIN = "ADMIN";
+    public static final String ROLE_TRAVEL_MANAGER = "TRAVEL_MANAGER";
+    public static final String ROLE_TRAVELER = "TRAVELER";
+
+    /** Every role a {@code role} claim/column is allowed to carry — see V4__restrict_role_values.sql. */
+    public static final Set<String> KNOWN_ROLES = Set.of(ROLE_ADMIN, ROLE_TRAVEL_MANAGER, ROLE_TRAVELER);
 
     /**
      * Subject of the service-to-service token minted by

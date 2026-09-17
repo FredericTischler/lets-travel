@@ -49,6 +49,24 @@ public final class TestJwtTokens {
     }
 
     /**
+     * A freshly-signed, currently-valid token carrying the given {@code role}
+     * claim (e.g. {@code "TRAVEL_MANAGER"}, {@code "TRAVELER"}) — exercises
+     * the role split introduced by docs/lets-travel-architecture-decisions.md
+     * §1 (read open to any role, mutation restricted to ADMIN/TRAVEL_MANAGER).
+     */
+    public static String tokenWithRole(String role) {
+        SecretKey key = Keys.hmacShaKeyFor(SIGNING_KEY.getBytes(StandardCharsets.UTF_8));
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(UUID.randomUUID().toString())
+                .claim("role", role)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(Duration.ofMinutes(15))))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /**
      * A freshly-signed, currently-valid token with no {@code role} claim at
      * all — exercises {@code TokenValidationService}'s least-privilege
      * rejection (403) of an otherwise-valid token that simply never claims

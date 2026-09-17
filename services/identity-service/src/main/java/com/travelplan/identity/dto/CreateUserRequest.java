@@ -2,6 +2,7 @@ package com.travelplan.identity.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -12,6 +13,14 @@ import jakarta.validation.constraints.Size;
  * and returned as HTTP 400. The plaintext password never leaves this DTO —
  * it is hashed by {@link com.travelplan.identity.service.UserService} before
  * persistence and is never included in any response.
+ *
+ * {@code role} is optional: {@code @Pattern} does not validate a {@code null}
+ * value (Bean Validation semantics), so an omitted role is left to
+ * {@link com.travelplan.identity.service.UserService#create} to default to
+ * {@code ADMIN} — backward compatibility with callers written before the
+ * "Let's Travel" phase (docs/lets-travel-architecture-decisions.md §1). A
+ * role that IS supplied must be one of the three known values, or this
+ * fails validation with a 400, same as any other constraint.
  */
 public class CreateUserRequest {
 
@@ -22,6 +31,10 @@ public class CreateUserRequest {
     @NotBlank(message = "must not be blank")
     @Size(min = 8, message = "must be at least 8 characters long")
     private String password;
+
+    @Pattern(regexp = "ADMIN|TRAVEL_MANAGER|TRAVELER",
+            message = "must be one of ADMIN, TRAVEL_MANAGER, TRAVELER")
+    private String role;
 
     public CreateUserRequest() {
         // required for Jackson deserialization
@@ -41,5 +54,13 @@ public class CreateUserRequest {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }

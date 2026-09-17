@@ -16,15 +16,17 @@ public class UserResponse {
     private final UUID id;
     private final String email;
     private final OffsetDateTime createdAt;
+    private final String role;
 
-    private UserResponse(UUID id, String email, OffsetDateTime createdAt) {
+    private UserResponse(UUID id, String email, OffsetDateTime createdAt, String role) {
         this.id = id;
         this.email = email;
         this.createdAt = createdAt;
+        this.role = role;
     }
 
     public static UserResponse from(User user) {
-        return new UserResponse(user.getId(), user.getEmail(), user.getCreatedAt());
+        return new UserResponse(user.getId(), user.getEmail(), user.getCreatedAt(), user.getRole());
     }
 
     public UUID getId() {
@@ -37,5 +39,9 @@ public class UserResponse {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public String getRole() {
+        return role;
     }
 }

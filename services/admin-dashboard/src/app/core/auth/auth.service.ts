@@ -40,6 +40,21 @@ export class AuthService {
 
   readonly isAuthenticated = computed(() => this.tokenSignal() !== null);
 
+  /**
+   * The `role` claim of the stored JWT (see identity-service JwtService —
+   * `ADMIN` | `TRAVEL_MANAGER` | `TRAVELER` since
+   * docs/lets-travel-architecture-decisions.md §1), or `null` if there is no
+   * token or it carries no role claim (pre-Phase-1 token).
+   */
+  readonly role = computed(() => {
+    const token = this.tokenSignal();
+    if (!token) {
+      return null;
+    }
+    const claims = this.decodeJwtPayload(token);
+    return typeof claims?.['role'] === 'string' ? (claims['role'] as string) : null;
+  });
+
   login(request: LoginRequest): Observable<LoginResponse> {
     return this.http
       .post<LoginResponse>(`${environment.identityApiUrl}/login`, request)

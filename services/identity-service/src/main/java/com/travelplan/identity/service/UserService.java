@@ -53,7 +53,8 @@ public class UserService {
                 });
 
         String passwordHash = passwordEncoder.encode(request.getPassword());
-        User user = new User(request.getEmail(), passwordHash);
+        String role = (request.getRole() != null) ? request.getRole() : JwtService.ROLE_ADMIN;
+        User user = new User(request.getEmail(), passwordHash, role);
         User saved = userRepository.save(user);
         return UserResponse.from(saved);
     }

@@ -63,21 +63,31 @@ public class PaymentService {
     }
 
     /**
-     * Find an active payment by id.
+     * Find an active payment by id, visible only to its owner or an admin.
      *
-     * @throws PaymentNotFoundException if the payment does not exist or is soft-deleted
+     * A non-owner, non-admin caller gets the exact same 404 as a genuinely
+     * absent payment (never a 403) — this must not leak whether the id
+     * exists at all, see docs/lets-travel-architecture-decisions.md §1.
+     *
+     * @throws PaymentNotFoundException if the payment does not exist, is
+     *         soft-deleted, or does not belong to {@code callerId} (unless {@code isAdmin})
      */
-    public PaymentResponse findById(UUID id) {
+    public PaymentResponse findById(UUID id, UUID callerId, boolean isAdmin) {
         Payment payment = paymentRepository.findActiveById(id)
+                .filter(p -> isAdmin || p.getUserId().equals(callerId))
                 .orElseThrow(() -> new PaymentNotFoundException(id));
         return PaymentResponse.from(payment);
     }
 
     /**
-     * Return all active payments.
+     * Return all active payments: every one of them for an admin, only the
+     * caller's own otherwise (see docs/lets-travel-architecture-decisions.md §1).
      */
-    public List<PaymentResponse> findAll() {
-        return paymentRepository.findAllActive().stream()
+    public List<PaymentResponse> findAll(UUID callerId, boolean isAdmin) {
+        List<Payment> payments = isAdmin
+                ? paymentRepository.findAllActive()
+                : paymentRepository.findAllActiveByUserId(callerId);
+        return payments.stream()
                 .map(PaymentResponse::from)
                 .collect(Collectors.toList());
     }
@@ -108,13 +118,16 @@ public class PaymentService {
     }
 
     /**
-     * Soft-delete an active payment (sets deleted_at = now()).
+     * Soft-delete an active payment (sets deleted_at = now()), visible only
+     * to its owner or an admin — same masking rule as {@link #findById}.
      *
-     * @throws PaymentNotFoundException if the payment does not exist or is already soft-deleted
+     * @throws PaymentNotFoundException if the payment does not exist, is
+     *         already soft-deleted, or does not belong to {@code callerId} (unless {@code isAdmin})
      */
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, UUID callerId, boolean isAdmin) {
         Payment payment = paymentRepository.findActiveById(id)
+                .filter(p -> isAdmin || p.getUserId().equals(callerId))
                 .orElseThrow(() -> new PaymentNotFoundException(id));
         payment.setDeletedAt(OffsetDateTime.now());
         // the dirty check within the transaction persists the change automatically

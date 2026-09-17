@@ -15,4 +15,14 @@ public class InsufficientRoleException extends RuntimeException {
     public InsufficientRoleException() {
         super("Administrator role required");
     }
+
+    /**
+     * Used for the ownership half of RBAC (see
+     * {@link com.travelplan.payment.service.TokenValidationService#requireOwnerOrAdmin}):
+     * the caller has a recognized role but is trying to act on another
+     * user's payment.
+     */
+    public InsufficientRoleException(String message) {
+        super(message);
+    }
 }

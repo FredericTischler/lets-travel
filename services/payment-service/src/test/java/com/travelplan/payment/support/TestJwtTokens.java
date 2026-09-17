@@ -47,6 +47,25 @@ public final class TestJwtTokens {
     }
 
     /**
+     * A freshly-signed, currently-valid token whose subject is
+     * {@code userId} and whose {@code role} claim is {@code role} — used to
+     * exercise the role/ownership split introduced by
+     * docs/lets-travel-architecture-decisions.md §1
+     * ({@code TokenValidationService#requireOwnerOrAdmin}).
+     */
+    public static String tokenFor(UUID userId, String role) {
+        SecretKey key = Keys.hmacShaKeyFor(SIGNING_KEY.getBytes(StandardCharsets.UTF_8));
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(userId.toString())
+                .claim("role", role)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(Duration.ofMinutes(15))))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /**
      * A freshly-signed, currently-valid token with no {@code role} claim at
      * all — exercises {@code TokenValidationService}'s least-privilege
      * rejection (403) of an otherwise-valid token that simply never claims

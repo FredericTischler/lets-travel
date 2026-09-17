@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
  * No business logic here — signature verification and the status transition
  * are both delegated to {@link StripePaymentService#handleWebhookEvent}.
  *
- * <p><b>Deliberately NOT behind this service's Bearer/ADMIN-role RBAC</b>
+ * <p><b>Deliberately NOT behind this service's Bearer RBAC</b>
  * (unlike every other controller here, which calls
- * {@code TokenValidationService.requireValidToken} — see
+ * {@code TokenValidationService.requireAnyRole} — see
  * {@link PaymentController} class javadoc): the caller is Stripe itself, not
  * an identity-service-authenticated user, so there is no JWT to validate.
  * Authenticity is instead established by verifying the {@code Stripe-Signature}

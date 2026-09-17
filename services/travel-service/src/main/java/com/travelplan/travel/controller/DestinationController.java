@@ -31,11 +31,11 @@ import java.util.UUID;
  * {@link com.travelplan.travel.exception.GlobalExceptionHandler}.
  *
  * Every endpoint requires a valid Bearer token issued by identity-service.
- * All five methods are protected uniformly (including {@code getById} and
- * {@code update}, not just the subset the task explicitly named): leaving
- * read/update open while protecting create/delete would just relocate the
- * same vulnerability rather than close it — same reasoning identity-service
- * already applies to its own user resource.
+ * Since docs/lets-travel-architecture-decisions.md §1, reads ({@code getById},
+ * {@code getAll}) are open to any of the three known roles — Travelers must
+ * be able to browse the catalogue — while mutation ({@code create},
+ * {@code update}, {@code delete}) stays restricted to {@code ADMIN}/
+ * {@code TRAVEL_MANAGER}.
  */
 @RestController
 @RequestMapping("/destinations")
@@ -59,7 +59,7 @@ public class DestinationController {
     public ResponseEntity<DestinationResponse> create(
             @Valid @RequestBody CreateDestinationRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
         DestinationResponse created = destinationService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -74,7 +74,7 @@ public class DestinationController {
     public ResponseEntity<DestinationResponse> getById(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireAnyRole(authorizationHeader);
         return ResponseEntity.ok(destinationService.findById(id));
     }
 
@@ -87,7 +87,7 @@ public class DestinationController {
     @GetMapping
     public ResponseEntity<List<DestinationResponse>> getAll(
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireAnyRole(authorizationHeader);
         return ResponseEntity.ok(destinationService.findAll());
     }
 
@@ -104,7 +104,7 @@ public class DestinationController {
             @PathVariable UUID id,
             @Valid @RequestBody UpdateDestinationRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
         return ResponseEntity.ok(destinationService.update(id, request));
     }
 
@@ -118,7 +118,7 @@ public class DestinationController {
     public ResponseEntity<Void> delete(
             @PathVariable UUID id,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireValidToken(authorizationHeader);
+        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
         destinationService.delete(id);
         return ResponseEntity.noContent().build();
     }

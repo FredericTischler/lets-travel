@@ -1,7 +1,7 @@
 package com.travelplan.payment.exception;
 
 /**
- * Thrown by {@link com.travelplan.payment.service.TokenValidationService#requireValidToken}
+ * Thrown by {@link com.travelplan.payment.service.TokenValidationService#requireAnyRole}
  * whenever a protected endpoint cannot validate the {@code Authorization}
  * header — missing header, malformed header, expired token, or invalid
  * signature. The message is intentionally generic and identical in every
