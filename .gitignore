@@ -85,4 +85,9 @@ Thumbs.db
 desktop.ini
 
 # --- Claude Code -------------------------------------------------------------
-.claude/
+# Config/state locale (jamais versionnée), mais l'outillage projet (settings.json,
+# commands/, hooks/) doit l'être : c'est un livrable du workflow, pas de l'état local.
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/hooks/
