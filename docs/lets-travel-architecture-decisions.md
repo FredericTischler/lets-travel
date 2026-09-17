@@ -210,6 +210,48 @@ transitions de statut (`OPEN → REVIEWED → DISMISSED/ACTIONED`) qu'un admin
 doit pouvoir auditer de façon fiable — le confort d'un store unique ne
 vaut pas de perdre les garanties ACID sur cette donnée sensible.
 
+### 5bis. `POST /reports` — faut-il vérifier l'existence de `reportedUserId` ?
+
+#### Décision
+
+`POST /reports` vérifie que `reportedUserId` correspond à un utilisateur actif
+(non soft-delete) dans `identity-service` avant de créer le signalement — 404
+(`UserNotFoundException`, même exception que `GET /users/{id}`) sinon.
+
+#### Justification
+
+Ce n'est **pas** le même arbitrage que `Payment.userId` côté payment-service
+(§4 constat de code : payment-service n'a aucun accès à `identity_db`, donc
+son `userId` reste une référence applicative non vérifiée, un choix déjà acté
+en Phase 0). Ici, le contrôleur qui reçoit `reportedUserId` tourne **dans le
+même service, sur la même base** que la table `users` — la vérification est
+une requête `UserRepository.findActiveById` déjà existante, pas un appel
+cross-service, pas de coût architectural. Refuser de vérifier une donnée que
+le service peut vérifier gratuitement affaiblirait la table `reports` sans
+aucune contrepartie : n'importe quel UUID syntaxiquement valide (y compris un
+id d'un autre domaine, ou un id jamais attribué) créerait un signalement
+orphelin qu'un admin ne pourrait jamais rattacher à un compte réel dans
+`GET /reports`.
+
+#### Ce qui est sacrifié
+
+Le sujet dit "signale un Travel Manager ou un autre traveler" — la vérification
+ne distingue donc pas le rôle de `reportedUserId` (n'importe quel utilisateur
+actif, `ADMIN` inclus, peut techniquement être signalé) : ajouter une
+contrainte de rôle sur la cible serait une règle métier que le sujet ne
+demande pas explicitement et compliquerait la vérification sans bénéfice
+clair pour l'audit.
+
+#### Alternative rejetée
+
+Ne pas vérifier `reportedUserId` du tout (accepter tout UUID, symétrique à
+`Payment.userId`). Rejetée : cette justification ne s'applique que quand la
+vérification est impossible ou coûteuse (cross-service) — ici elle est
+gratuite, donc ne pas vérifier serait un choix par confort, pas par nécessité
+architecturale, ce qui n'est pas le standard que ce document applique ailleurs
+(voir §4, §7 : les sacrifices sont toujours justifiés par une contrainte
+réelle, jamais par la paresse).
+
 ---
 
 ## 6. Recherche Elasticsearch + autocomplete

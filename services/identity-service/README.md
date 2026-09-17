@@ -28,13 +28,42 @@ authentication:
   subject no longer maps to an active user.
 
 There is no Spring Security filter chain in this codebase. Token validation
-is manual: `GET /me`, `GET /users`, `GET /users/{id}` and `DELETE /users/{id}`
-all reuse the exact same mechanism (read the header in the controller,
-validate via `AuthService`/`JwtService`) and return the exact same generic
-401 body on failure. "Protected" means "any authenticated user" — there is
-no role/permission distinction (no `role` claim in the JWT), so this is not
-ownership-aware: any valid token unlocks these routes regardless of whose
-account it belongs to. `POST /users` and `POST /login` remain public.
+is manual: every controller reuses the exact same mechanism (read the header,
+validate via `AuthService`/`JwtService`) and returns the exact same generic
+401 body on failure. Since docs/lets-travel-architecture-decisions.md §1,
+`POST /users` accepts an explicit `role` (`ADMIN`/`TRAVEL_MANAGER`/`TRAVELER`,
+defaults to `ADMIN` when omitted) and every JWT carries that role as a claim.
+`GET /users`, `GET /users/{id}`, `PATCH /users/{id}` and `DELETE /users/{id}`
+require the caller to be an `ADMIN` (`AuthService#requireAdmin`); the report
+endpoints below use a looser `AuthService#requireAnyRole` gate (any of the 3
+known roles, still authenticated). `POST /users` and `POST /login` remain
+public.
+
+## Reports (signalements)
+
+docs/lets-travel-architecture-decisions.md §5: a traveler reports a Travel
+Manager or another traveler; an admin reviews and resolves reports. Backed by
+the `reports` table (`V5__add_reports.sql`), same soft-delete/Flyway-owned
+pattern as `users`.
+
+- `POST /reports` — file a report against another user. Any authenticated
+  role. `reporterId` is always the caller's own id, resolved from the Bearer
+  token — never taken from the request body (same principle payment-service
+  applies to payment ownership). Rejects with 400 if the caller tries to
+  report themselves, 404 if `reportedUserId` does not correspond to an
+  existing active user (docs/lets-travel-architecture-decisions.md §5bis: the
+  existence check is done because this service owns the `users` table, unlike
+  payment-service's unchecked `Payment.userId`).
+- `GET /reports` — list all active reports. `ADMIN` only.
+- `PATCH /reports/{id}/status` — transition a report from `OPEN` to
+  `REVIEWED`, `DISMISSED` or `ACTIONED`. `ADMIN` only. Terminal once resolved
+  (400 for an invalid target value, 409 if already terminal) — mirrors
+  payment-service's `Payment.status` transition rules.
+- `GET /reports/count/{userId}` — count of active reports filed against a
+  user. Any authenticated role (it only returns a count, never report
+  contents). Returns 0, not 404, for an id with no reports (including an
+  unknown id) — same "empty result is not an error" rule as
+  payment-service's `deleteAllByUserId`.
 
 ## CORS
 

@@ -34,6 +34,15 @@ import java.util.UUID;
  * {@link InsufficientRoleException} (403) when it is not
  * {@link JwtService#ROLE_ADMIN} — authenticated but not authorized, per
  * docs/sujet.md §4.</p>
+ *
+ * <p>{@link #requireAnyRole} is the equivalent gate for endpoints any of the
+ * 3 known roles may use (introduced for {@code ReportController} —
+ * docs/lets-travel-architecture-decisions.md §5): same "authenticated AND
+ * carries a recognized role" check as payment-service's
+ * {@code TokenValidationService#requireAnyRole}, except this one can also
+ * resolve the caller against this service's own {@code users} table (unlike
+ * payment-service, which has no access to identity_db), so it returns the
+ * resolved {@link User} rather than just the raw claims.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -113,6 +122,36 @@ public class AuthService {
         if (!JwtService.ROLE_ADMIN.equals(claims.get(JwtService.CLAIM_ROLE, String.class))) {
             throw new InsufficientRoleException();
         }
+    }
+
+    /**
+     * Reject the request unless the {@code Authorization} header carries a
+     * Bearer token that is valid, still active for a currently-active user
+     * (same checks as {@link #getCurrentUser}), AND whose {@code role} claim
+     * is one of the 3 known roles ({@link JwtService#KNOWN_ROLES}).
+     *
+     * @param authorizationHeader raw header value, may be {@code null}
+     * @return the resolved active {@link User} (the caller) — callers read
+     *         its id to set ownership fields server-side (e.g.
+     *         {@code reporterId} on {@code POST /reports}), never trusting a
+     *         client-supplied value for that purpose
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, the token fails signature/expiration
+     *         validation, or its subject no longer maps to an active user
+     * @throws InsufficientRoleException if the token is otherwise valid but
+     *         does not carry a recognized role claim
+     */
+    public User requireAnyRole(String authorizationHeader) {
+        Claims claims = extractValidClaims(authorizationHeader);
+        User user = resolveActiveUser(claims);
+        String role = claims.get(JwtService.CLAIM_ROLE, String.class);
+        // Set.of(...).contains(null) throws NPE (immutable sets reject null
+        // elements) rather than returning false — guard explicitly, a token
+        // with no role claim at all must be a 403, not a 500.
+        if (role == null || !JwtService.KNOWN_ROLES.contains(role)) {
+            throw new InsufficientRoleException();
+        }
+        return user;
     }
 
     private Claims extractValidClaims(String authorizationHeader) {
