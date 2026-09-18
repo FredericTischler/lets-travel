@@ -14,6 +14,10 @@ Increment 3 (docs/lets-travel-architecture-decisions.md §2): `Destination`
 gains `managerId`/`price`/`capacity`, and mutation becomes ownership-aware —
 a `TRAVEL_MANAGER` may only create/update/delete a destination they own,
 `ADMIN` keeps full oversight.
+Increment 4 (docs/lets-travel-architecture-decisions.md §3, Phase 3):
+subscribe/unsubscribe to a `Destination`, with a 3-day self-service cutoff, a
+manager/admin-facing subscriber list and force-unsubscribe, and a traveler's
+own subscription history.
 
 - `POST /destinations` — create a new destination/travel (`name`, `country`,
   `startDate`, `endDate`, `managerId`, `price`, `capacity`, optional
@@ -40,6 +44,28 @@ a `TRAVEL_MANAGER` may only create/update/delete a destination they own,
   `deletedAt IS NULL` at both hops (origin and target), so a soft-deleted
   target disappears from the result without its relationship being removed
   from the graph. 404 if `id` itself is absent/soft-deleted.
+- `POST /destinations/{id}/subscriptions` — subscribe the caller themselves
+  (subscriber id is always the JWT subject, never client-supplied) to a
+  destination. Any of the 3 known roles. 201 with the new subscription; 404
+  if the destination is absent/soft-deleted; 409 if the destination's
+  `startDate` has already passed, or the caller already holds an active
+  subscription for it.
+- `DELETE /destinations/{id}/subscriptions` — unsubscribe the caller
+  themselves, enforcing a 3-day cutoff before `startDate`. 204 on success;
+  404 if the destination is absent/soft-deleted, or the caller has no active
+  subscription to cancel; 409 if fewer than 3 days remain before `startDate`.
+- `GET /destinations/{id}/subscriptions` — list every subscription (any
+  status) for a destination. Restricted to the destination's own
+  `TRAVEL_MANAGER` or `ADMIN` (403 for a non-owning manager). 404 if the
+  destination is absent/soft-deleted.
+- `DELETE /destinations/{id}/subscriptions/{travelerId}` — manager/admin
+  force-unsubscribe of a specific traveler. Same ownership rule as the list
+  endpoint. Deliberately does **not** enforce the 3-day cutoff — see
+  "Subscriptions" below. 404 if the destination is absent/soft-deleted, or
+  `travelerId` has no active subscription to cancel.
+- `GET /travelers/me/subscriptions` — the caller's own subscription history
+  (any status), across every active destination. Any of the 3 known roles,
+  self only.
 
 `Destination.id` is application-assigned (a plain UUID), not Neo4j's
 internal (opaque) element id.
@@ -69,6 +95,37 @@ internal (opaque) element id.
   coexist from one origin), a load-modify-save flow on a
   partially-fetched aggregate could silently wipe sibling relationships it
   never loaded. Explicit Cypher avoids that risk entirely.
+
+## Subscriptions (docs/lets-travel-architecture-decisions.md §3, Phase 3)
+
+`(TravelerRef {userId})-[:SUBSCRIBED {status, subscribedAt, cancelledAt}]->(Destination)`.
+`TravelerRef` is a lightweight applicative reference (created on demand via
+`MERGE` on `userId`), never a copy of identity-service's `User` — same
+principle as `Destination.managerId`/`Payment.userId`. `status` is
+`ACTIVE` or `CANCELLED`. Same explicit-Cypher-via-`Neo4jClient` approach as
+`TransportRepository`/`ActivityRepository`, for the same reason (SDN would
+rewrite the whole relation collection on save).
+
+- Subscribing while already `ACTIVE` for the same destination is a 409, not
+  a silent no-op: every subscribe creates a fresh `SUBSCRIBED` relation
+  rather than reusing/resetting one (needed for an accurate historical count
+  of cancellations on the traveler's personal stats page), so silently
+  succeeding on a duplicate would create a second, redundant active relation.
+- Subscribing to a destination whose `startDate` has already passed is also
+  a 409: the destination exists and is well-formed, there is just nothing
+  left to join.
+- The 3-day cutoff applies only to the traveler's own self-service
+  unsubscribe. The manager/admin force-unsubscribe endpoint deliberately
+  does **not** enforce it: pulling a traveler close to departure is an
+  administrative/capacity decision (a no-show, a policy violation), not the
+  self-service flexibility case the cutoff exists to protect.
+- No native uniqueness constraint on the traveler×destination pair (Neo4j
+  Community has no node-key/composite constraints): the duplicate-active
+  check is applicative, same documented gap as the rest of this phase.
+  `TravelerRef.userId` itself *is* constrained unique (a plain
+  single-property constraint, which Community does support) so concurrent
+  first-time subscribes for the same traveler can't create two distinct
+  `TravelerRef` nodes.
 
 ## Soft-delete
 
@@ -118,7 +175,10 @@ startup if any required variable is absent.
 - No update/delete on `TRANSPORT` relationships, no anti-duplicate
   protection (see above).
 - No `/internal/*` cross-service endpoints.
-- No subscriptions, feedback, search, or recommendations yet
-  (docs/lets-travel-architecture-decisions.md §3, §5, §6, §7) — `price`/
-  `capacity` on `Destination` exist only to leave a clean seam for those,
-  not implemented here.
+- No payment integration for a subscription yet
+  (docs/lets-travel-architecture-decisions.md §4) — a `SUBSCRIBED` relation
+  goes straight to `ACTIVE`, there is no `PENDING_PAYMENT` intermediate
+  status in this phase.
+- No feedback, search, or recommendations yet
+  (docs/lets-travel-architecture-decisions.md §5, §6, §7) — `price` on
+  `Destination` still exists only to leave a clean seam for those.

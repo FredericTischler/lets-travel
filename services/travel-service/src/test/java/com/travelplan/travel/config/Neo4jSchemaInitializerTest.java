@@ -37,9 +37,11 @@ class Neo4jSchemaInitializerTest {
         ResultSummary resultSummary = mock(ResultSummary.class);
 
         when(neo4jClient.query(anyString())).thenReturn(runnableSpec);
-        // First call on each of the 3 statements fails with a transient error,
+        // First call on each of the 4 statements fails with a transient error,
         // the retry that follows succeeds.
         when(runnableSpec.run())
+                .thenThrow(transientError())
+                .thenReturn(resultSummary)
                 .thenThrow(transientError())
                 .thenReturn(resultSummary)
                 .thenThrow(transientError())
@@ -51,8 +53,9 @@ class Neo4jSchemaInitializerTest {
 
         runner.run();
 
-        // 3 constraints, each retried once after a transient failure: 6 executions total.
-        verify(runnableSpec, times(6)).run();
+        // 4 constraints (Destination/Activity/Accommodation/TravelerRef), each
+        // retried once after a transient failure: 8 executions total.
+        verify(runnableSpec, times(8)).run();
     }
 
     @Test

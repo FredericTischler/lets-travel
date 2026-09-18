@@ -207,6 +207,44 @@ d'entrée principale des recommandations Neo4j exigées par le sujet — la sort
 du graphe obligerait la fonctionnalité qui justifie Neo4j (§7) à faire des
 appels cross-service à chaque calcul de recommandation.
 
+### Correctif — terminologie et détail d'implémentation (relu avant d'implémenter §3)
+
+Le texte ci-dessus parle de `Travel` comme un nœud dédié ; suite au correctif
+de §2 (relu avant §3, "option (a), pas (b)"), il n'y a pas de nœud `Travel` —
+c'est `Destination` qui porte ce rôle. Partout ci-dessus, lire `Travel` comme
+`Destination` : la relation implémentée est
+`(TravelerRef {userId})-[:SUBSCRIBED {status, subscribedAt, cancelledAt}]->(Destination)`,
+et le cutoff vérifie `destination.startDate - now() >= 3 jours`. Rien
+d'autre ne change : le raisonnement ("pourquoi Neo4j plutôt qu'une table
+Postgres", "pourquoi pas de contrainte d'unicité native") s'applique à
+l'identique à `Destination`.
+
+Trois décisions supplémentaires prises pendant l'implémentation, pas
+couvertes par le texte initial :
+
+- **Abonnement dupliqué** (`POST` alors qu'un abonnement `ACTIVE` existe déjà
+  pour la même paire traveler/destination) → **409**, pas un no-op silencieux
+  ni un 200. Chaque `subscribe` crée une nouvelle relation `SUBSCRIBED`
+  plutôt que de réutiliser/réinitialiser une relation existante — nécessaire
+  pour que le compteur "annulations d'abonnement" de la page de stats
+  personnelles du traveler (sujet) reste exact dans le temps. Réussir
+  silencieusement sur un doublon créerait donc une seconde relation active
+  redondante plutôt qu'un simple no-op ; un 409 est la seule réponse honnête.
+- **Abonnement à une destination dont `startDate` est déjà passée** → 409
+  également : la destination existe et est valide, il n'y a simplement plus
+  rien à rejoindre. Un 400 aurait été défendable (requête malformée dans
+  l'absolu) mais la ressource elle-même est valide ; c'est son état temporel
+  qui rend l'action impossible — même catégorie que le cutoff ci-dessous,
+  donc même code HTTP pour rester cohérent.
+- **`DELETE /destinations/{id}/subscriptions/{travelerId}`** (désabonnement
+  forcé par le manager/admin, explicitement demandé par le sujet :
+  "options to ... unsubscribe travelers from the travel") **n'applique pas**
+  le cutoff de 3 jours qui protège le désabonnement en libre-service du
+  traveler. Un manager qui retire un traveler proche du départ est une
+  décision administrative/de capacité (no-show, violation de politique), pas
+  le cas de flexibilité que le cutoff protège — le bloquer aurait retiré un
+  outil que le sujet demande explicitement aux managers.
+
 ---
 
 ## 4. Paiement d'un abonnement (payment-service)
