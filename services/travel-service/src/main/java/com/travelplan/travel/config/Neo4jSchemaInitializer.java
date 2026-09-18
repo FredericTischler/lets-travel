@@ -26,6 +26,17 @@ import org.springframework.data.neo4j.core.Neo4jClient;
  * respective entity Javadoc), so uniqueness is not guaranteed by Neo4j
  * itself unless declared.
  *
+ * {@code TravelerRef.userId} gets the same treatment (docs/lets-travel-architecture-decisions.md
+ * §3): {@code SubscriptionRepository} creates it via {@code MERGE}, and a
+ * uniqueness constraint is what makes that {@code MERGE} race-safe under
+ * concurrent first-time subscribes for the same traveler — without it,
+ * two concurrent transactions could each decide "no match" and both
+ * {@code CREATE} a distinct {@code TravelerRef} node for the same
+ * {@code userId}. This is a plain single-property uniqueness constraint
+ * (supported by Neo4j Community, unlike node-key/composite constraints),
+ * not to be confused with the traveler×destination pairing uniqueness the
+ * ADR explicitly leaves unenforced at the database level.
+ *
  * <p>{@code IF NOT EXISTS} is idempotent at the level of the final schema
  * state, but not at the level of a single execution: when two instances of
  * this application start concurrently against the same, not-yet-initialised
@@ -66,7 +77,11 @@ public class Neo4jSchemaInitializer {
             runWithRetry(neo4jClient,
                     "CREATE CONSTRAINT accommodation_id_unique IF NOT EXISTS "
                             + "FOR (a:Accommodation) REQUIRE a.id IS UNIQUE");
-            log.info("Neo4j schema constraints ensured: Destination.id, Activity.id, Accommodation.id IS UNIQUE");
+            runWithRetry(neo4jClient,
+                    "CREATE CONSTRAINT travelerref_userid_unique IF NOT EXISTS "
+                            + "FOR (t:TravelerRef) REQUIRE t.userId IS UNIQUE");
+            log.info("Neo4j schema constraints ensured: Destination.id, Activity.id, Accommodation.id, "
+                    + "TravelerRef.userId IS UNIQUE");
         };
     }
 

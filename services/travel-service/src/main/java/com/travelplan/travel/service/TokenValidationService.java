@@ -68,6 +68,24 @@ public class TokenValidationService {
      *         does not carry a recognized role claim
      */
     public void requireAnyRole(String authorizationHeader) {
+        requireAnyRoleClaims(authorizationHeader);
+    }
+
+    /**
+     * Same check as {@link #requireAnyRole}, but returns the parsed
+     * {@link Claims} — needed by endpoints that are open to any known role
+     * but still require the caller's own id (the JWT subject), e.g.
+     * subscribing to a destination as oneself
+     * (docs/lets-travel-architecture-decisions.md §3). Mirrors why
+     * {@link #requireManagerOrAdmin} already returns {@link Claims}.
+     *
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, or the token fails signature/expiration
+     *         validation
+     * @throws InsufficientRoleException if the token is otherwise valid but
+     *         does not carry a recognized role claim
+     */
+    public Claims requireAnyRoleClaims(String authorizationHeader) {
         Claims claims = validateAndParse(authorizationHeader);
         String role = claims.get(CLAIM_ROLE, String.class);
         // Set.of(...).contains(null) throws NPE (immutable sets reject null
@@ -76,6 +94,7 @@ public class TokenValidationService {
         if (role == null || !KNOWN_ROLES.contains(role)) {
             throw new InsufficientRoleException();
         }
+        return claims;
     }
 
     /**
