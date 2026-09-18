@@ -1,8 +1,10 @@
 package com.travelplan.travel.controller;
 
+import com.travelplan.travel.dto.AutocompleteSuggestion;
 import com.travelplan.travel.dto.CreateDestinationRequest;
 import com.travelplan.travel.dto.DestinationResponse;
 import com.travelplan.travel.dto.UpdateDestinationRequest;
+import com.travelplan.travel.service.DestinationSearchService;
 import com.travelplan.travel.service.DestinationService;
 import com.travelplan.travel.service.TokenValidationService;
 import io.jsonwebtoken.Claims;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -54,10 +57,13 @@ public class DestinationController {
 
     private final DestinationService destinationService;
     private final TokenValidationService tokenValidationService;
+    private final DestinationSearchService destinationSearchService;
 
-    public DestinationController(DestinationService destinationService, TokenValidationService tokenValidationService) {
+    public DestinationController(DestinationService destinationService, TokenValidationService tokenValidationService,
+                                  DestinationSearchService destinationSearchService) {
         this.destinationService = destinationService;
         this.tokenValidationService = tokenValidationService;
+        this.destinationSearchService = destinationSearchService;
     }
 
     /**
@@ -75,6 +81,45 @@ public class DestinationController {
         tokenValidationService.requireOwnerOrAdmin(claims, request.getManagerId());
         DestinationResponse created = destinationService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * Full-text search across name/country/activities/accommodations of
+     * active destinations (docs/lets-travel-architecture-decisions.md §6),
+     * Elasticsearch-backed — not a Postgres/Cypher {@code LIKE}. Requires a
+     * valid Bearer token — see class-level note; open to any known role,
+     * same access level as {@code GET /destinations}.
+     *
+     * @return 200 with the matching destinations (possibly empty), ordered by
+     *         relevance, 401 with a generic message if the Authorization
+     *         header is missing/invalid/expired, 503 if Elasticsearch is
+     *         unreachable
+     */
+    @GetMapping("/search")
+    public ResponseEntity<List<DestinationResponse>> search(
+            @RequestParam(name = "q") String query,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(destinationSearchService.search(query));
+    }
+
+    /**
+     * Prefix-based autocomplete over destination name/country
+     * (docs/lets-travel-architecture-decisions.md §6), backed by an
+     * Elasticsearch completion suggester — not a Postgres/Cypher
+     * {@code LIKE}. Requires a valid Bearer token — see class-level note;
+     * open to any known role, same access level as {@code GET /destinations}.
+     *
+     * @return 200 with up to 10 suggestions (possibly empty), 401 with a
+     *         generic message if the Authorization header is
+     *         missing/invalid/expired, 503 if Elasticsearch is unreachable
+     */
+    @GetMapping("/autocomplete")
+    public ResponseEntity<List<AutocompleteSuggestion>> autocomplete(
+            @RequestParam(name = "prefix") String prefix,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(destinationSearchService.autocomplete(prefix));
     }
 
     /**

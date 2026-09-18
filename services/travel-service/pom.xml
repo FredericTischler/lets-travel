@@ -95,6 +95,30 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Elasticsearch client — LOW-LEVEL RestClient, deliberately NOT
+             co.elastic.clients:elasticsearch-java nor Spring Data Elasticsearch.
+             See docs/lets-travel-architecture-decisions.md §6 (correctif) for
+             the tradeoff: this service issues exactly two kinds of ES calls
+             (index/delete a document, run a multi_match search / completion
+             suggester) against a single index — raw JSON over RestClient is
+             the smallest dependency that does the job, auditable like any
+             other explicit-query code in this codebase (same philosophy as
+             Neo4jClient + explicit Cypher for TRANSPORT/HAS_ACTIVITY, no ORM
+             magic for a narrow, well-understood query surface). Version
+             pinned to match the Elasticsearch server image tag
+             (docker.elastic.co/elasticsearch/elasticsearch:8.15.3, see
+             ansible/roles/elasticsearch/defaults/main.yml) — the low-level
+             client is largely version-tolerant, but keeping them in lockstep
+             avoids ever having to wonder if a mismatch caused an issue. Brings
+             httpclient/httpcore transitively; Jackson (already on the
+             classpath via spring-boot-starter-web) serializes/deserializes
+             the raw JSON request/response bodies. -->
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-client</artifactId>
+            <version>8.15.3</version>
+        </dependency>
+
         <!-- ===== TEST scope ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -112,6 +136,18 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>neo4j</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers Elasticsearch — real ES in tests, same
+             Testcontainers-first convention as Neo4j above (no mock of the
+             search index). Version aligned with the testcontainers.version
+             override at the top of this file (docker-java Unix socket /
+             Docker Engine 29.x API negotiation fix, same reasoning as the
+             other two services). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>elasticsearch</artifactId>
             <scope>test</scope>
         </dependency>
 

@@ -14,6 +14,31 @@ spring:
       username: ${NEO4J_USERNAME:?NEO4J_USERNAME is required}
       password: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
 
+elasticsearch:
+  # Variables injected by Docker Compose from the docker-compose.travel.yml
+  # fragment (see ansible/roles/elasticsearch and
+  # docs/lets-travel-architecture-decisions.md §6). Dev-mode instance,
+  # security disabled — no username/password to read.
+  #
+  # DELIBERATE DEVIATION from the NEO4J_* `:?` fail-fast idiom above: Neo4j is
+  # this service's sole primary store, always required whenever travel-service
+  # runs at all — a missing value there is a misconfiguration, never a valid
+  # state. Elasticsearch is optional, additive infra behind its OWN Compose
+  # profile (`search`, not part of `core`/`full`) — travel-service MUST stay
+  # bootable (CRUD, transports, existing test suite) when `search` is not up
+  # and ES_HOST/ES_PORT are not set by the environment at all (e.g. plain
+  # `mvn test`, or `full` without `search`). A `:?` placeholder here would make
+  # every one of those cases fail to start, defeating the whole point of an
+  # additive profile. The defaults below point at nothing real in production
+  # (docker-compose.travel.yml always overrides them to the `elasticsearch`
+  # service name/port when the fragment is included) — connectivity is only
+  # ever checked lazily, at the first search/autocomplete request
+  # (ElasticsearchConnectionConfig does not probe the connection at startup),
+  # so an unreachable default surfaces as a 503 on that one endpoint, not a
+  # boot failure.
+  host: ${ES_HOST:localhost}
+  port: ${ES_PORT:9200}
+
 jwt:
   # HS256 signing secret used to VALIDATE tokens issued by identity-service.
   # Must be the exact same value as identity-service's own JWT_SIGNING_KEY
@@ -47,3 +72,17 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    # Disable Spring Boot Actuator's built-in Elasticsearch health indicator
+    # (auto-activated by the mere presence of the org.elasticsearch.client.RestClient
+    # bean, see ElasticsearchConnectionConfig — nothing here opted into it
+    # explicitly). Left enabled, an unreachable Elasticsearch drags the whole
+    # service's aggregated /actuator/health to DOWN (503) — exactly what
+    # docs/lets-travel-architecture-decisions.md §6 says must NOT happen:
+    # Elasticsearch is optional/additive (profile `search`), travel-service
+    # must stay reported healthy (CRUD/Neo4j/transports all fine) whenever
+    # `search` simply isn't up. Search/autocomplete degrade on their own via
+    # SearchUnavailableException (503 on THOSE two endpoints only) — that's
+    # the correct, narrow failure signal, not a global health flag.
+    elasticsearch:
+      enabled: false

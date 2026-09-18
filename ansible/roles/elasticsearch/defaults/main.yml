@@ -1,0 +1,37 @@
+---
+# roles/elasticsearch/defaults/main.yml
+#
+# Variables d'INFRASTRUCTURE du rôle elasticsearch.
+# Le rôle ne fait QUE : rendre un fragment de service Compose (dir + template)
+# — même geste que le rôle `neo4j`. Aucun index/mapping/provisioning : ça
+# relève de travel-service (applicatif), cf.
+# docs/lets-travel-architecture-decisions.md §6 (correctif).
+#
+# Sécurité désactivée (xpack.security.enabled=false) : mode DEV UNIQUEMENT,
+# même arbitrage que Vault "dev mode" (docs/architecture-decisions.md §5) —
+# aucun secret ne protège cette instance, elle ne doit donc JAMAIS être
+# joignable depuis l'hôte ni depuis un réseau public (voir le réseau ci-dessous).
+
+# --- Image (tag épinglé, jamais latest) -------------------------------------
+# Image officielle Elastic (pas Docker Hub) — vérifiée via
+# `docker manifest inspect docker.elastic.co/elasticsearch/elasticsearch:8.15.3` (EXISTS).
+elasticsearch_image: "docker.elastic.co/elasticsearch/elasticsearch:8.15.3"
+
+# --- Service / conteneur rendu dans le fragment Compose ---------------------
+elasticsearch_service_name: "elasticsearch"
+elasticsearch_container_name: "travel-plan-elasticsearch"
+# Réseau interne : base JAMAIS exposée à l'hôte ni à backend-net (seul
+# travel-service la consomme, cf. docs §4/§6) — même réseau que Neo4j.
+elasticsearch_network: "data-net"
+# Garde-fou RAM 8 Go (docs §6, rebudget) : heap 512m + overhead JVM Elasticsearch
+# (plugins, off-heap, buffers réseau) — comparable au ratio retenu pour Neo4j
+# (heap 512m -> mem_limit 1g).
+elasticsearch_mem_limit: "1g"
+# Heap JVM borné explicitement — RÈGLE DU PROJET : aucune JVM ne garde le
+# défaut 25% de la RAM hôte (docs/architecture-decisions.md §4). Xms == Xmx :
+# évite un resize de heap à chaud, pratique standard Elasticsearch.
+elasticsearch_java_opts: "-Xms512m -Xmx512m"
+# Répertoire où Ansible rend le fragment compose (surcharge en prod / molecule).
+elasticsearch_compose_dir: "/opt/travel-plan/elasticsearch"
+# Volume nommé pour la persistance des données (/usr/share/elasticsearch/data).
+elasticsearch_data_volume: "travel-plan-elasticsearch-data"

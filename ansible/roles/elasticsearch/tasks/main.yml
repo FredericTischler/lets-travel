@@ -1,0 +1,24 @@
+---
+# roles/elasticsearch/tasks/main.yml
+#
+# Même geste que roles/neo4j/tasks/main.yml : ce rôle ne fait QUE rendre un
+# fragment de service Compose (dir + template). Aucun provisioning d'index ou
+# de mapping — hors périmètre infra, cela relève de travel-service
+# (applicatif), cf. docs/lets-travel-architecture-decisions.md §6.
+#
+# Ces deux tâches sont idempotentes par construction ; un second converge
+# rapporte changed=0.
+
+- name: "Ensure compose fragment directory exists"
+  ansible.builtin.file:
+    path: "{{ elasticsearch_compose_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [compose_fragment]
+
+- name: "Render Elasticsearch compose service fragment"
+  ansible.builtin.template:
+    src: "compose.elasticsearch.yml.j2"
+    dest: "{{ elasticsearch_compose_dir }}/compose.elasticsearch.yml"
+    mode: "0644"
+  tags: [compose_fragment]

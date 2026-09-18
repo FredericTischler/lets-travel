@@ -1,0 +1,43 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+# {{ ansible_managed }}
+# Fragment de service Compose rendu par le role Ansible `elasticsearch`.
+# Instance mono-noeud, mode DEV (securite desactivee) — voir defaults/main.yml.
+services:
+  {{ elasticsearch_service_name }}:
+    image: "{{ elasticsearch_image }}"
+    container_name: "{{ elasticsearch_container_name }}"
+    restart: unless-stopped
+    # Garde-fou RAM 8 Go (docs §6, rebudget) : heap borne explicitement,
+    # jamais le defaut JVM 25% de la RAM hote (docs/architecture-decisions.md §4).
+    mem_limit: "{{ elasticsearch_mem_limit }}"
+    environment:
+      discovery.type: "single-node"
+      # Mode DEV UNIQUEMENT : aucun secret, aucun TLS interne. Instance jamais
+      # exposee a l'hote ni a backend-net (cf. reseau ci-dessous) — seul
+      # travel-service, sur data-net, y accede.
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: "{{ elasticsearch_java_opts }}"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - "{{ elasticsearch_data_volume }}:/usr/share/elasticsearch/data"
+    networks:
+      - {{ elasticsearch_network }}
+    # Aucune publication de port vers l'hote (seul Traefik expose, cf. docs §4) ;
+    # travel-service, seul consommateur, est sur le meme reseau interne.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  {{ elasticsearch_data_volume }}:
+
+networks:
+  {{ elasticsearch_network }}:
+    external: true
