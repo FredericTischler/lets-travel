@@ -94,6 +94,20 @@ services:
       # (identity, payment, travel) echouent IDENTIQUEMENT au parsing d'une
       # seule invocation `docker compose`, jamais en divergeant silencieusement.
       JWT_SIGNING_KEY: "${JWT_SIGNING_KEY:?set via env/Vault}"
+      # --- Connexion Elasticsearch (docs/lets-travel-architecture-decisions.md §6) ---
+      # Toujours defini ici, CONTRAIREMENT a NEO4J_* ci-dessus : Elasticsearch
+      # est une infra OPTIONNELLE/additive derriere son propre profil Compose
+      # `search` (jamais dans core/full), alors que Neo4j est le store primaire
+      # obligatoire. Definir ES_HOST/ES_PORT sans condition ici est sans risque
+      # meme quand `search` n'est PAS monte : construire un RestClient est
+      # paresseux (aucune connexion ouverte au demarrage, voir
+      # ElasticsearchConnectionConfig), donc travel-service demarre et sert
+      # tout le CRUD normalement ; seuls /destinations/search et
+      # /destinations/autocomplete echoueraient (503) si `search` est absent.
+      # Nom de service `elasticsearch` = celui rendu par le role Ansible
+      # `elasticsearch` (voir ansible/roles/elasticsearch/defaults/main.yml).
+      ES_HOST: "elasticsearch"
+      ES_PORT: "9200"
     networks:
       - data-net
       - backend-net
@@ -102,6 +116,20 @@ services:
         # Attend que Neo4j soit HEALTHY avant de demarrer : sinon le driver
         # Neo4j echoue au boot (fail-fast) sur une base pas prete.
         condition: service_healthy
+      elasticsearch:
+        # Optionnelle (required: false) : si le profil `search` n'est pas
+        # monte, le service `elasticsearch` n'existe meme pas dans le compose
+        # rendu (fragment non inclus, cf. ansible/roles/compose-assembly) —
+        # sans `required: false`, Compose refuserait de demarrer travel-service
+        # (depends_on pointant vers un service absent). Quand `search` EST
+        # monte, on attend quand meme son healthcheck (curl _cluster/health,
+        # voir ansible/roles/elasticsearch) avant de demarrer travel-service :
+        # ElasticsearchIndexInitializer retente en cas d'echec (5 tentatives,
+        # 2s d'intervalle, cf. sa Javadoc) mais autant eviter de compter sur
+        # les retries en usage normal quand l'ordonnancement Compose peut
+        # directement garantir un ES deja pret.
+        condition: service_healthy
+        required: false
     # Healthcheck applicatif : /actuator/health (expose par application.yml).
     # curl est present dans l'image runtime (eclipse-temurin:*-jre-noble).
     # Actuator ne repond UP qu'une fois Neo4j joignable (Neo4jHealthContributorAutoConfiguration)

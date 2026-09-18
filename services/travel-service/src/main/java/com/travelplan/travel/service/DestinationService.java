@@ -52,6 +52,13 @@ import java.util.stream.Collectors;
  * responsibility ({@code TokenValidationService.requireOwnerOrAdmin} against
  * the request body's {@code managerId}), the same split payment-service uses
  * for {@code CreateManualPaymentRequest.userId}.</p>
+ *
+ * <p>Since docs/lets-travel-architecture-decisions.md §6, {@code create}/
+ * {@code update}/{@code delete} each end with a thin call into
+ * {@link DestinationSearchIndexer} to keep the Elasticsearch search index in
+ * sync (index-or-update on create/update, remove on soft-delete) — a
+ * synchronous applicative dual-write, not a distributed transaction; see that
+ * class's Javadoc for the failure-handling contract.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -60,12 +67,14 @@ public class DestinationService {
     private final DestinationRepository destinationRepository;
     private final ActivityRepository activityRepository;
     private final AccommodationRepository accommodationRepository;
+    private final DestinationSearchIndexer searchIndexer;
 
     public DestinationService(DestinationRepository destinationRepository, ActivityRepository activityRepository,
-                               AccommodationRepository accommodationRepository) {
+                               AccommodationRepository accommodationRepository, DestinationSearchIndexer searchIndexer) {
         this.destinationRepository = destinationRepository;
         this.activityRepository = activityRepository;
         this.accommodationRepository = accommodationRepository;
+        this.searchIndexer = searchIndexer;
     }
 
     /**
@@ -88,7 +97,11 @@ public class DestinationService {
         activityRepository.replaceForDestination(saved.getId(), request.getActivities());
         accommodationRepository.replaceForDestination(saved.getId(), toAccommodationInputs(request.getAccommodations()));
 
-        return buildResponse(saved);
+        DestinationResponse response = buildResponse(saved);
+        // Search index dual-write (docs/lets-travel-architecture-decisions.md §6) —
+        // thin hook, failures are logged/swallowed by the indexer itself, never here.
+        searchIndexer.indexOrUpdate(response);
+        return response;
     }
 
     /**
@@ -143,7 +156,11 @@ public class DestinationService {
         activityRepository.replaceForDestination(id, request.getActivities());
         accommodationRepository.replaceForDestination(id, toAccommodationInputs(request.getAccommodations()));
 
-        return buildResponse(saved);
+        DestinationResponse response = buildResponse(saved);
+        // Search index dual-write (docs/lets-travel-architecture-decisions.md §6) —
+        // thin hook, failures are logged/swallowed by the indexer itself, never here.
+        searchIndexer.indexOrUpdate(response);
+        return response;
     }
 
     /**
@@ -162,6 +179,9 @@ public class DestinationService {
         requireOwnership(destination, callerId, isAdmin);
         destination.setDeletedAt(OffsetDateTime.now());
         destinationRepository.save(destination);
+        // Search index mirror of the soft-delete: remove the document entirely
+        // rather than flag it inactive (docs/lets-travel-architecture-decisions.md §6).
+        searchIndexer.remove(id);
     }
 
     /**

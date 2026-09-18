@@ -1,0 +1,25 @@
+---
+galaxy_info:
+  role_name: elasticsearch
+  author: travel-plan
+  description: >-
+    Provisionne une instance Elasticsearch mono-nœud (dev mode, sécurité
+    désactivée) pour travel-service — recherche plein texte + autocomplete
+    sur les destinations (docs/lets-travel-architecture-decisions.md §6). Rend
+    un fragment de service Compose (instance up, heap bornée pour un hôte
+    8 Go). Aucun provisioning d'index/mapping : ça relève de travel-service
+    (applicatif), même séparation des responsabilités que le rôle `neo4j`.
+    Volontairement PAS de suite molecule (voir §6 du document de décision) :
+    un seul conteneur, aucune logique de provisioning au-delà du fragment
+    Compose lui-même.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+  galaxy_tags:
+    - elasticsearch
+    - search
+    - infrastructure
+dependencies: []

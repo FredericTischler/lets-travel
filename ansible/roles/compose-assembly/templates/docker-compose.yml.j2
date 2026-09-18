@@ -14,12 +14,16 @@
 #   observability : loki + promtail + grafana (+ traefik pour l'UI Grafana).
 #          Profil ADDITIF, à combiner avec core/full — il observe la stack
 #          applicative, donc il n'a d'intérêt que si elle tourne.
+#   search : elasticsearch (docs/lets-travel-architecture-decisions.md §6).
+#          Profil ADDITIF, même mécanisme qu'observability — recherche/
+#          autocomplete travel-service, inutile en dev quotidien (core).
 #
 # USAGE :
 #   docker compose --profile core up -d    # dev quotidien
 #   docker compose --profile full up -d    # stack complète
 #   docker compose --profile ci   up -d    # CI seule (stack applicative down)
 #   docker compose --profile full --profile observability up -d   # + logs
+#   docker compose --profile full --profile search up -d           # + recherche
 #   docker compose --profile full down     # nettoyage
 
 include:
@@ -52,6 +56,12 @@ include:
   # {{ assembly_compose_dir }}/observability/ — chemin RELATIF (loki, promtail,
   # grafana + le réseau privé `observability-net`). Même flag protecteur.
   - path: {{ assembly_observability_fragment }}
+{% endif %}
+{% if assembly_elasticsearch_enabled %}
+  # elasticsearch : fragment RENDU par le rôle Ansible `elasticsearch` sous
+  # {{ assembly_compose_dir }}/elasticsearch/ — chemin RELATIF, même statut que
+  # neo4j/observability. Même flag protecteur.
+  - path: {{ assembly_elasticsearch_fragment }}
 {% endif %}
 {% if assembly_identity_enabled %}
   # identity-service : fragment STATIQUE du dépôt (build depuis les sources),
@@ -180,4 +190,14 @@ services:
 
   grafana:
     profiles: [observability]
+{% endif %}
+{% if assembly_elasticsearch_enabled %}
+
+  # elasticsearch : profil [search] EXCLUSIVEMENT, ADDITIF (jamais fusionné
+  # dans core/full/ci) — docs/lets-travel-architecture-decisions.md §6.
+  # Mono-noeud dev-mode, heap 512m borné (cf. rôle `elasticsearch`), comparable
+  # au poste RAM de Neo4j. Pas de route Traefik : seul travel-service, sur
+  # data-net, le consomme — inutile de l'ajouter à traefik_profiles ci-dessus.
+  elasticsearch:
+    profiles: [search]
 {% endif %}

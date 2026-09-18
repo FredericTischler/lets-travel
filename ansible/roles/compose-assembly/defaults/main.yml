@@ -125,6 +125,27 @@ assembly_sonarqube_fragment: "sonarqube/compose.sonarqube.yml"
 assembly_observability_enabled: false
 assembly_observability_fragment: "observability/compose.observability.yml"
 
+# --- Fragment elasticsearch (RENDU par le rôle Ansible `elasticsearch`) -----
+# Recherche + autocomplete travel-service (docs/lets-travel-architecture-decisions.md
+# §6). Même statut que neo4j : rôle Ansible qui rend son propre fragment sous
+# assembly_compose_dir => chemin RELATIF, rien à fournir en -e.
+#
+# PROFIL DÉDIÉ `search`, ADDITIF, même mécanisme que `observability` :
+#   - pas `core` : Elasticsearch coûte facilement 512 Mo-1 Go de heap minimum,
+#     comparable à Neo4j — l'imposer en dev quotidien romprait le calibrage 8 Go ;
+#   - pas `full` : `full` reste "intégration + démo sans recherche" par défaut,
+#     `search` s'ajoute par-dessus quand la fonctionnalité recherche est testée.
+# S'utilise donc en combinaison : `--profile full --profile search`.
+#
+# DÉFAUT = false : même raison n°1 que jenkins/sonarqube/observability (les
+# `include:` sont résolus quel que soit le --profile, un fragment absent du
+# disque casserait AUSSI core et full). Le flag protège le rendu par défaut
+# sur une machine où le rôle `elasticsearch` n'a pas encore été joué.
+# À activer :
+#   -e assembly_elasticsearch_enabled=true
+assembly_elasticsearch_enabled: false
+assembly_elasticsearch_fragment: "elasticsearch/compose.elasticsearch.yml"
+
 # Réseaux Docker à créer (Ansible en est propriétaire, driver bridge).
 assembly_networks:
   - name: "edge-net"

@@ -364,6 +364,63 @@ d'aucune logique métier propre — juste d'indexer et interroger. Le sacrifice
 (un composant de plus dans travel-service au lieu d'un service séparé) est
 moins coûteux que le sacrifice RAM.
 
+### Correctif — implémentation réelle (relu avant de coder cette section)
+
+Le texte ci-dessus parlait de `Travel` avant que §2 ne soit corrigé : il n'y a
+pas de nœud `Travel` séparé, l'entité indexée est `Destination` (qui porte
+déjà `managerId`/`price`/`capacity` en plus de ses dates/activités/
+hébergements, cf. §2). Partout où ce document dit « Travel » ci-dessus, lire
+« Destination ». Détails de l'implémentation réelle, non anticipés à l'écriture
+de la décision ci-dessus :
+
+- **Index** `destinations` (pas `travels`), un document par `Destination`
+  active. Champs indexés, conformes à « across all travel details » du
+  sujet : `name`, `country`, `activities` (noms, tableau), `accommodations`
+  (noms, tableau), `price`, `capacity`, `startDate`, `endDate`, `managerId`.
+  Un champ `suggest` de type `completion` (input = `name` + `country`) porte
+  l'autocomplete — un vrai suggester ES, pas un `LIKE` Postgres/Cypher.
+- **Sync** : dual-write synchrone confirmé, déclenché depuis
+  `DestinationService.create`/`update` (indexation/mise à jour du document)
+  et `DestinationService.delete` (suppression du document, pas un flag) —
+  un échec d'indexation est **loggé et avalé**, jamais renvoyé à l'appelant
+  (même philosophie que `PaymentServiceClient` : l'écriture Neo4j, source de
+  vérité, ne doit jamais échouer à cause d'un problème sur l'index
+  secondaire). Ré-indexation à la demande non implémentée dans cet
+  incrément (pas d'endpoint admin de ré-indexation) — dette assumée,
+  cohérente avec le "pas de garantie de cohérence forte" déjà écrit ci-dessus.
+- **Suppression du document au lieu d'un flag `inactive`** (le texte
+  ci-dessus laissait les deux options ouvertes — « retrait de l'index, pas
+  suppression physique du document ») : décision tranchée en faveur de la
+  suppression réelle du document ES. Justification : contrairement à Neo4j
+  (où le soft-delete protège contre la perte de relations et permet un
+  historique), un document ES n'est qu'une projection dérivée, jamais la
+  source de vérité — le supprimer ne perd aucune donnée (elle reste dans
+  Neo4j) et garantit mécaniquement qu'un destination soft-deleted ne peut
+  plus jamais apparaître dans une recherche, sans dépendre d'un filtre
+  applicatif supplémentaire au moment de la requête.
+- **Client Java** : `RestClient` bas niveau (`org.elasticsearch.client:
+  elasticsearch-rest-client`) avec des requêtes JSON brutes (Jackson pour
+  sérialiser/désérialiser), plutôt que le client typé `co.elastic.clients:
+  elasticsearch-java` ou Spring Data Elasticsearch. Sacrifice : pas de DSL
+  Java typé pour construire les requêtes ES (JSON en chaînes, moins de
+  sécurité à la compilation). Bénéfice : cohérent avec la culture du repo qui
+  préfère déjà le Cypher explicite à l'ORM magique dès que la traduction
+  objet↔requête devient non triviale (`Neo4jClient` pour `TRANSPORT`/
+  `HAS_ACTIVITY`, cf. §2 Phase 0) — Spring Data Elasticsearch apporterait une
+  couche d'auto-configuration et de mapping annotation-driven pour deux
+  endpoints et un seul index, `elasticsearch-java` apporterait un gros
+  générateur de code pour le même besoin restreint. `RestClient` est la plus
+  petite dépendance qui fait le travail, auditable en JSON brut.
+- **Profil Compose `search`** livré comme un rôle Ansible minimal
+  (`ansible/roles/elasticsearch/`), même structure que le rôle `neo4j`
+  (fragment Compose rendu, aucun provisioning applicatif). Écart assumé par
+  rapport aux autres rôles du projet : **pas de suite molecule** pour ce
+  rôle — c'est un unique conteneur dev-mode qui ne fait que rendre un
+  fragment Compose statique (même geste que `neo4j`), la charge de test
+  molecule n'apporterait rien qu'un `docker compose --profile search up`
+  manuel ne vérifie pas déjà pour ce périmètre. À reconsidérer si le rôle
+  gagne en complexité (TLS, plusieurs nœuds, provisioning).
+
 ---
 
 ## 7. Recommandations personnalisées (Neo4j)
