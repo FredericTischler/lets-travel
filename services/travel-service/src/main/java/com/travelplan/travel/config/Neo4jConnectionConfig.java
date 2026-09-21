@@ -9,9 +9,10 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Fail-fast guard for required Neo4j connection environment variables.
  *
- * Spring Boot's {@code :?} syntax in application.yml already prevents startup
- * when a variable is absent (throws {@link IllegalArgumentException} with a
- * clear placeholder name). This class provides an explicit, human-readable
+ * The bare {@code ${VAR}} placeholders in application.yml already prevent
+ * startup when a variable is absent (unresolvable placeholder, see
+ * {@code ConfigFailFastTest}; the Compose-style {@code :?msg} form is NOT
+ * fail-fast in Spring, it silently yields a literal default). This class provides an explicit, human-readable
  * log entry that names WHICH variable is missing and WHY it is required,
  * making container log triage faster than reading a raw Spring exception —
  * same mechanism as {@code DataSourceConfig} in identity-service/payment-service.
@@ -33,7 +34,7 @@ import org.springframework.context.annotation.Configuration;
  * see ansible/roles/neo4j/tasks/main.yml for the same rationale on the infra side.
  *
  * If any variable is absent, Spring Boot fails before this bean is instantiated
- * (the :? in application.yml fires first). This @PostConstruct is a secondary
+ * (the unresolved placeholder in application.yml fires first). This @PostConstruct is a secondary
  * check that runs after binding to confirm resolved values are non-blank.
  */
 @Configuration
@@ -51,7 +52,7 @@ public class Neo4jConnectionConfig {
     private String neo4jUsername;
 
     // NEO4J_PASSWORD is intentionally NOT logged. Its presence is validated by
-    // the :? placeholder in application.yml; we do not re-inject it here to
+    // the bare placeholder in application.yml; we do not re-inject it here to
     // avoid any accidental exposure in heap dumps or debug output.
 
     @PostConstruct

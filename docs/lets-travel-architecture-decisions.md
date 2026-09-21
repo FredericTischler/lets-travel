@@ -1171,6 +1171,111 @@ une fois chaque phase codée, pas en amont.
 > endpoint × rôle, données personnelles) et la liste des manques connus sont dans
 > `docs/security-audit.md`.
 
+### Addendum — Ownership des transports (G1, durcissement sécurité)
+
+**Constat.** `POST /destinations/{fromId}/transports` n'exigeait que le rôle
+`TRAVEL_MANAGER`/`ADMIN` : un manager pouvait accrocher une liaison à la destination
+d'un autre (escalade horizontale), alors que `PUT`/`DELETE /destinations/{id}` étaient
+déjà ownership-aware (§2).
+
+**Décision.** Une liaison `TRANSPORT` **appartient à sa destination d'origine** : seul le
+`managerId` de l'origine (ou un `ADMIN`) peut la créer. Même mécanisme que
+`DestinationService.update/delete` : `requireManagerOrAdmin` au contrôleur, puis contrôle
+du propriétaire dans `TransportService.create`, seul endroit qui charge l'origine. La
+**cible n'a pas à être possédée** : elle doit seulement exister et être active. L'ordre
+est validation de forme (400) → origine (404) → propriété (403) → cible (404), de sorte
+qu'un non-propriétaire ne peut pas sonder l'existence d'ids cibles.
+
+**Justification.** Relier *mon* voyage à un voyage d'autrui ne modifie rien sur ce
+dernier : l'arête sort de mon nœud, le nœud cible n'est ni écrit ni masqué. Exiger la
+propriété des deux bords interdirait le cas d'usage normal (« depuis mon séjour, on
+rejoint le séjour d'un autre organisateur »), sans rien protéger de plus. Les transports
+n'ont pas d'update/delete (§2) : il n'y a pas d'autre mutation à couvrir.
+
+**Ce que je sacrifie.** Un manager peut faire *apparaître* (`GET .../transports` de son
+origine) une destination d'autrui comme atteignable ; il ne peut pas la retirer, ni
+modifier ce qui la concerne. Un manager ne peut pas non plus ajouter une liaison
+*entrante* vers son voyage depuis celui d'un autre (c'est à l'autre de la déclarer, ou à
+un admin). Un `ADMIN` reste au-dessus de la règle.
+
+**Alternative rejetée.** Exiger la propriété de l'origine **et** de la cible : plus
+« strict » en apparence, mais bloque l'usage légitime et suppose un accord entre
+managers que le produit n'a pas de moyen d'exprimer. Rejetée aussi : un `@PreAuthorize`
+(interdit par la convention du dépôt, voir `CLAUDE.md`).
+
+### Addendum — Capture PayPal : le `orderId` n'est pas un secret (G2)
+
+**Constat.** `POST /payments/paypal/{orderId}/capture` n'exigeait qu'un rôle connu,
+avec l'argument que seul l'initiateur connaît l'`orderId`. C'est un identifiant, pas un
+credential : il transite par l'URL d'approbation, les logs PayPal et le navigateur.
+
+**Décision.** `PayPalPaymentService.captureOrder(orderId, callerId, isAdmin)` retrouve le
+paiement par sa référence externe et le filtre sur son propriétaire (ou `ADMIN`)
+**avant** tout appel à PayPal. Un non-propriétaire reçoit **404**, identique à celui
+d'un `orderId` inconnu, comme `PaymentService.findById`.
+
+**Justification.** Même règle de masquage que le reste du service : ne pas révéler
+l'existence d'un paiement à qui ne le possède pas. Le contrôle est dans le service (qui
+charge la ligne) et non par `requireOwnerOrAdmin` au contrôleur, car ce dernier répond
+403 et distinguerait « existe mais pas à vous » de « inconnu ».
+
+**Ce que je sacrifie.** Un support/manager non-admin ne peut plus capturer pour le
+compte d'un traveler (il n'y a pas de tel rôle intermédiaire dans le produit).
+
+**Alternative rejetée.** Un `requireOwnerOrAdmin` (403) : plus lisible, mais fuit
+l'existence de l'ordre.
+
+### Addendum — Limitation des tentatives de login (G4)
+
+**Constat.** `POST /login` acceptait un nombre illimité d'essais : force brute et
+credential stuffing sans frein. BCrypt ralentit chaque essai, il ne les borne pas.
+
+**Décision.** `LoginThrottle` (identity-service), en mémoire, deux compteurs
+d'**échecs** en fenêtre glissante : par email normalisé (`trim` + minuscules) et par IP
+cliente. Seuils par défaut : **5 échecs / email, 50 / IP, fenêtre 900 s**
+(`LOGIN_THROTTLE_EMAIL_MAX_FAILURES`, `_IP_MAX_FAILURES`, `_WINDOW_SECONDS`,
+`_MAX_TRACKED_KEYS`) — réglages, pas des secrets, donc des défauts sont admis. Clé
+verrouillée = **429** + `Retry-After` (secondes avant que l'échec le plus ancien sorte
+de la fenêtre), répondu **avant** toute lecture en base et tout BCrypt ; une tentative
+refusée n'est pas comptée (le verrou ne se prolonge pas seul). Un succès remet à zéro le
+compteur de l'email (pas celui de l'IP). L'email inconnu est compté et verrouillé
+exactement comme un email connu, et le contrôle `dummyHash` (BCrypt à temps constant)
+reste en place : rien ne permet de distinguer les deux. Derrière Traefik, l'IP est le
+**dernier** élément de `X-Forwarded-For` (celui ajouté par le proxy) si
+`LOGIN_THROTTLE_TRUST_FORWARDED_FOR=true` (posé dans le fragment Compose) ; par défaut
+`false`, seule l'adresse TCP compte, pour que l'en-tête ne soit jamais falsifiable quand
+le service est exposé directement.
+
+**Justification.** Zéro infrastructure nouvelle et zéro dépendance (pas de Redis, pas
+de Bucket4j), cohérent avec les services indépendants. Le compteur par email couvre la
+force brute ciblée, celui par IP le credential stuffing (beaucoup d'emails, peu
+d'essais chacun), avec un seuil IP plus haut pour ne pas punir une IP partagée (NAT).
+
+**Ce que je sacrifie.** (1) L'état est **par réplique** : avec N répliques, un attaquant
+dispose d'environ N fois le budget, et un redémarrage l'oublie. (2) Un attaquant peut
+**verrouiller volontairement** un compte connu pendant une fenêtre (déni de service
+ciblé, borné à 15 min) — le propriétaire légitime est refusé même avec le bon mot de
+passe. (3) La mémoire est bornée (10 000 clés par compteur, expirées d'abord, puis moins
+récemment mises à jour) : un flot d'emails aléatoires peut évincer une entrée, la
+victime comprise. (4) Pas de CAPTCHA, pas de notification à l'utilisateur.
+
+**Alternative rejetée.** Une limite au bord Traefik (`rateLimit`) : utile et
+complémentaire, mais elle limite le *débit* par IP, pas les échecs par compte, et ne
+protège pas d'un botnet distribué ; à ajouter en plus, pas à la place. Rejetée aussi :
+un compteur en base (écriture à chaque échec, migration, verrou de ligne) et un magasin
+partagé (nouvelle infrastructure pour un projet à 8 Go de RAM).
+
+### Addendum — Placeholders `${VAR:?msg}` et détail de `/actuator/health` (G3, G6)
+
+**Décision.** Dans un `application.yml` Spring, seule la forme `${VAR}` sans `:` est
+fail-fast ; `${VAR:?msg}` (syntaxe Compose) est un défaut littéral. Tout `application.yml`
+des trois services n'emploie donc plus que `${VAR}` pour un secret ou une URL, et chaque
+service a un `ConfigFailFastTest` qui charge le vrai fichier avec un environnement vide.
+`management.endpoint.health.show-details` vaut `never` partout : la sonde Compose/K8s
+(`curl -f`, code HTTP) ne lit que le statut agrégé. **Ce que je sacrifie** : le détail
+base/disque n'est plus lisible sans outil interne. **Alternative rejetée** :
+`when-authorized` (exigerait Spring Security, interdit par la convention du dépôt).
+
 ---
 
 ## 8bis. Dashboards Admin / Travel Manager / Traveler — où vit l'agrégation cross-service

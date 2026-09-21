@@ -6,6 +6,7 @@ import com.travelplan.payment.entity.Payment;
 import com.travelplan.payment.entity.PaymentProvider;
 import com.travelplan.payment.service.PayPalPaymentService;
 import com.travelplan.payment.service.TokenValidationService;
+import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +17,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,13 +46,18 @@ class PayPalPaymentControllerTest {
     }
 
     @Test
-    void capture_validatesTokenAndReturnsTheUpdatedPayment() {
+    void capture_validatesTokenAndPassesTheCallersIdentityToTheService() {
         String orderId = "ORDER-1";
         Payment payment = new Payment(UUID.randomUUID(), new BigDecimal("19.99"), "USD",
                 PaymentProvider.PAYPAL, orderId);
         payment.setStatus(Payment.STATUS_COMPLETED);
         PaymentResponse response = PaymentResponse.from(payment);
-        when(payPalPaymentService.captureOrder(orderId)).thenReturn(response);
+        UUID caller = UUID.randomUUID();
+        Claims claims = mock(Claims.class);
+        when(tokenValidationService.requireAnyRole("Bearer valid-token")).thenReturn(claims);
+        when(tokenValidationService.callerId(claims)).thenReturn(caller);
+        when(tokenValidationService.isAdmin(claims)).thenReturn(false);
+        when(payPalPaymentService.captureOrder(orderId, caller, false)).thenReturn(response);
 
         var result = controller.capture(orderId, "Bearer valid-token");
 

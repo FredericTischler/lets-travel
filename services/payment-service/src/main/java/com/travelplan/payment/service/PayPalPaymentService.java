@@ -32,6 +32,7 @@ import java.math.RoundingMode;
 import java.util.Currency;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Creates PayPal Orders and captures them after payer approval
@@ -138,15 +139,23 @@ public class PayPalPaymentService {
      * in its own transaction (standard Spring Data JPA repository
      * behaviour), so the status change from the catch block below survives.</p>
      *
+     * <p>Ownership (security audit G2): the payment is resolved by its order id
+     * and must belong to {@code callerId} unless {@code isAdmin}. This check runs
+     * BEFORE any call to PayPal, and a non-owner gets the very same
+     * {@link PaymentNotFoundException} as for an unknown order — same masking as
+     * {@link PaymentService#findById}, so an order id's existence is not leaked.</p>
+     *
      * @throws PaymentNotFoundException if no active payment has this order id
-     *     as its {@code externalReference}
+     *     as its {@code externalReference}, or it belongs to someone else
+     *     (and the caller is not an admin)
      * @throws PaymentAlreadyTerminalException if that payment's status is
      *     already COMPLETED or FAILED
      * @throws PaymentProviderException if the call to PayPal's capture API
      *     fails (the payment is still transitioned to FAILED before this is thrown)
      */
-    public PaymentResponse captureOrder(String orderId) {
+    public PaymentResponse captureOrder(String orderId, UUID callerId, boolean isAdmin) {
         Payment payment = paymentRepository.findActiveByExternalReference(orderId)
+                .filter(p -> isAdmin || p.getUserId().equals(callerId))
                 .orElseThrow(() -> new PaymentNotFoundException(orderId));
 
         if (TERMINAL_STATUSES.contains(payment.getStatus())) {

@@ -7,6 +7,7 @@ import com.travelplan.identity.entity.User;
 import com.travelplan.identity.exception.InsufficientRoleException;
 import com.travelplan.identity.exception.InvalidCredentialsException;
 import com.travelplan.identity.exception.InvalidTokenException;
+import com.travelplan.identity.exception.TooManyLoginAttemptsException;
 import com.travelplan.identity.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -61,28 +62,43 @@ public class AuthService {
     // enumeration via response-time measurement.
     private final String dummyHash;
 
+    private final LoginThrottle loginThrottle;
+
     public AuthService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder,
-                        JwtService jwtService) {
+                        JwtService jwtService, LoginThrottle loginThrottle) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.loginThrottle = loginThrottle;
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing-safety");
     }
 
     /**
      * Verify email + password against active users.
      *
+     * <p>Brute-force protection ({@link LoginThrottle}): a locked email or IP is
+     * refused before any lookup or BCrypt work; every failure — unknown email or
+     * wrong password alike — is recorded, a success clears the email's counter.</p>
+     *
      * @throws InvalidCredentialsException if the email is unknown/soft-deleted
      *         or the password does not match — identical exception in both cases
+     * @throws TooManyLoginAttemptsException if the email or the client IP is
+     *         currently locked out
      */
-    public LoginResponse login(LoginRequest request) {
+    public LoginResponse login(LoginRequest request, String clientIp) {
+        loginThrottle.retryAfterSeconds(request.getEmail(), clientIp).ifPresent(seconds -> {
+            throw new TooManyLoginAttemptsException(seconds);
+        });
+
         User user = userRepository.findByEmailAndDeletedAtIsNull(request.getEmail()).orElse(null);
         String hashToCheck = (user != null) ? user.getPasswordHash() : dummyHash;
         boolean matches = passwordEncoder.matches(request.getPassword(), hashToCheck);
 
         if (user == null || !matches) {
+            loginThrottle.recordFailure(request.getEmail(), clientIp);
             throw new InvalidCredentialsException();
         }
+        loginThrottle.recordSuccess(request.getEmail());
 
         String token = jwtService.generateToken(user);
         return new LoginResponse(user.getId(), user.getEmail(), token);

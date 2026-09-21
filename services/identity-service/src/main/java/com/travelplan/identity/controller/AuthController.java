@@ -4,7 +4,10 @@ import com.travelplan.identity.dto.LoginRequest;
 import com.travelplan.identity.dto.LoginResponse;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.service.AuthService;
+import com.travelplan.identity.service.ClientIp;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,8 +33,12 @@ public class AuthController {
 
     private final AuthService authService;
 
-    public AuthController(AuthService authService) {
+    private final boolean trustForwardedFor;
+
+    public AuthController(AuthService authService,
+                          @Value("${login-throttle.trust-forwarded-for}") boolean trustForwardedFor) {
         this.authService = authService;
+        this.trustForwardedFor = trustForwardedFor;
     }
 
     /**
@@ -39,11 +46,16 @@ public class AuthController {
      *
      * @return 200 with minimal identity (id, email) plus a short-lived JWT on
      *         success, 401 with a generic message on any failure (unknown
-     *         email or wrong password produce the exact same response)
+     *         email or wrong password produce the exact same response),
+     *         429 with {@code Retry-After} once the email or client IP has
+     *         too many recent failures (see {@code LoginThrottle})
      */
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest httpRequest) {
+        String clientIp = ClientIp.resolve(
+                httpRequest.getRemoteAddr(), httpRequest.getHeader("X-Forwarded-For"), trustForwardedFor);
+        return ResponseEntity.ok(authService.login(request, clientIp));
     }
 
     /**

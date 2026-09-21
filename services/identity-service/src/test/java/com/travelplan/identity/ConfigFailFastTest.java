@@ -66,6 +66,18 @@ class ConfigFailFastTest {
     }
 
     @Test
+    void theLoginThrottleTunablesHaveSafeDefaultsAndTrustNoProxyHeaderByDefault() throws IOException {
+        StandardEnvironment empty = environmentWith(Map.of());
+
+        // Tunables, not secrets: defaults are allowed (and needed) here.
+        assertThat(empty.getProperty("login-throttle.email-max-failures")).isEqualTo("5");
+        assertThat(empty.getProperty("login-throttle.ip-max-failures")).isEqualTo("50");
+        assertThat(empty.getProperty("login-throttle.window-seconds")).isEqualTo("900");
+        assertThat(empty.getProperty("login-throttle.max-tracked-keys")).isEqualTo("10000");
+        assertThat(empty.getProperty("login-throttle.trust-forwarded-for")).isEqualTo("false");
+    }
+
+    @Test
     void withTheVariablesPresentEverythingResolvesToTheirValues() throws IOException {
         StandardEnvironment env = environmentWith(Map.of(
                 "DB_HOST", "h", "DB_PORT", "1", "DB_NAME", "n", "DB_USERNAME", "u", "DB_PASSWORD", "p",
