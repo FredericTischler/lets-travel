@@ -65,6 +65,84 @@ l'introduire maintenant reviendrait à réécrire l'autorisation existante en
 double, pour un gain marginal sur un projet où chaque contrôleur a déjà son
 check explicite et testé.
 
+### Addendum — Bootstrap et création d'ADMIN (Phase 10, durcissement sécurité)
+
+#### Constat de code
+
+Le texte ci-dessus fait choisir le `role` « à la création du compte » par
+`POST /users`. Or cet endpoint est **public** (l'inscription doit l'être) : n'importe
+qui pouvait donc s'auto-créer un compte `ADMIN`, et omettre `role` donnait
+silencieusement `ADMIN` (défaut du code **et** `DEFAULT 'ADMIN'` en base, V3). C'était
+une élévation de privilège complète, ouverte à un appelant anonyme — le front ne
+proposait pas `ADMIN` (§8), mais l'API l'acceptait (§8 le notait comme « non traité »).
+
+#### Décision
+
+- **`POST /users` reste public, mais le rôle demandé dépend de l'appelant.** Sans jeton
+  ADMIN valide (jeton absent, malformé, expiré, mal signé, utilisateur supprimé, ou
+  jeton d'un TRAVELER/TRAVEL_MANAGER) : seuls `TRAVELER` et `TRAVEL_MANAGER` sont
+  permis ; `role: ADMIN` → **403**, rien n'est créé. Un jeton invalide n'est **pas** un
+  401 ici : l'appelant est traité comme anonyme (`AuthService#isAdmin`, non levante).
+  Avec un jeton ADMIN valide : tous les rôles, `ADMIN` compris.
+- **`role` omis = `TRAVELER`** (moindre privilège), y compris pour un admin. Le
+  `DEFAULT 'ADMIN'` est supprimé en base (`V6__drop_role_default.sql`) : un `INSERT`
+  qui oublie le rôle échoue (`NOT NULL`) au lieu de créer un administrateur.
+- **Le tout premier admin est créé au démarrage** par `BootstrapAdminInitializer`
+  (`ApplicationRunner`), depuis deux variables d'environnement **optionnelles**
+  `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`, acheminées comme tous les
+  secrets du repo : Vault `secret/identity/bootstrap-admin` (clés `email`, `password`)
+  → rôle Ansible `app-secrets` → `/opt/travel-plan/.env` → fragment
+  `docker-compose.identity.yml`. Règles : les deux absentes = fonction inactive ;
+  une seule renseignée, email invalide ou mot de passe < 12 caractères = **le service
+  refuse de démarrer** (fail-fast) ; les deux présentes = l'admin est créé **si et
+  seulement s'il n'existe aucun ADMIN actif** (idempotent au redémarrage et entre
+  replicas ; la course entre deux replicas est arbitrée par l'index unique partiel sur
+  l'email). Mot de passe haché en BCrypt comme tout autre, **jamais loggué** (ni l'email :
+  seul l'id du compte créé l'est).
+- Corollaire assumé : si tous les admins sont supprimés, le démarrage suivant recrée
+  l'admin de bootstrap (chemin de secours volontaire), tant que la clé est dans Vault.
+
+#### Justification
+
+Le trou se ferme à l'endroit où il est exploitable (le contrôle est dans le service,
+comme tout le reste de l'autorisation, §1), sans toucher à l'inscription publique que le
+sujet exige. Le bootstrap par variable d'environnement réutilise exactement le circuit
+des secrets existants (Vault → Ansible → `.env` → Compose) au lieu d'inventer un
+mécanisme (endpoint « setup » à usage unique, script SQL manuel) qu'il faudrait lui-même
+protéger. « Créer seulement si aucun ADMIN actif » rend la chose rejouable sans effet.
+
+#### Ce que je sacrifie
+
+- Un mot de passe d'administrateur **vit dans Vault et dans `/opt/travel-plan/.env`
+  (0600)** tant qu'on ne retire pas la clé ; le placeholder de dev
+  (`changeme_bootstrap_admin`, `vault/defaults/main.yml`) est un compte admin à mot de
+  passe connu sur toute stack de dev — il **doit** être surchargé (ansible-vault) hors
+  poste local.
+- **Aucun endpoint de changement/réinitialisation de mot de passe n'existe** : faire
+  tourner le mot de passe du bootstrap = changer la valeur Vault **et** supprimer (soft)
+  la ligne admin pour que le démarrage suivant la recrée. Manque listé dans
+  `docs/security-audit.md`.
+- Pas de promotion de rôle (`User.role` reste sans setter) : si l'email de bootstrap est
+  déjà pris par un compte non-admin et qu'aucun admin n'existe, le service refuse de
+  démarrer plutôt que d'élever ce compte.
+- L'écran admin « Utilisateurs » du front crée un compte sans rôle, donc `TRAVELER`
+  (avant : `ADMIN`) ; un sélecteur de rôle reste à ajouter côté front.
+- Correctif au passage (même thème « fail-fast ») : dans `application.yml`, la syntaxe
+  Compose `${VAR:?msg}` **n'est pas** fail-fast en Spring (le texte après le premier `:`
+  est une valeur par défaut littérale) ; `PAYMENT_SERVICE_URL` en dépendait et démarrait donc
+  avec la chaîne `?PAYMENT_SERVICE_URL is required` comme URL (les `DB_*` aussi, rattrapés
+  seulement par les `@Value` nus de `DataSourceConfig`). Remplacé par `${VAR}`, garanti par
+  `ConfigFailFastTest` ; les tests d'intégration fournissent désormais `PAYMENT_SERVICE_URL`.
+
+#### Alternative rejetée
+
+(a) Un endpoint public à usage unique « `POST /setup` » (créer l'admin tant que la table
+est vide) : une fenêtre d'exploitation entre le déploiement et le premier appel, plus un
+état global à protéger. (b) Un admin inséré par migration Flyway avec mot de passe fixé
+dans le dépôt : un secret commité, identique sur tous les environnements. (c) Laisser
+`POST /users` créer un ADMIN si la table `users` est vide : même défaut que (a), et
+dépend de l'ordre d'arrivée des requêtes.
+
 ---
 
 ## 2. Domaine `Travel` (Neo4j, travel-service)
@@ -1055,9 +1133,9 @@ Le texte ci-dessus prévoyait `authGuard` → `roleGuard` et des dossiers `admin
   confort d'affichage, pas une frontière de sécurité (le backend refuse déjà
   les écritures sur le voyage d'autrui, §2).
 - **Inscription publique** : le sélecteur de rôle n'offre que `TRAVELER` et
-  `TRAVEL_MANAGER`. Ce n'est **pas** une protection — `POST /users` accepte
-  aujourd'hui `ADMIN` — mais un choix d'UX ; le durcissement backend est un
-  chantier séparé.
+  `TRAVEL_MANAGER`. Ce n'est **pas** une protection — mais un choix d'UX. Le
+  durcissement backend (`POST /users` refuse `ADMIN` sans jeton admin) est fait :
+  voir l'addendum de §1.
 
 Ce qui reste hors périmètre de ce front (aucun endpoint mergé à ce stade) :
 paiement d'abonnement, feedback, statistiques organisateur, tableaux de bord
@@ -1086,6 +1164,12 @@ puisque cette phase introduit du texte libre saisi par les travelers) et
 qu'aucun nouvel endpoint ne réintroduit une requête Cypher/SQL concatenée
 à partir d'un paramètre utilisateur. À faire via le skill `/security-review`
 une fois chaque phase codée, pas en amont.
+
+> **Phase 10 (fait).** Cette vérification a été menée et **a trouvé un vrai trou** —
+> l'auto-création d'un compte `ADMIN` par `POST /users` public — corrigé (addendum de
+> §1). Les preuves (injection SQL/Cypher, XSS, hachage, JWT/secrets, TLS, matrice
+> endpoint × rôle, données personnelles) et la liste des manques connus sont dans
+> `docs/security-audit.md`.
 
 ---
 

@@ -125,6 +125,27 @@ public class AuthService {
     }
 
     /**
+     * Non-throwing variant of {@link #requireAdmin}, for the one endpoint that
+     * is public but changes behaviour for an administrator
+     * ({@code POST /users}: only an ADMIN may create an ADMIN account).
+     *
+     * <p>Returns {@code false} — never throws — for an absent, malformed,
+     * expired or forged token, for a token whose user is no longer active,
+     * and for a valid token that is not ADMIN: all of those callers are simply
+     * treated as anonymous, they do not get a 401 on a public endpoint.</p>
+     *
+     * @param authorizationHeader raw header value, may be {@code null}
+     */
+    public boolean isAdmin(String authorizationHeader) {
+        try {
+            requireAdmin(authorizationHeader);
+            return true;
+        } catch (InvalidTokenException | InsufficientRoleException ex) {
+            return false;
+        }
+    }
+
+    /**
      * Reject the request unless the {@code Authorization} header carries a
      * Bearer token that is valid, still active for a currently-active user
      * (same checks as {@link #getCurrentUser}), AND whose {@code role} claim

@@ -73,6 +73,17 @@ vault_secrets:
       dbname: "identity_db"
       host: "postgres"
       port: "5432"
+  # Premier compte ADMIN (bootstrap) : identity-service le cree AU DEMARRAGE
+  # s'il n'existe aucun ADMIN actif (BootstrapAdminInitializer ; POST /users
+  # refuse de creer un ADMIN a un appelant non-admin). Perimetre `identity/` :
+  # lisible par identity-policy seule. ATTENTION : c'est un compte a tous les
+  # droits -> le placeholder DOIT etre surcharge (ansible-vault) hors dev, et la
+  # cle peut etre retiree une fois l'admin cree (l'absence est le cas normal).
+  # Le service exige un mot de passe >= 12 caracteres, sinon il refuse de demarrer.
+  - path: "identity/bootstrap-admin"
+    data:
+      email: "admin@lets-travel.local"
+      password: "changeme_bootstrap_admin"   # noqa: surcharger via ansible-vault en prod
   - path: "payment/db"
     data:
       username: "payment_user"

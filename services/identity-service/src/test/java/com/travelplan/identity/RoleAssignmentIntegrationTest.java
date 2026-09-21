@@ -21,8 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests for the 3-role support introduced in
  * docs/lets-travel-architecture-decisions.md §1: {@code POST /users} now
  * accepts an explicit {@code role} (one of ADMIN/TRAVEL_MANAGER/TRAVELER),
- * defaults to ADMIN when omitted (backward compatibility with callers
- * written before this phase), and rejects any other value with a 400. The
+ * defaults to TRAVELER when omitted (least privilege), and rejects any other
+ * value with a 400. Who may ask for ADMIN is covered by
+ * {@link AdminCreationPrivilegeIntegrationTest}. The
  * chosen role must show up in the JWT issued at login.
  *
  * Uses Testcontainers (postgres:17.5-bookworm, same image as production).
@@ -46,18 +47,21 @@ class RoleAssignmentIntegrationTest {
         registry.add("DB_USERNAME", postgres::getUsername);
         registry.add("DB_PASSWORD", postgres::getPassword);
         registry.add("JWT_SIGNING_KEY", () -> "test-only-signing-key-must-be-at-least-32-bytes-long");
+        // Required since application.yml stopped hiding a missing PAYMENT_SERVICE_URL behind a
+        // literal default; nothing listens here (only the cascade-delete tests care).
+        registry.add("PAYMENT_SERVICE_URL", () -> "http://localhost:1");
     }
 
     @Autowired
     private TestRestTemplate restTemplate;
 
     @Test
-    void creatingAUserWithoutARoleDefaultsToAdmin() {
+    void creatingAUserWithoutARoleDefaultsToTravelerNotAdmin() {
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 "/users", Map.of("email", "no-role@example.com", "password", "secret123"), Map.class);
 
         assertThat(response.getStatusCode().value()).isEqualTo(201);
-        assertThat(response.getBody()).containsEntry("role", "ADMIN");
+        assertThat(response.getBody()).containsEntry("role", "TRAVELER");
     }
 
     @Test

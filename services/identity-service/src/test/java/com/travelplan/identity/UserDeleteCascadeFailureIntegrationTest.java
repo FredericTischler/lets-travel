@@ -1,15 +1,17 @@
 package com.travelplan.identity;
 
+import com.travelplan.identity.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -61,6 +63,19 @@ class UserDeleteCascadeFailureIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    private TestAccounts accounts;
+
+    @BeforeEach
+    void setUpAccounts() {
+        accounts = new TestAccounts(restTemplate, userRepository, passwordEncoder);
+    }
+
     @Test
     void deletingAUserStillSucceedsWhenPaymentServiceIsUnreachable() {
         String email = "cascade-resilience-target@example.com";
@@ -70,28 +85,14 @@ class UserDeleteCascadeFailureIntegrationTest {
         String userId = (String) createResponse.getBody().get("id");
 
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
-                "/users/" + userId, HttpMethod.DELETE, authenticatedEntity(), Void.class);
+                "/users/" + userId, HttpMethod.DELETE, accounts.newAdminEntity(), Void.class);
 
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
         // The user really is deleted despite the cascade failure — no partial
         // rollback, no exception leaked as a 5xx.
         ResponseEntity<Map> getAfterDelete = restTemplate.exchange(
-                "/users/" + userId, HttpMethod.GET, authenticatedEntity(), Map.class);
+                "/users/" + userId, HttpMethod.GET, accounts.newAdminEntity(), Map.class);
         assertThat(getAfterDelete.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-    }
-
-    private HttpEntity<Void> authenticatedEntity() {
-        String email = "cascade-resilience-bystander-" + System.nanoTime() + "@example.com";
-        String password = "bystander_password_1";
-        restTemplate.postForEntity("/users", Map.of("email", email, "password", password), Map.class);
-
-        ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
-                "/login", Map.of("email", email, "password", password), Map.class);
-        String token = (String) loginResponse.getBody().get("token");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + token);
-        return new HttpEntity<>(headers);
     }
 }

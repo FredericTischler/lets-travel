@@ -95,7 +95,17 @@
       register: s_shared_jwt
       no_log: true
 
-    - name: "Assert the 6 secret paths exist with expected keys"
+    - name: "Read identity/bootstrap-admin"
+      community.hashi_vault.vault_kv2_get:
+        url: "{{ vault_addr }}"
+        auth_method: token
+        token: "{{ root_token }}"
+        engine_mount_point: "{{ kv_mount }}"
+        path: "identity/bootstrap-admin"
+      register: s_bootstrap_admin
+      no_log: true
+
+    - name: "Assert the 7 secret paths exist with expected keys"
       ansible.builtin.assert:
         that:
           # identity/db : contrat coherent avec le role postgres.
@@ -119,8 +129,14 @@
           # Contrainte jjwt/HS256 (RFC 7518 §3.2) : >= 32 octets.
           - "['signing_key'] | difference(s_shared_jwt.data.data.keys() | list) | length == 0"
           - "s_shared_jwt.data.data.signing_key | length >= 32"
+          # identity/bootstrap-admin : premier compte ADMIN cree au demarrage par
+          # identity-service. Mot de passe >= 12 caracteres (sinon le service
+          # refuse de demarrer : BootstrapAdminInitializer.MIN_PASSWORD_LENGTH).
+          - "['email','password'] | difference(s_bootstrap_admin.data.data.keys() | list) | length == 0"
+          - "'@' in s_bootstrap_admin.data.data.email"
+          - "s_bootstrap_admin.data.data.password | length >= 12"
         fail_msg: "Un chemin de secret manque ou ses cles ne correspondent pas au contrat."
-        success_msg: "Les 6 chemins existent avec les cles attendues."
+        success_msg: "Les 7 chemins existent avec les cles attendues."
 
     # ---- 2bis) Secret d'administration infra/postgres-superuser -------------
     - name: "Read infra/postgres-superuser (admin secret, hors policies service)"

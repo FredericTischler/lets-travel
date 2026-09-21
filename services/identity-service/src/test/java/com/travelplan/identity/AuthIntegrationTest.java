@@ -49,6 +49,9 @@ class AuthIntegrationTest {
         // Test-only secret, >= 32 bytes (256 bits) as required by HS256 (jjwt
         // throws WeakKeyException otherwise). Never used outside this test JVM.
         registry.add("JWT_SIGNING_KEY", () -> "test-only-signing-key-must-be-at-least-32-bytes-long");
+        // Required since application.yml stopped hiding a missing PAYMENT_SERVICE_URL behind a
+        // literal default; nothing listens here (only the cascade-delete tests care).
+        registry.add("PAYMENT_SERVICE_URL", () -> "http://localhost:1");
     }
 
     @Autowired

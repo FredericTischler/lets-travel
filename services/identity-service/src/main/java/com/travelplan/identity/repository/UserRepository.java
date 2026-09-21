@@ -33,4 +33,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * Check for an active user with the given email (for 409 conflict detection).
      */
     Optional<User> findByEmailAndDeletedAtIsNull(String email);
+
+    /**
+     * Whether at least one active (non-deleted) user carries {@code role} —
+     * backs the bootstrap-admin idempotence check.
+     */
+    boolean existsByRoleAndDeletedAtIsNull(String role);
 }

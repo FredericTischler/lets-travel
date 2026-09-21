@@ -1,5 +1,7 @@
 package com.travelplan.identity;
 
+import com.travelplan.identity.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -10,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -58,10 +61,26 @@ class ReportsIntegrationTest {
         registry.add("DB_USERNAME", postgres::getUsername);
         registry.add("DB_PASSWORD", postgres::getPassword);
         registry.add("JWT_SIGNING_KEY", () -> "test-only-signing-key-must-be-at-least-32-bytes-long");
+        // Required since application.yml stopped hiding a missing PAYMENT_SERVICE_URL behind a
+        // literal default; nothing listens here (only the cascade-delete tests care).
+        registry.add("PAYMENT_SERVICE_URL", () -> "http://localhost:1");
     }
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    private TestAccounts accounts;
+
+    @BeforeEach
+    void setUpAccounts() {
+        accounts = new TestAccounts(restTemplate, userRepository, passwordEncoder);
+    }
 
     @Test
     void postReportsWithoutAuthorizationHeaderReturns401() {
@@ -238,6 +257,11 @@ class ReportsIntegrationTest {
     // --- helpers ---
 
     private Map<String, Object> createUserRaw(String email, String role) {
+        if ("ADMIN".equals(role)) {
+            // An ADMIN cannot be created through the public POST /users any more.
+            UUID id = accounts.createAdmin(email);
+            return Map.of("id", id.toString(), "email", email, "role", "ADMIN");
+        }
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 "/users", Map.of("email", email, "password", "secret123", "role", role), Map.class);
         return response.getBody();
