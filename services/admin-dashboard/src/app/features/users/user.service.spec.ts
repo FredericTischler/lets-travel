@@ -13,6 +13,7 @@ describe('UserService', () => {
   const sampleUser: User = {
     id: 'user-1',
     email: 'admin@example.com',
+    role: 'ADMIN',
     createdAt: '2026-01-01T00:00:00Z',
   };
 

@@ -12,6 +12,8 @@ export interface User {
   id: string;
   email: string;
   createdAt: string;
+  /** `ADMIN` | `TRAVEL_MANAGER` | `TRAVELER`. */
+  role: string;
 }
 
 /**

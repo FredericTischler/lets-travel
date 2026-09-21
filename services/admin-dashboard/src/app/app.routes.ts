@@ -1,29 +1,89 @@
 import { Routes } from '@angular/router';
 
+import { ROLES } from './core/auth/roles';
 import { authGuard } from './core/guards/auth.guard';
+import { homeGuard, roleGuard } from './core/guards/role.guard';
 import { AppShellComponent } from './shared/layout/app-shell.component';
 
+/**
+ * Route table. Every screen inside the shell carries a `roleGuard` naming the
+ * role it is meant for; the hierarchy (ADMIN passes everywhere, a
+ * TRAVEL_MANAGER also passes TRAVELER routes) is applied by the guard, and
+ * the navigation entries of shared/layout/nav-items.ts must stay in sync.
+ * The backend re-checks every call: these guards only spare the user a
+ * screen that would answer 403.
+ */
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'users' },
+  // Redirects to the landing page of the current role (or /login).
+  { path: '', pathMatch: 'full', canActivate: [homeGuard], children: [] },
   {
     path: 'login',
     loadComponent: () =>
       import('./features/login/login.component').then((m) => m.LoginComponent),
   },
   {
-    // Authenticated area: shared layout (nav + theme toggle) wrapping the
-    // existing feature screens, which are otherwise untouched.
+    path: 'register',
+    loadComponent: () =>
+      import('./features/register/register.component').then((m) => m.RegisterComponent),
+  },
+  {
+    // Authenticated area: shared layout (role-filtered nav, logout, theme).
     path: '',
     component: AppShellComponent,
     canActivate: [authGuard],
     children: [
+      // --- Traveler (also reachable by TRAVEL_MANAGER and ADMIN) ---
+      {
+        path: 'travels',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/travels/travel-list.component').then((m) => m.TravelListComponent),
+      },
+      {
+        path: 'travels/:id',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/travels/travel-detail.component').then((m) => m.TravelDetailComponent),
+      },
+      {
+        path: 'my-subscriptions',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/subscriptions/my-subscriptions.component').then(
+            (m) => m.MySubscriptionsComponent,
+          ),
+      },
+      // --- Travel Manager (also reachable by ADMIN) ---
+      {
+        path: 'manager/travels',
+        canActivate: [roleGuard(ROLES.TRAVEL_MANAGER)],
+        loadComponent: () =>
+          import('./features/manager/my-travels.component').then((m) => m.MyTravelsComponent),
+      },
+      {
+        path: 'manager/travels/:id/subscribers',
+        canActivate: [roleGuard(ROLES.TRAVEL_MANAGER)],
+        loadComponent: () =>
+          import('./features/manager/travel-subscribers.component').then(
+            (m) => m.TravelSubscribersComponent,
+          ),
+      },
+      // --- Admin ---
+      {
+        path: 'admin/reports',
+        canActivate: [roleGuard(ROLES.ADMIN)],
+        loadComponent: () =>
+          import('./features/reports/report-queue.component').then((m) => m.ReportQueueComponent),
+      },
       {
         path: 'users',
+        canActivate: [roleGuard(ROLES.ADMIN)],
         loadComponent: () =>
           import('./features/users/user-list.component').then((m) => m.UserListComponent),
       },
       {
         path: 'payments',
+        canActivate: [roleGuard(ROLES.ADMIN)],
         loadComponent: () =>
           import('./features/payments/payment-list.component').then(
             (m) => m.PaymentListComponent,
@@ -31,6 +91,7 @@ export const routes: Routes = [
       },
       {
         path: 'destinations',
+        canActivate: [roleGuard(ROLES.ADMIN)],
         loadComponent: () =>
           import('./features/destinations/destination-list.component').then(
             (m) => m.DestinationListComponent,
@@ -38,4 +99,6 @@ export const routes: Routes = [
       },
     ],
   },
+  // Unknown URL: let the home guard pick the right landing page.
+  { path: '**', redirectTo: '' },
 ];

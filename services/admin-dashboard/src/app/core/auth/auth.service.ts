@@ -3,12 +3,28 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { Role } from './roles';
 
 const TOKEN_STORAGE_KEY = 'admin-dashboard.jwt';
 
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+/** Body of the public POST /users (see identity-service CreateUserRequest.java). */
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  role: Role;
+}
+
+/** POST /users response (identity-service UserResponse.java). */
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
 }
 
 /**
@@ -54,6 +70,25 @@ export class AuthService {
     const claims = this.decodeJwtPayload(token);
     return typeof claims?.['role'] === 'string' ? (claims['role'] as string) : null;
   });
+
+  /** The `email` claim of the stored JWT, or `null` (display only). */
+  readonly email = computed(() => {
+    const token = this.tokenSignal();
+    if (!token) {
+      return null;
+    }
+    const claims = this.decodeJwtPayload(token);
+    return typeof claims?.['email'] === 'string' ? (claims['email'] as string) : null;
+  });
+
+  /**
+   * Public sign-up: POST /users (unauthenticated on the backend). The caller
+   * chooses the role — the sign-up form only ever offers TRAVELER or
+   * TRAVEL_MANAGER (see SIGN_UP_ROLES). This does not log the user in.
+   */
+  register(request: RegisterRequest): Observable<RegisteredUser> {
+    return this.http.post<RegisteredUser>(`${environment.identityApiUrl}/users`, request);
+  }
 
   login(request: LoginRequest): Observable<LoginResponse> {
     return this.http

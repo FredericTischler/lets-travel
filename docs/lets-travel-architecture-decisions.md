@@ -742,6 +742,39 @@ contournement propre possible si le sujet impose 3 expériences différentes.
 C'est le seul point de cette phase qui touche un composant partagé existant
 plutôt que d'en ajouter un nouveau.
 
+### Correctif — implémentation réelle du front (relu avant de coder cette section)
+
+Le texte ci-dessus prévoyait `authGuard` → `roleGuard` et des dossiers `admin/`,
+`manager/`, `traveler/`. Ce qui a réellement été fait diffère sur quatre points :
+
+- **`authGuard` n'est pas remplacé** : il reste sur le shell (présence du
+  token) et `roleGuard(...roles)` s'ajoute sur chaque route enfant. `roleGuard`
+  applique la **hiérarchie complète** de §1 (`ADMIN ⊃ TRAVEL_MANAGER ⊃
+  TRAVELER`, `core/auth/roles.ts`) et non le seul « ADMIN passe partout » :
+  un organisateur atteint les écrans voyageur. Repli d'un rôle interdit : la
+  page d'accueil de son rôle ; token sans rôle ou rôle inconnu : token purgé
+  et `/login` (sinon boucle de redirection).
+- **Dossiers par fonctionnalité, pas par rôle** : `features/travels`
+  (voyageur), `features/subscriptions`, `features/manager`, `features/reports`
+  — le pattern `features/<nom>/{component,service}` existant, plutôt que trois
+  dossiers `admin/`/`manager/`/`traveler/` qui auraient séparé un service HTTP
+  de ses deux consommateurs (ex. `SubscriptionService` sert le voyageur et
+  l'organisateur). Le formulaire de destination est un composant partagé
+  entre l'écran admin et l'écran organisateur.
+- **« Mes voyages » filtré côté client** : le backend n'a pas de requête par
+  `managerId` ; le front filtre `GET /destinations` sur le `sub` du JWT. Un
+  confort d'affichage, pas une frontière de sécurité (le backend refuse déjà
+  les écritures sur le voyage d'autrui, §2).
+- **Inscription publique** : le sélecteur de rôle n'offre que `TRAVELER` et
+  `TRAVEL_MANAGER`. Ce n'est **pas** une protection — `POST /users` accepte
+  aujourd'hui `ADMIN` — mais un choix d'UX ; le durcissement backend est un
+  chantier séparé.
+
+Ce qui reste hors périmètre de ce front (aucun endpoint mergé à ce stade) :
+paiement d'abonnement, feedback, statistiques organisateur, tableaux de bord
+admin, recommandations. Le détail, écran par écran, est dans
+`services/admin-dashboard/README.md`.
+
 ---
 
 ## 9. Tests & CI

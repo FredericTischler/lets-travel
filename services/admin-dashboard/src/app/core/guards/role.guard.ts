@@ -2,18 +2,33 @@ import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 
 import { AuthService } from '../auth/auth.service';
+import { Role, hasAccess, homeRouteFor } from '../auth/roles';
+
+/**
+ * Where to send an authenticated user who may not see the requested route:
+ * back to the landing page of their own role, or — if the token carries no
+ * (or an unrecognised) role, e.g. a pre-Phase-1 token — out of the app, with
+ * the unusable token discarded so the login screen does not bounce back.
+ */
+function fallbackFor(authService: AuthService, router: Router) {
+  const home = homeRouteFor(authService.role());
+  if (home === null) {
+    authService.logout();
+    return router.parseUrl('/login');
+  }
+  return router.parseUrl(home);
+}
 
 /**
  * Route guard factory restricting a route to specific roles (see
- * docs/lets-travel-architecture-decisions.md §1): `ADMIN` implicitly passes
- * every check regardless of the roles listed, mirroring the role hierarchy
- * enforced backend-side.
+ * docs/lets-travel-architecture-decisions.md §1 and §8). The role hierarchy
+ * applies ({@link hasAccess}): `ADMIN` passes every check and a
+ * `TRAVEL_MANAGER` passes every `TRAVELER` check.
  *
- * No token at all -> redirect to /login (same as {@link import('./auth.guard').authGuard}).
- * A token with a role not in `allowedRoles` (and not ADMIN) -> redirect to /users,
- * the one route every role can currently reach.
+ * No token at all -> /login. A token whose role may not see the route ->
+ * the landing page of that role, or /login for an unknown role.
  */
-export function roleGuard(...allowedRoles: readonly string[]): CanActivateFn {
+export function roleGuard(...allowedRoles: readonly Role[]): CanActivateFn {
   return () => {
     const authService = inject(AuthService);
     const router = inject(Router);
@@ -22,11 +37,24 @@ export function roleGuard(...allowedRoles: readonly string[]): CanActivateFn {
       return router.parseUrl('/login');
     }
 
-    const role = authService.role();
-    if (role === 'ADMIN' || (role !== null && allowedRoles.includes(role))) {
+    if (hasAccess(authService.role(), allowedRoles)) {
       return true;
     }
 
-    return router.parseUrl('/users');
+    return fallbackFor(authService, router);
   };
 }
+
+/**
+ * Guard of the empty path: sends the visitor to the landing page of their
+ * role (or /login when unauthenticated / role unknown). Never renders.
+ */
+export const homeGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  const router = inject(Router);
+
+  if (!authService.isAuthenticated()) {
+    return router.parseUrl('/login');
+  }
+  return fallbackFor(authService, router);
+};

@@ -1,0 +1,161 @@
+<div class="flex flex-col gap-6">
+  <a
+    routerLink="/travels"
+    class="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+    >← Retour aux voyages</a
+  >
+
+  @if (loading()) {
+    <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+  } @else if (loadError()) {
+    <app-alert variant="error">{{ loadError() }}</app-alert>
+  } @else if (travel(); as t) {
+    <div>
+      <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">{{ t.name }}</h1>
+      <p class="text-sm text-slate-600 dark:text-slate-300">{{ t.country }}</p>
+    </div>
+
+    <app-card title="Informations">
+      <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt class="font-medium text-slate-500 dark:text-slate-400">Dates</dt>
+          <dd class="text-slate-900 dark:text-slate-100">{{ t.startDate }} → {{ t.endDate }}</dd>
+        </div>
+        <div>
+          <dt class="font-medium text-slate-500 dark:text-slate-400">Durée</dt>
+          <dd class="text-slate-900 dark:text-slate-100">{{ t.durationDays }} jour(s)</dd>
+        </div>
+        <div>
+          <dt class="font-medium text-slate-500 dark:text-slate-400">Prix</dt>
+          <dd class="text-slate-900 dark:text-slate-100">
+            {{ t.price === null ? '—' : (t.price | number: '1.2-2') + ' €' }}
+          </dd>
+        </div>
+        <div>
+          <dt class="font-medium text-slate-500 dark:text-slate-400">Capacité</dt>
+          <dd class="text-slate-900 dark:text-slate-100">{{ t.capacity ?? '—' }} place(s)</dd>
+        </div>
+      </dl>
+    </app-card>
+
+    <app-card title="Inscription">
+      <div class="flex flex-col gap-3">
+        @if (subscribed()) {
+          <p class="text-sm text-slate-700 dark:text-slate-200">
+            Vous êtes inscrit à ce voyage.
+            @if (pastCutoff()) {
+              Le délai d'annulation ({{ cutoffDays }} jours avant le départ) est dépassé : une
+              désinscription sera refusée.
+            } @else {
+              Vous pouvez annuler jusqu'au {{ deadline() }} ({{ cutoffDays }} jours avant le départ).
+            }
+          </p>
+          <div>
+            <app-button variant="danger" [disabled]="busy()" (clicked)="unsubscribe()">
+              {{ busy() ? 'Annulation…' : 'Se désinscrire' }}
+            </app-button>
+          </div>
+        } @else {
+          @if (started()) {
+            <p class="text-sm text-slate-700 dark:text-slate-200">
+              Ce voyage a déjà commencé : l'inscription n'est plus possible.
+            </p>
+          } @else {
+            <p class="text-sm text-slate-700 dark:text-slate-200">
+              Vous pourrez annuler jusqu'à {{ cutoffDays }} jours avant le départ.
+            </p>
+          }
+          <div>
+            <app-button [disabled]="busy() || started()" (clicked)="subscribe()">
+              {{ busy() ? 'Inscription…' : "S'inscrire" }}
+            </app-button>
+          </div>
+        }
+
+        @if (actionSuccess()) {
+          <app-alert variant="success">{{ actionSuccess() }}</app-alert>
+        }
+        @if (actionError()) {
+          <app-alert variant="error">{{ actionError() }}</app-alert>
+        }
+      </div>
+    </app-card>
+
+    <app-card title="Activités">
+      <ul class="list-inside list-disc text-sm text-slate-700 dark:text-slate-200">
+        @for (activity of t.activities; track activity.id) {
+          <li>{{ activity.name }}</li>
+        } @empty {
+          <li class="list-none text-slate-500 dark:text-slate-400">Aucune activité renseignée.</li>
+        }
+      </ul>
+    </app-card>
+
+    <app-card title="Hébergements">
+      <ul class="flex flex-col gap-2 text-sm text-slate-700 dark:text-slate-200">
+        @for (accommodation of t.accommodations; track accommodation.id) {
+          <li>
+            <span class="font-medium">{{ accommodation.name }}</span> ({{ accommodation.type }})
+            @if (accommodation.checkIn || accommodation.checkOut) {
+              <span class="text-slate-500 dark:text-slate-400">
+                — {{ accommodation.checkIn ?? '…' }} → {{ accommodation.checkOut ?? '…' }}
+              </span>
+            }
+          </li>
+        } @empty {
+          <li class="text-slate-500 dark:text-slate-400">Aucun hébergement renseigné.</li>
+        }
+      </ul>
+    </app-card>
+
+    @if (t.managerId) {
+      <app-card title="Organisateur">
+        <div class="flex flex-col gap-3 text-sm text-slate-700 dark:text-slate-200">
+          @if (reportCount() !== null) {
+            <p data-testid="report-count">
+              Signalements reçus par cet organisateur : <strong>{{ reportCount() }}</strong>
+            </p>
+          }
+
+          @if (reportSent()) {
+            <app-alert variant="success">Votre signalement a été transmis à l'équipe de modération.</app-alert>
+          }
+
+          @if (canReportManager()) {
+            @if (reportOpen()) {
+              <form class="flex flex-col gap-2" (ngSubmit)="submitReport()">
+                <label for="reportReason" class="font-medium">Motif du signalement</label>
+                <textarea
+                  id="reportReason"
+                  name="reportReason"
+                  rows="4"
+                  required
+                  [maxLength]="reasonMaxLength"
+                  [(ngModel)]="reportReason"
+                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                ></textarea>
+                <div class="flex gap-2">
+                  <app-button type="submit" [disabled]="reporting()">
+                    {{ reporting() ? 'Envoi…' : 'Envoyer le signalement' }}
+                  </app-button>
+                  <app-button type="button" variant="secondary" (clicked)="toggleReport()">
+                    Annuler
+                  </app-button>
+                </div>
+              </form>
+              @if (reportError()) {
+                <app-alert variant="error">{{ reportError() }}</app-alert>
+              }
+            } @else {
+              <div>
+                <app-button variant="secondary" (clicked)="toggleReport()">
+                  Signaler l'organisateur
+                </app-button>
+              </div>
+            }
+          }
+        </div>
+      </app-card>
+    }
+  }
+</div>

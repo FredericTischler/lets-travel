@@ -23,10 +23,15 @@ test.describe('Destination CRUD', () => {
     const destinationName = `E2E Destination ${Date.now()}`;
 
     // --- Create, with one activity and one accommodation ---------------
-    await page.getByLabel('Nom').fill(destinationName);
+    await page.getByLabel('Nom', { exact: true }).fill(destinationName);
     await page.getByLabel('Pays').fill('Portugal');
     await page.locator('#destStartDate').fill('2027-01-10');
     await page.locator('#destEndDate').fill('2027-01-20');
+    // Since Phase 1 a destination is a "Travel": price, capacity and an owning
+    // manager are required. An admin types the manager id (here: their own).
+    await page.getByLabel('Prix (€)').fill('750');
+    await page.getByLabel('Capacité (places)').fill('12');
+    await page.getByLabel("Identifiant de l'organisateur").fill(user.id);
 
     await page.getByRole('button', { name: 'Ajouter une activité' }).click();
     await page.getByPlaceholder('Ex: Tram 28 ride').fill('Visite du chateau');
@@ -41,6 +46,8 @@ test.describe('Destination CRUD', () => {
     await expect(row).toBeVisible();
     await expect(row).toContainText('2027-01-10');
     await expect(row).toContainText('2027-01-20');
+    await expect(row).toContainText('750.00');
+    await expect(row).toContainText('12');
 
     // --- Edit: change the end date --------------------------------------
     await row.getByRole('button', { name: 'Modifier' }).click();

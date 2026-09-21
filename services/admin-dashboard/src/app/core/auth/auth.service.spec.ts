@@ -107,4 +107,52 @@ describe('AuthService', () => {
 
     expect(service.getCurrentUserId()).toBe('user-99');
   });
+
+  it('exposes the role and email claims of the stored token', () => {
+    const token = buildToken({ sub: 'u1', email: 'm@example.com', role: 'TRAVEL_MANAGER' });
+
+    service.login({ email: 'm@example.com', password: 'secret' }).subscribe();
+    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'm@example.com', token });
+
+    expect(service.role()).toBe('TRAVEL_MANAGER');
+    expect(service.email()).toBe('m@example.com');
+  });
+
+  it('role() and email() are null without a token, and role() is null for a pre-Phase-1 token', () => {
+    expect(service.role()).toBeNull();
+    expect(service.email()).toBeNull();
+
+    const token = buildToken({ sub: 'u1' });
+    service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
+    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'a@example.com', token });
+
+    expect(service.role()).toBeNull();
+  });
+
+  it('role() goes back to null on logout', () => {
+    const token = buildToken({ sub: 'u1', role: 'TRAVELER' });
+    service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
+    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'a@example.com', token });
+    expect(service.role()).toBe('TRAVELER');
+
+    service.logout();
+
+    expect(service.role()).toBeNull();
+  });
+
+  it('register() POSTs the credentials and the chosen role to the public /users, without logging in', () => {
+    let result: unknown;
+    service
+      .register({ email: 'new@example.com', password: 'longenough', role: 'TRAVELER' })
+      .subscribe((user) => (result = user));
+
+    const req = httpMock.expectOne(`${environment.identityApiUrl}/users`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'new@example.com', password: 'longenough', role: 'TRAVELER' });
+    const created = { id: 'u9', email: 'new@example.com', role: 'TRAVELER', createdAt: '2026-01-01T00:00:00Z' };
+    req.flush(created);
+
+    expect(result).toEqual(created);
+    expect(service.isAuthenticated()).toBe(false);
+  });
 });

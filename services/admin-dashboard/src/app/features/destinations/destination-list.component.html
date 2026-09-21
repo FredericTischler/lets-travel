@@ -1,169 +1,13 @@
 <div class="flex flex-col gap-6">
   <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Destinations</h1>
 
-  <app-card [title]="editingDestinationId() ? 'Modifier la destination' : 'Créer une destination'">
-    <form class="flex flex-col gap-6" [formGroup]="destinationForm" (ngSubmit)="saveDestination()">
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <app-input
-          class="flex-1"
-          fieldId="destName"
-          formControlName="name"
-          label="Nom"
-          type="text"
-          [required]="true"
-          autocomplete="off"
-        />
-
-        <app-input
-          class="flex-1"
-          fieldId="destCountry"
-          formControlName="country"
-          label="Pays"
-          type="text"
-          [required]="true"
-          autocomplete="off"
-        />
-
-        <div class="flex flex-col gap-1">
-          <label for="destStartDate" class="text-sm font-medium text-slate-700 dark:text-slate-200"
-            >Date de début</label
-          >
-          <input
-            id="destStartDate"
-            type="date"
-            formControlName="startDate"
-            required
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          />
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <label for="destEndDate" class="text-sm font-medium text-slate-700 dark:text-slate-200"
-            >Date de fin</label
-          >
-          <input
-            id="destEndDate"
-            type="date"
-            formControlName="endDate"
-            required
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          />
-        </div>
-      </div>
-
-      <div>
-        <div class="mb-2 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Activités</h3>
-          <app-button type="button" variant="secondary" (clicked)="addActivity()"
-            >Ajouter une activité</app-button
-          >
-        </div>
-
-        <div class="flex flex-col gap-2" formArrayName="activities">
-          @for (activityControl of activities.controls; track $index) {
-            <div class="flex items-center gap-2">
-              <input
-                type="text"
-                [formControlName]="$index"
-                placeholder="Ex: Tram 28 ride"
-                class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-              />
-              <app-button type="button" variant="danger" (clicked)="removeActivity($index)"
-                >Retirer</app-button
-              >
-            </div>
-          } @empty {
-            <p class="text-sm text-slate-500 dark:text-slate-400">Aucune activité.</p>
-          }
-        </div>
-      </div>
-
-      <div>
-        <div class="mb-2 flex items-center justify-between">
-          <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Hébergements</h3>
-          <app-button type="button" variant="secondary" (clicked)="addAccommodation()"
-            >Ajouter un hébergement</app-button
-          >
-        </div>
-
-        <div class="flex flex-col gap-3" formArrayName="accommodations">
-          @for (accommodationGroup of accommodations.controls; track $index) {
-            <div class="flex flex-wrap items-end gap-2" [formGroupName]="$index">
-              <div class="flex flex-col gap-1">
-                <label class="text-xs font-medium text-slate-700 dark:text-slate-200">Nom</label>
-                <input
-                  type="text"
-                  formControlName="name"
-                  placeholder="Ex: Hotel Lisboa"
-                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label class="text-xs font-medium text-slate-700 dark:text-slate-200">Type</label>
-                <input
-                  type="text"
-                  formControlName="type"
-                  placeholder="Ex: HOTEL"
-                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label class="text-xs font-medium text-slate-700 dark:text-slate-200"
-                  >Check-in</label
-                >
-                <input
-                  type="date"
-                  formControlName="checkIn"
-                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-
-              <div class="flex flex-col gap-1">
-                <label class="text-xs font-medium text-slate-700 dark:text-slate-200"
-                  >Check-out</label
-                >
-                <input
-                  type="date"
-                  formControlName="checkOut"
-                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-              </div>
-
-              <app-button type="button" variant="danger" (clicked)="removeAccommodation($index)"
-                >Retirer</app-button
-              >
-            </div>
-          } @empty {
-            <p class="text-sm text-slate-500 dark:text-slate-400">Aucun hébergement.</p>
-          }
-        </div>
-      </div>
-
-      <div class="flex gap-2">
-        <app-button type="submit" [disabled]="saving()">
-          {{
-            saving()
-              ? 'Enregistrement…'
-              : editingDestinationId()
-                ? 'Enregistrer les modifications'
-                : 'Créer'
-          }}
-        </app-button>
-
-        @if (editingDestinationId()) {
-          <app-button type="button" variant="secondary" [disabled]="saving()" (clicked)="cancelEdit()">
-            Annuler
-          </app-button>
-        }
-      </div>
-    </form>
-
-    @if (saveError()) {
-      <app-alert variant="error" class="mt-3 block">{{ saveError() }}</app-alert>
-    }
-  </app-card>
+  <app-destination-form
+    [destination]="editingDestination()"
+    [saving]="saving()"
+    [error]="saveError()"
+    (submitted)="saveDestination($event)"
+    (cancelled)="cancelEdit()"
+  />
 
   <app-card title="Liste">
     @if (deleteError()) {
@@ -184,6 +28,9 @@
               <th class="table-head-cell">Pays</th>
               <th class="table-head-cell">Dates</th>
               <th class="table-head-cell">Durée</th>
+              <th class="table-head-cell">Prix</th>
+              <th class="table-head-cell">Capacité</th>
+              <th class="table-head-cell">Organisateur</th>
               <th class="table-head-cell">Créé le</th>
               <th class="table-head-cell">Actions</th>
             </tr>
@@ -196,12 +43,22 @@
                 <td class="table-cell">{{ destination.country }}</td>
                 <td class="table-cell">{{ destination.startDate }} → {{ destination.endDate }}</td>
                 <td class="table-cell">{{ destination.durationDays }} j</td>
+                <td class="table-cell">
+                  {{ destination.price === null ? '—' : (destination.price | number: '1.2-2') + ' €' }}
+                </td>
+                <td class="table-cell">{{ destination.capacity ?? '—' }}</td>
+                <td class="table-cell">{{ destination.managerId ?? '—' }}</td>
                 <td class="table-cell">{{ destination.createdAt }}</td>
                 <td class="table-cell">
                   <div class="flex flex-wrap gap-2">
                     <app-button variant="secondary" (clicked)="startEdit(destination)">
                       Modifier
                     </app-button>
+                    <a
+                      [routerLink]="['/manager/travels', destination.id, 'subscribers']"
+                      class="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >Abonnés</a
+                    >
                     <app-button variant="secondary" (clicked)="toggleTransports(destination)">
                       {{
                         expandedDestinationId() === destination.id
@@ -223,7 +80,7 @@
               </tr>
               @if (expandedDestinationId() === destination.id) {
                 <tr class="table-row">
-                  <td class="table-cell bg-slate-50 dark:bg-slate-900/40" colspan="7">
+                  <td class="table-cell bg-slate-50 dark:bg-slate-900/40" colspan="10">
                     <div class="flex flex-col gap-4">
                       <div>
                         <h3 class="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -351,7 +208,7 @@
               }
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="7">Aucune destination.</td>
+                <td class="table-empty-cell" colspan="10">Aucune destination.</td>
               </tr>
             }
           </tbody>
