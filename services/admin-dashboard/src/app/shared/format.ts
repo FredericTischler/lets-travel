@@ -45,14 +45,14 @@ export function formatRating(average: number | null | undefined): string {
   return `${new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 }).format(average)} / 5`;
 }
 
-/** `sept. 2026` from `2026-09`. Unparseable input is returned as is. */
+/** `sept. 26` from `2026-09` (short: it labels chart columns). Unparseable input is returned as is. */
 export function formatMonth(month: string): string {
   const match = /^(\d{4})-(\d{2})$/.exec(month);
   if (!match) {
     return month;
   }
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
-  return new Intl.DateTimeFormat(LOCALE, { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+  return new Intl.DateTimeFormat(LOCALE, { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(
     date,
   );
 }

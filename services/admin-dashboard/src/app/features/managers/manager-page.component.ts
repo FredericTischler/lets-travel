@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { formatRating } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
@@ -52,6 +53,7 @@ export class ManagerPageComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly reportCount = signal<number | null>(null);
 
+  protected readonly rating = formatRating;
   protected readonly reasonMaxLength = REPORT_REASON_MAX_LENGTH;
   protected readonly reportOpen = signal(false);
   protected reportReason = '';

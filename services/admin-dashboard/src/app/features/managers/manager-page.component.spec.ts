@@ -60,7 +60,7 @@ describe('ManagerPageComponent', () => {
     expect(tile('kpi-travels')).toContain('4');
     expect(tile('kpi-past')).toContain('2');
     expect(tile('kpi-subscribers')).toContain('17');
-    expect(tile('kpi-rating')).toContain('4,5 sur 5');
+    expect(tile('kpi-rating')).toContain('4,5 / 5');
     expect(tile('kpi-rating')).toContain('6 avis');
     expect(tile('kpi-reports')).toContain('3');
 

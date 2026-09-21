@@ -17,7 +17,7 @@ import { Component, input } from '@angular/core';
     >
       <p class="text-sm text-slate-600 dark:text-slate-300">{{ label() }}</p>
       <p
-        class="break-words text-2xl font-semibold text-slate-900 sm:text-3xl dark:text-slate-100"
+        class="break-words text-xl font-semibold text-slate-900 sm:text-3xl dark:text-slate-100"
         data-testid="stat-value"
       >
         {{ value() }}

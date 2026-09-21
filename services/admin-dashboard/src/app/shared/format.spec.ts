@@ -36,7 +36,7 @@ describe('format helpers', () => {
   });
 
   it('formats a YYYY-MM month and leaves anything else untouched', () => {
-    expect(norm(formatMonth('2026-09'))).toMatch(/^sept\.? 2026$/);
+    expect(norm(formatMonth('2026-09'))).toMatch(/^sept\.? 26$/);
     expect(formatMonth('not-a-month')).toBe('not-a-month');
   });
 
