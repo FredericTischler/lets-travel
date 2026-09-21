@@ -8,9 +8,19 @@ import { AuthService } from '../../core/auth/auth.service';
 /** Status values the payment-service backend can report or accept. */
 export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 
+/** How a payment is made (payment-service `PaymentProvider`). */
+export type PaymentProvider = 'MANUAL' | 'STRIPE' | 'PAYPAL';
+
+export const PAYMENT_PROVIDER_LABELS: Record<PaymentProvider, string> = {
+  MANUAL: 'Paiement manuel',
+  STRIPE: 'Carte bancaire (Stripe)',
+  PAYPAL: 'PayPal',
+};
+
 /**
  * Shape of the payment-service GET/POST/PATCH /payments response items.
- * See services/payment-service PaymentResponse.java.
+ * See services/payment-service PaymentResponse.java. For a PayPal payment
+ * `externalReference` is the PayPal order id (what the capture call needs).
  */
 export interface Payment {
   id: string;
@@ -19,6 +29,9 @@ export interface Payment {
   status: PaymentStatus;
   externalReference: string | null;
   createdAt: string;
+  provider?: PaymentProvider;
+  travelId?: string | null;
+  subscriptionRef?: string | null;
 }
 
 /**
@@ -48,6 +61,22 @@ export class PaymentService {
     }
 
     return this.http.post<Payment>(`${environment.paymentApiUrl}/payments`, { userId, amount, currency });
+  }
+
+  /** One payment — its owner or an admin (used to follow a pending subscription payment). */
+  get(id: string): Observable<Payment> {
+    return this.http.get<Payment>(`${environment.paymentApiUrl}/payments/${id}`);
+  }
+
+  /**
+   * Captures a payer-approved PayPal order (`POST /payments/paypal/{orderId}/capture`).
+   * 404: unknown order; 409: the payment is already COMPLETED/FAILED; 502: PayPal refused.
+   */
+  capturePayPal(orderId: string): Observable<Payment> {
+    return this.http.post<Payment>(
+      `${environment.paymentApiUrl}/payments/paypal/${encodeURIComponent(orderId)}/capture`,
+      null,
+    );
   }
 
   updateStatus(id: string, status: 'COMPLETED' | 'FAILED'): Observable<Payment> {

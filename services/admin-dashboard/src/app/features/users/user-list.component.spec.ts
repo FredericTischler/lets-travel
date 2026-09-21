@@ -67,7 +67,12 @@ describe('UserListComponent', () => {
 
     const createReq = httpMock.expectOne(baseUrl);
     expect(createReq.request.method).toBe('POST');
-    expect(createReq.request.body).toEqual({ email: 'new@example.com', password: 'secret' });
+    // No role picked: TRAVELER (least privilege), always sent explicitly.
+    expect(createReq.request.body).toEqual({
+      email: 'new@example.com',
+      password: 'secret',
+      role: 'TRAVELER',
+    });
     createReq.flush(sampleUser);
 
     // createUser() reloads the list after success.
@@ -75,6 +80,39 @@ describe('UserListComponent', () => {
 
     expect(component['createEmail']).toBe('');
     expect(component['createPassword']).toBe('');
+  });
+
+  it.each(['ADMIN', 'TRAVEL_MANAGER'] as const)('createUser() sends the role chosen in the selector (%s)', (role) => {
+    fixture.detectChanges();
+    httpMock.expectOne(baseUrl).flush([]);
+
+    component['createEmail'] = 'new@example.com';
+    component['createPassword'] = 'secret-password';
+    component['createRole'] = role;
+    component.createUser();
+
+    const createReq = httpMock.expectOne(baseUrl);
+    expect(createReq.request.body.role).toBe(role);
+    createReq.flush(sampleUser);
+    httpMock.expectOne(baseUrl).flush([sampleUser]);
+
+    // The selector goes back to the safest choice after a creation.
+    expect(component['createRole']).toBe('TRAVELER');
+  });
+
+  it('offers the three roles in the create form, ADMIN included', () => {
+    fixture.detectChanges();
+    httpMock.expectOne(baseUrl).flush([]);
+    fixture.detectChanges();
+
+    const options = Array.from(
+      fixture.nativeElement.querySelectorAll('#createRole option') as NodeListOf<HTMLOptionElement>,
+    ).map((o) => o.textContent?.trim());
+    expect(options).toEqual([
+      'Administrateur (ADMIN)',
+      'Organisateur (TRAVEL_MANAGER)',
+      'Voyageur (TRAVELER)',
+    ]);
   });
 
   it('createUser() surfaces a backend error message without clearing the form', () => {

@@ -7,6 +7,22 @@
    strategy. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Data-viz tokens (dataviz skill). Series colour = categorical slot 1 (blue),
+   stepped for each surface; the chart chrome (grid, axis) is one step off the
+   surface so it stays recessive. Text never wears a series colour: labels use
+   the Tailwind slate text classes. `.dark` is toggled on <html> by
+   ThemeService. */
+:root {
+  --viz-series-1: #2a78d6;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+}
+.dark {
+  --viz-series-1: #3987e5;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #383835;
+}
+
 /* Shared table classes for the three list screens (users/payments/
    destinations). A generic table *component* was considered and rejected:
    the three tables differ too much in shape (the users table swaps two

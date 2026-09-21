@@ -55,6 +55,16 @@
               {{ busy() ? 'Annulation…' : 'Se désinscrire' }}
             </app-button>
           </div>
+        } @else if (pending(); as p) {
+          <app-pending-payment
+            [paymentId]="p.paymentId"
+            [expiresAt]="p.expiresAt"
+            [amount]="p.amount"
+            [currency]="p.currency"
+            [checkout]="p.checkout"
+            (cancelRequested)="cancelPending()"
+            (settled)="onPaymentSettled()"
+          />
         } @else {
           @if (started()) {
             <p class="text-sm text-slate-700 dark:text-slate-200">
@@ -65,6 +75,40 @@
               Vous pourrez annuler jusqu'à {{ cutoffDays }} jours avant le départ.
             </p>
           }
+
+          @if (priced() && !started()) {
+            <fieldset class="flex flex-col gap-1" data-testid="provider-choice">
+              <legend class="text-sm font-medium text-slate-700 dark:text-slate-200">
+                Moyen de paiement
+              </legend>
+              @for (option of providers; track option) {
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                  <input
+                    type="radio"
+                    name="provider"
+                    [value]="option"
+                    [ngModel]="provider()"
+                    (ngModelChange)="provider.set($event)"
+                    [attr.data-testid]="'provider-' + option"
+                  />
+                  {{ providerLabels[option] }}
+                </label>
+              }
+              @if (provider() === 'MANUAL') {
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                  Un administrateur confirmera votre règlement (virement, espèces…) : votre place
+                  est retenue 72 h en attendant.
+                </p>
+              }
+              @if (provider() === 'STRIPE') {
+                <p class="text-xs text-slate-500 dark:text-slate-400">
+                  Le formulaire de carte Stripe n'est pas encore intégré à ce site : préférez
+                  PayPal ou le paiement manuel.
+                </p>
+              }
+            </fieldset>
+          }
+
           <div>
             <app-button [disabled]="busy() || started()" (clicked)="subscribe()">
               {{ busy() ? 'Inscription…' : "S'inscrire" }}
@@ -80,6 +124,25 @@
         }
       </div>
     </app-card>
+
+    @if (ended() && subscribed()) {
+      <app-card title="Votre avis">
+        @if (myFeedback(); as mine) {
+          <app-feedback-list
+            [items]="[mine]"
+            [showDestination]="false"
+            emptyMessage=""
+          />
+        } @else if (canGiveFeedback()) {
+          <p class="mb-3 text-sm text-slate-700 dark:text-slate-200">
+            Ce voyage est terminé : donnez votre avis (un seul avis par voyage, non modifiable).
+          </p>
+          <app-feedback-form [destinationId]="id()" (saved)="onFeedbackSaved($event)" />
+        } @else {
+          <p class="text-sm text-slate-500 dark:text-slate-400">Chargement…</p>
+        }
+      </app-card>
+    }
 
     <app-card title="Activités">
       <ul class="list-inside list-disc text-sm text-slate-700 dark:text-slate-200">
@@ -111,6 +174,15 @@
     @if (t.managerId) {
       <app-card title="Organisateur">
         <div class="flex flex-col gap-3 text-sm text-slate-700 dark:text-slate-200">
+          <p>
+            <a
+              [routerLink]="['/managers', t.managerId]"
+              class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              data-testid="manager-link"
+              >Voir la page de l'organisateur (statistiques, notes)</a
+            >
+          </p>
+
           @if (reportCount() !== null) {
             <p data-testid="report-count">
               Signalements reçus par cet organisateur : <strong>{{ reportCount() }}</strong>

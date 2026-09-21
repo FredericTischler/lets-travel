@@ -12,7 +12,16 @@ test.describe('Role navigation', () => {
     const traveler = await createTestUser(request, 'TRAVELER');
     await loginAsTestUser(page, traveler);
 
-    for (const forbidden of ['/users', '/payments', '/destinations', '/admin/reports', '/manager/travels']) {
+    for (const forbidden of [
+      '/users',
+      '/payments',
+      '/destinations',
+      '/admin/reports',
+      '/admin/dashboard',
+      '/admin/feedback',
+      '/manager/travels',
+      '/manager/dashboard',
+    ]) {
       await page.goto(forbidden);
       await expect(page).toHaveURL(/\/travels$/);
     }
@@ -30,7 +39,14 @@ test.describe('Role navigation', () => {
     await page.goto('/my-subscriptions');
     await expect(page).toHaveURL(/\/my-subscriptions$/);
 
+    await page.goto('/manager/dashboard');
+    await expect(page).toHaveURL(/\/manager\/dashboard$/);
+    await page.goto('/my-stats');
+    await expect(page).toHaveURL(/\/my-stats$/);
+
     await page.goto('/admin/reports');
+    await expect(page).toHaveURL(/\/manager\/travels$/);
+    await page.goto('/admin/dashboard');
     await expect(page).toHaveURL(/\/manager\/travels$/);
     await page.goto('/users');
     await expect(page).toHaveURL(/\/manager\/travels$/);
@@ -47,7 +63,11 @@ test.describe('Role navigation', () => {
     for (const label of [
       'Voyages',
       'Mes abonnements',
+      'Mes statistiques',
+      'Tableau de bord organisateur',
       'Mes voyages organisés',
+      'Tableau de bord admin',
+      'Avis',
       'Signalements',
       'Utilisateurs',
       'Paiements',

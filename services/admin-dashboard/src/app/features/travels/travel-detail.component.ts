@@ -10,6 +10,10 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { Destination, DestinationService } from '../destinations/destination.service';
+import { FeedbackFormComponent } from '../feedback/feedback-form.component';
+import { FeedbackListComponent } from '../feedback/feedback-list.component';
+import { Feedback, FeedbackService } from '../feedback/feedback.service';
+import { PAYMENT_PROVIDER_LABELS, PaymentProvider } from '../payments/payment.service';
 import { REPORT_REASON_MAX_LENGTH, ReportService } from '../reports/report.service';
 import {
   CANCELLATION_CUTOFF_DAYS,
@@ -17,30 +21,60 @@ import {
   hasStarted,
   isPastCancellationCutoff,
 } from '../subscriptions/cancellation-rules';
-import { SubscriptionService } from '../subscriptions/subscription.service';
+import { currentSubscription } from '../subscriptions/payment-rules';
+import { PendingPaymentComponent } from '../subscriptions/pending-payment.component';
+import {
+  PaymentCheckout,
+  Subscription,
+  SubscriptionService,
+} from '../subscriptions/subscription.service';
+
+/** What the pending-payment panel needs to know about a PENDING_PAYMENT subscription. */
+export interface PendingInfo {
+  paymentId: string | null;
+  expiresAt: string | null;
+  amount: number | null;
+  currency: string | null;
+  /** Only known right after the subscribe call. */
+  checkout: PaymentCheckout | null;
+}
 
 /**
  * Detail of one travel (a `Destination`): dates, price, capacity, activities,
- * accommodations, plus the traveler's actions — subscribe / unsubscribe and
- * report the organiser.
+ * accommodations, plus the traveler's actions — subscribe (choosing how to pay
+ * when the travel has a price) / unsubscribe, finish a pending payment, give
+ * feedback once the travel is over, and report or open the page of the organiser.
  *
- * Whether the caller is already subscribed is read from their own history
- * (GET /travelers/me/subscriptions, an ACTIVE row for this destination).
- * The 3-day cancellation cutoff is announced up front, but the button stays
- * usable and the backend remains the authority: its 409 is turned into an
- * explicit message rather than a generic failure.
+ * Whether the caller is subscribed is read from their own history
+ * (GET /travelers/me/subscriptions): an ACTIVE row, or a PENDING_PAYMENT one
+ * still inside its deadline (shown with the payment panel). The 3-day
+ * cancellation cutoff is announced up front, but the button stays usable and the
+ * backend remains the authority: its 409 is turned into an explicit message.
+ * Feedback is offered only to an ACTIVE participant of an ended travel who has
+ * not rated it yet (the backend enforces the same rules).
  *
- * Every free-text value (destination names, the report reason typed here) is
- * rendered by interpolation only — no HTML binding.
+ * Every free-text value (destination names, the report reason typed here, the
+ * feedback comment) is rendered by interpolation only — no HTML binding.
  */
 @Component({
   selector: 'app-travel-detail',
-  imports: [FormsModule, RouterLink, DecimalPipe, AlertComponent, ButtonComponent, CardComponent],
+  imports: [
+    FormsModule,
+    RouterLink,
+    DecimalPipe,
+    AlertComponent,
+    ButtonComponent,
+    CardComponent,
+    FeedbackFormComponent,
+    FeedbackListComponent,
+    PendingPaymentComponent,
+  ],
   templateUrl: './travel-detail.component.html',
 })
 export class TravelDetailComponent implements OnInit {
   private readonly destinationService = inject(DestinationService);
   private readonly subscriptionService = inject(SubscriptionService);
+  private readonly feedbackService = inject(FeedbackService);
   private readonly reportService = inject(ReportService);
   private readonly authService = inject(AuthService);
 
@@ -51,10 +85,19 @@ export class TravelDetailComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  /** True while the caller holds an ACTIVE subscription. */
   protected readonly subscribed = signal(false);
+  /** Set while the caller holds a PENDING_PAYMENT subscription still inside its deadline. */
+  protected readonly pending = signal<PendingInfo | null>(null);
   protected readonly busy = signal(false);
   protected readonly actionError = signal<string | null>(null);
   protected readonly actionSuccess = signal<string | null>(null);
+
+  // Payment choice (paid travels only).
+  protected readonly providers: readonly PaymentProvider[] = ['PAYPAL', 'STRIPE', 'MANUAL'];
+  protected readonly providerLabels = PAYMENT_PROVIDER_LABELS;
+  protected readonly provider = signal<PaymentProvider>('PAYPAL');
+  protected readonly priced = computed(() => (this.travel()?.price ?? 0) > 0);
 
   protected readonly cutoffDays = CANCELLATION_CUTOFF_DAYS;
   protected readonly started = computed(() => {
@@ -69,6 +112,19 @@ export class TravelDetailComponent implements OnInit {
     const travel = this.travel();
     return travel === null ? null : cancellationDeadline(travel.startDate);
   });
+
+  // Feedback (participants of an ended travel).
+  private readonly today = new Date().toLocaleDateString('sv-SE');
+  /** `endDate` strictly before today, the backend's definition of "ended". */
+  protected readonly ended = computed(() => {
+    const travel = this.travel();
+    return travel !== null && travel.endDate < this.today;
+  });
+  protected readonly myFeedback = signal<Feedback | null>(null);
+  protected readonly feedbackLoaded = signal(false);
+  protected readonly canGiveFeedback = computed(
+    () => this.subscribed() && this.ended() && this.feedbackLoaded() && this.myFeedback() === null,
+  );
 
   // Report-the-organiser state.
   protected readonly reasonMaxLength = REPORT_REASON_MAX_LENGTH;
@@ -91,6 +147,9 @@ export class TravelDetailComponent implements OnInit {
         this.travel.set(travel);
         this.loading.set(false);
         this.loadReportCount(travel);
+        if (this.ended()) {
+          this.loadMyFeedback();
+        }
       },
       error: (err: unknown) => {
         const notFound = err instanceof HttpErrorResponse && err.status === 404;
@@ -101,11 +160,28 @@ export class TravelDetailComponent implements OnInit {
       },
     });
 
+    this.loadHistory();
+  }
+
+  /** (Re)reads the caller's history to know their current subscription state on this travel. */
+  protected loadHistory(): void {
     this.subscriptionService.mine().subscribe({
-      next: (subscriptions) =>
-        this.subscribed.set(
-          subscriptions.some((s) => s.destinationId === this.id() && s.status === 'ACTIVE'),
-        ),
+      next: (rows) => {
+        const current = currentSubscription(rows, this.id());
+        this.subscribed.set(current?.status === 'ACTIVE');
+        if (current?.status === 'PENDING_PAYMENT') {
+          const price = this.travel()?.price ?? null;
+          this.pending.set({
+            paymentId: current.paymentId ?? null,
+            expiresAt: current.expiresAt ?? null,
+            amount: price,
+            currency: 'EUR',
+            checkout: null,
+          });
+        } else {
+          this.pending.set(null);
+        }
+      },
       // Non-fatal: the page stays usable, the backend re-checks on every action.
       error: () => this.subscribed.set(false),
     });
@@ -113,21 +189,38 @@ export class TravelDetailComponent implements OnInit {
 
   subscribe(): void {
     this.startAction();
-    this.subscriptionService.subscribe(this.id()).subscribe({
-      next: () => {
+    const request = this.priced() ? { provider: this.provider() } : undefined;
+    this.subscriptionService.subscribe(this.id(), request).subscribe({
+      next: (subscription) => {
         this.busy.set(false);
-        this.subscribed.set(true);
-        this.actionSuccess.set('Vous êtes inscrit à ce voyage.');
+        if (subscription.status === 'PENDING_PAYMENT') {
+          this.applyPending(subscription);
+        } else {
+          this.subscribed.set(true);
+          this.actionSuccess.set('Vous êtes inscrit à ce voyage.');
+          if (this.ended()) {
+            this.loadMyFeedback();
+          }
+        }
       },
       error: (err: unknown) => {
         this.busy.set(false);
-        this.actionError.set(
-          err instanceof HttpErrorResponse && err.status === 409
-            ? 'Inscription impossible : ce voyage a déjà commencé ou vous y êtes déjà inscrit.'
-            : extractErrorMessage(err, 'Impossible de vous inscrire à ce voyage.'),
-        );
+        this.actionError.set(subscribeErrorMessage(err));
       },
     });
+  }
+
+  private applyPending(subscription: Subscription): void {
+    this.pending.set({
+      paymentId: subscription.payment?.paymentId ?? subscription.paymentId ?? null,
+      expiresAt: subscription.expiresAt ?? null,
+      amount: subscription.amount ?? this.travel()?.price ?? null,
+      currency: subscription.currency ?? 'EUR',
+      checkout: subscription.payment ?? null,
+    });
+    this.actionSuccess.set(
+      'Réservation enregistrée : votre place est retenue, il reste à régler le paiement.',
+    );
   }
 
   unsubscribe(): void {
@@ -156,6 +249,51 @@ export class TravelDetailComponent implements OnInit {
           this.actionError.set(extractErrorMessage(err, 'Impossible d’annuler votre inscription.'));
         }
       },
+    });
+  }
+
+  /** Cancels an unpaid reservation (always allowed, even inside the 3-day cutoff). */
+  cancelPending(): void {
+    if (!confirm('Annuler cette réservation en attente de paiement ?')) {
+      return;
+    }
+    this.startAction();
+    this.subscriptionService.unsubscribe(this.id()).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.pending.set(null);
+        this.actionSuccess.set('Votre réservation a été annulée.');
+      },
+      error: (err: unknown) => {
+        this.busy.set(false);
+        if (err instanceof HttpErrorResponse && err.status === 404) {
+          this.pending.set(null);
+          this.loadHistory();
+        }
+        this.actionError.set(extractErrorMessage(err, 'Impossible d’annuler cette réservation.'));
+      },
+    });
+  }
+
+  /** The panel saw the payment complete: the subscription is (about to be) ACTIVE. */
+  protected onPaymentSettled(): void {
+    this.actionSuccess.set('Paiement reçu. Votre inscription est confirmée.');
+    this.loadHistory();
+  }
+
+  protected onFeedbackSaved(feedback: Feedback): void {
+    this.myFeedback.set(feedback);
+    this.actionSuccess.set('Merci, votre avis a été enregistré.');
+  }
+
+  private loadMyFeedback(): void {
+    this.feedbackService.mine().subscribe({
+      next: (rows) => {
+        this.myFeedback.set(rows.find((f) => f.destinationId === this.id()) ?? null);
+        this.feedbackLoaded.set(true);
+      },
+      // Non-fatal: without it the form is simply not offered (the backend would say 409 anyway).
+      error: () => this.feedbackLoaded.set(false),
     });
   }
 
@@ -204,4 +342,17 @@ export class TravelDetailComponent implements OnInit {
       error: () => this.reportCount.set(null),
     });
   }
+}
+
+/** Message for each refusal of the subscribe call (SubscriptionController#subscribe). */
+export function subscribeErrorMessage(err: unknown): string {
+  if (err instanceof HttpErrorResponse) {
+    if (err.status === 409) {
+      return 'Inscription impossible : ce voyage a déjà commencé, il est complet, ou vous y êtes déjà inscrit (ou en attente de paiement).';
+    }
+    if (err.status === 502) {
+      return 'Le service de paiement est momentanément indisponible : rien n’a été réservé, vous pouvez réessayer.';
+    }
+  }
+  return extractErrorMessage(err, 'Impossible de vous inscrire à ce voyage.');
 }

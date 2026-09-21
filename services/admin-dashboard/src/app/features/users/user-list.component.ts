@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { ROLES, ROLE_LABELS, Role } from '../../core/auth/roles';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -28,6 +29,13 @@ export class UserListComponent implements OnInit {
   // Create form state.
   protected createEmail = '';
   protected createPassword = '';
+  protected createRole: Role = ROLES.TRAVELER;
+  /** Every role an admin may create, ADMIN included (POST /users needs the admin token for it). */
+  protected readonly roleOptions: readonly { value: Role; label: string }[] = [
+    ROLES.ADMIN,
+    ROLES.TRAVEL_MANAGER,
+    ROLES.TRAVELER,
+  ].map((value) => ({ value, label: ROLE_LABELS[value] }));
   protected readonly creating = signal(false);
   protected readonly createError = signal<string | null>(null);
 
@@ -64,11 +72,12 @@ export class UserListComponent implements OnInit {
     this.creating.set(true);
     this.createError.set(null);
 
-    this.userService.create(this.createEmail, this.createPassword).subscribe({
+    this.userService.create(this.createEmail, this.createPassword, this.createRole).subscribe({
       next: () => {
         this.creating.set(false);
         this.createEmail = '';
         this.createPassword = '';
+        this.createRole = ROLES.TRAVELER;
         this.loadUsers();
       },
       error: (err: HttpErrorResponse) => {

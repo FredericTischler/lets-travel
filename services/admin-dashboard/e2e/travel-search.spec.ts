@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { createTravelViaApi, isSearchAvailable } from './support/travel-api';
+import { catalogueLink, createTravelViaApi, isSearchAvailable } from './support/travel-api';
 import { createTestUser, loginAsTestUser } from './support/test-user';
 
 /**
@@ -34,7 +34,7 @@ test.describe('Travel search', () => {
       await box.fill(unique);
       await page.getByRole('button', { name: 'Rechercher' }).click();
       await expect(page.getByText(/résultat\(s\) pour/)).toBeVisible();
-      await expect(page.getByRole('link', { name: travel.name })).toBeVisible();
+      await expect(catalogueLink(page, travel.name)).toBeVisible();
       await expect(page.getByRole('status')).toHaveCount(0);
 
       // Choosing a suggestion opens the detail page.
@@ -47,7 +47,7 @@ test.describe('Travel search', () => {
       await page.getByRole('button', { name: 'Rechercher' }).click();
       await expect(page.getByRole('status')).toContainText('indisponible');
       // The plain list is still browsable and the error banner is not shown.
-      await expect(page.getByRole('link', { name: travel.name })).toBeVisible();
+      await expect(catalogueLink(page, travel.name)).toBeVisible();
       await expect(page.getByRole('alert')).toHaveCount(0);
     }
   });

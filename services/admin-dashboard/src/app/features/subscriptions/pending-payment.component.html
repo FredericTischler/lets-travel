@@ -1,0 +1,95 @@
+<div
+  class="flex flex-col gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-slate-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-slate-100"
+  data-testid="pending-payment"
+>
+  <div class="flex flex-wrap items-center gap-2">
+    <app-badge [tone]="remaining().expired ? 'neutral' : 'warning'">{{
+      remaining().expired ? 'Expirée' : 'En attente de paiement'
+    }}</app-badge>
+    <span data-testid="provider-label">{{ providerLabel() }}</span>
+    @if (amountLabel()) {
+      <span class="font-medium" data-testid="amount">{{ amountLabel() }}</span>
+    }
+  </div>
+
+  @if (remaining().expired) {
+    <p data-testid="expired-note">
+      Le délai de paiement est dépassé : la place n'est plus réservée. Vous pouvez vous réinscrire.
+    </p>
+  } @else {
+    @if (expiresAt()) {
+      <p data-testid="countdown">
+        Votre place est réservée encore <strong>{{ remaining().label }}</strong> (jusqu'au
+        {{ expiresAt() | date: 'dd/MM/yyyy HH:mm' }}). Passé ce délai, la réservation expire.
+      </p>
+    }
+
+    @switch (provider()) {
+      @case ('MANUAL') {
+        <p data-testid="manual-explanation">
+          Paiement manuel : un administrateur doit confirmer la réception de votre règlement
+          (virement, espèces…). Votre inscription deviendra active dès cette confirmation, vous
+          n'avez rien d'autre à faire ici.
+        </p>
+      }
+      @case ('PAYPAL') {
+        <p>
+          Approuvez le paiement sur PayPal, puis revenez ici : le paiement est finalisé
+          automatiquement au retour, ou avec le bouton « J'ai approuvé le paiement ».
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <app-button [disabled]="busy() || !approveUrl()" (clicked)="payWithPayPal()">
+            Payer avec PayPal
+          </app-button>
+          <app-button variant="secondary" [disabled]="busy()" (clicked)="capture()">
+            {{ busy() ? 'Finalisation…' : "J'ai approuvé le paiement" }}
+          </app-button>
+        </div>
+        @if (!approveUrl()) {
+          <p class="text-xs" data-testid="no-approve-url">
+            Le lien PayPal d'origine n'est plus disponible dans ce navigateur (il n'est fourni
+            qu'à l'inscription). Si vous avez déjà approuvé le paiement, utilisez « J'ai approuvé
+            le paiement » ; sinon annulez la réservation et recommencez.
+          </p>
+        }
+      }
+      @case ('STRIPE') {
+        <p data-testid="stripe-explanation">
+          Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'intègre
+          pas encore le formulaire de carte (Stripe.js). Il ne peut donc pas être réglé depuis
+          cet écran ; la confirmation arrive du webhook Stripe et active l'inscription. Sans
+          règlement avant l'échéance, la réservation expire.
+        </p>
+        @if (reference()) {
+          <p class="break-all text-xs">Référence : <code>{{ reference() }}</code></p>
+        }
+        <div>
+          <app-button variant="secondary" [disabled]="busy()" (clicked)="refresh()">
+            Actualiser l'état du paiement
+          </app-button>
+        </div>
+      }
+      @default {
+        <p>Nous n'avons pas pu déterminer le mode de paiement de cette réservation.</p>
+        <div>
+          <app-button variant="secondary" (clicked)="refresh()">Actualiser</app-button>
+        </div>
+      }
+    }
+  }
+
+  @if (info()) {
+    <app-alert variant="success">{{ info() }}</app-alert>
+  }
+  @if (error()) {
+    <app-alert variant="error">{{ error() }}</app-alert>
+  }
+
+  @if (!remaining().expired) {
+    <div>
+      <app-button variant="danger" [disabled]="busy()" (clicked)="cancelRequested.emit()">
+        Annuler la réservation
+      </app-button>
+    </div>
+  }
+</div>

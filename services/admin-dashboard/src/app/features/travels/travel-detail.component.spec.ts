@@ -268,4 +268,202 @@ describe('TravelDetailComponent', () => {
       expect(button("Signaler l'organisateur")).toBeUndefined();
     });
   });
+
+  describe('paying for a subscription', () => {
+    const paymentUrl = `${environment.paymentApiUrl}/payments/pay-1`;
+    const feedbackUrl = `${environment.travelApiUrl}/travelers/me/feedback`;
+
+    function loadWith(t: Destination, rows: TravelerSubscription[]) {
+      fixture.detectChanges();
+      httpMock.expectOne(travelUrl).flush(t);
+      httpMock.expectOne(historyUrl).flush(rows);
+      if (t.managerId) {
+        httpMock.expectOne(`${reportsUrl}/count/${t.managerId}`).flush({ count: 0 });
+      }
+      fixture.detectChanges();
+    }
+
+    function pendingRow(overrides: Partial<TravelerSubscription> = {}): TravelerSubscription {
+      return {
+        destinationId: 'dest-1',
+        destinationName: 'Lisbon',
+        destinationCountry: 'Portugal',
+        destinationStartDate: inDays(30),
+        status: 'PENDING_PAYMENT',
+        subscribedAt: '2026-09-21T10:00:00Z',
+        cancelledAt: null,
+        paymentId: 'pay-1',
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        ...overrides,
+      };
+    }
+
+    it('asks how to pay for a priced travel, defaulting to PayPal, and explains the MANUAL mode', () => {
+      loadWith(travel(30), []);
+
+      expect(fixture.nativeElement.querySelectorAll('[data-testid="provider-choice"] input').length).toBe(3);
+      expect(component['provider']()).toBe('PAYPAL');
+
+      component['provider'].set('MANUAL');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toContain('Un administrateur confirmera votre règlement');
+    });
+
+    it('does not ask anything for a free travel, and sends no body', () => {
+      loadWith(travel(30, { price: 0 }), []);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="provider-choice"]')).toBeNull();
+      button("S'inscrire")!.click();
+      const req = httpMock.expectOne(subscriptionsUrl);
+      expect(req.request.body).toBeNull();
+      req.flush({ destinationId: 'dest-1', travelerId: 'traveler-1', status: 'ACTIVE', subscribedAt: 'x', cancelledAt: null });
+    });
+
+    it('sends the chosen provider and shows the pending-payment panel with the countdown', () => {
+      loadWith(travel(30), []);
+
+      component['provider'].set('PAYPAL');
+      button("S'inscrire")!.click();
+      const req = httpMock.expectOne(subscriptionsUrl);
+      expect(req.request.body).toEqual({ provider: 'PAYPAL' });
+      req.flush({
+        id: 'sub-1',
+        destinationId: 'dest-1',
+        travelerId: 'traveler-1',
+        status: 'PENDING_PAYMENT',
+        subscribedAt: 'x',
+        cancelledAt: null,
+        expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        paymentId: 'pay-1',
+        amount: 800,
+        currency: 'EUR',
+        payment: {
+          paymentId: 'pay-1',
+          provider: 'PAYPAL',
+          status: 'PENDING',
+          clientSecret: null,
+          approveUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=O1',
+        },
+      });
+      fixture.detectChanges();
+      httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'PENDING', provider: 'PAYPAL', externalReference: 'O1' });
+      fixture.detectChanges();
+
+      expect(component['subscribed']()).toBe(false);
+      expect(fixture.nativeElement.querySelector('[data-testid="pending-payment"]')).not.toBeNull();
+      expect(fixture.nativeElement.textContent).toContain('En attente de paiement');
+      expect(button("S'inscrire")).toBeUndefined();
+    });
+
+    it('shows the pending panel again when the history already holds a pending reservation', () => {
+      loadWith(travel(30), [pendingRow()]);
+      httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'PENDING', provider: 'MANUAL', externalReference: null });
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-testid="manual-explanation"]')).not.toBeNull();
+    });
+
+    it('offers to subscribe again when the pending reservation has expired', () => {
+      loadWith(travel(30), [pendingRow({ status: 'EXPIRED' })]);
+
+      expect(fixture.nativeElement.querySelector('[data-testid="pending-payment"]')).toBeNull();
+      expect(button("S'inscrire")).toBeDefined();
+    });
+
+    it('cancels a pending reservation through DELETE, cutoff or not', () => {
+      loadWith(travel(1), [pendingRow()]);
+      httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'PENDING', provider: 'MANUAL', externalReference: null });
+      fixture.detectChanges();
+
+      button('Annuler la réservation')!.click();
+      const req = httpMock.expectOne(subscriptionsUrl);
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null, { status: 204, statusText: 'No Content' });
+      fixture.detectChanges();
+
+      expect(component['pending']()).toBeNull();
+      expect(fixture.nativeElement.textContent).toContain('Votre réservation a été annulée.');
+    });
+
+    it('turns a 502 of the payment service into a "nothing was reserved" message', () => {
+      loadWith(travel(30), []);
+
+      button("S'inscrire")!.click();
+      httpMock.expectOne(subscriptionsUrl).flush({ error: 'x' }, { status: 502, statusText: 'Bad Gateway' });
+      fixture.detectChanges();
+
+      expect(alerts()[0]).toContain('rien n’a été réservé');
+    });
+
+    it('refreshes the history when the panel reports the payment settled', () => {
+      loadWith(travel(30), [pendingRow()]);
+      httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'COMPLETED', provider: 'MANUAL', externalReference: null });
+
+      httpMock.expectOne(historyUrl).flush([{ ...pendingRow(), status: 'ACTIVE' }]);
+      fixture.detectChanges();
+
+      expect(component['subscribed']()).toBe(true);
+      expect(button('Se désinscrire')).toBeDefined();
+    });
+
+    describe('feedback', () => {
+      const ended = () => travel(-20);
+      const activeRow = () => ({ ...pendingRow({ status: 'ACTIVE', paymentId: null, expiresAt: null }) });
+      const myFeedback = {
+        id: 'f1',
+        travelerId: 'traveler-1',
+        destinationId: 'dest-1',
+        destinationName: 'Lisbon',
+        destinationCountry: 'Portugal',
+        destinationEndDate: inDays(-15),
+        rating: 4,
+        comment: 'Génial <b>vraiment</b>',
+        createdAt: '2026-09-01T10:00:00Z',
+      };
+
+      function loadEnded(rows: TravelerSubscription[], feedback: unknown[]) {
+        fixture.detectChanges();
+        httpMock.expectOne(travelUrl).flush(ended());
+        httpMock.expectOne(feedbackUrl).flush(feedback);
+        httpMock.expectOne(historyUrl).flush(rows);
+        httpMock.expectOne(`${reportsUrl}/count/manager-1`).flush({ count: 0 });
+        fixture.detectChanges();
+      }
+
+      it('offers the form to an ACTIVE participant of an ended travel who has not rated it', () => {
+        loadEnded([activeRow()], []);
+
+        expect(fixture.nativeElement.querySelector('[data-testid="feedback-form"]')).not.toBeNull();
+      });
+
+      it('shows the traveler’s own feedback, escaped, instead of the form once given', () => {
+        loadEnded([activeRow()], [myFeedback]);
+
+        expect(fixture.nativeElement.querySelector('[data-testid="feedback-form"]')).toBeNull();
+        const comment = fixture.nativeElement.querySelector('[data-testid="feedback-comment"]');
+        expect(comment.textContent).toContain('Génial <b>vraiment</b>');
+        expect(comment.querySelector('b')).toBeNull();
+      });
+
+      it('does not offer the form to someone who was not subscribed', () => {
+        loadEnded([], []);
+
+        expect(fixture.nativeElement.querySelector('[data-testid="feedback-form"]')).toBeNull();
+      });
+
+      it('does not ask for feedback at all while the travel is not over', () => {
+        loadWith(travel(30), [activeRow()]);
+
+        httpMock.expectNone(feedbackUrl);
+        expect(fixture.nativeElement.querySelector('[data-testid="feedback-form"]')).toBeNull();
+      });
+    });
+  });
+
+  it('links to the public page of the organiser', () => {
+    load(travel(30));
+
+    const link = fixture.nativeElement.querySelector('[data-testid="manager-link"]') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/managers/manager-1');
+  });
 });

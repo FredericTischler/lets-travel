@@ -19,7 +19,11 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Voyages', route: '/travels', roles: [ROLES.TRAVELER] },
   { label: 'Mes abonnements', route: '/my-subscriptions', roles: [ROLES.TRAVELER] },
+  { label: 'Mes statistiques', route: '/my-stats', roles: [ROLES.TRAVELER] },
+  { label: 'Tableau de bord organisateur', route: '/manager/dashboard', roles: [ROLES.TRAVEL_MANAGER] },
   { label: 'Mes voyages organisés', route: '/manager/travels', roles: [ROLES.TRAVEL_MANAGER] },
+  { label: 'Tableau de bord admin', route: '/admin/dashboard', roles: [ROLES.ADMIN] },
+  { label: 'Avis', route: '/admin/feedback', roles: [ROLES.ADMIN] },
   { label: 'Signalements', route: '/admin/reports', roles: [ROLES.ADMIN] },
   { label: 'Utilisateurs', route: '/users', roles: [ROLES.ADMIN] },
   { label: 'Paiements', route: '/payments', roles: [ROLES.ADMIN] },

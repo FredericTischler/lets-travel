@@ -52,6 +52,11 @@
                       class="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
                       >Abonnés</a
                     >
+                    <a
+                      [routerLink]="['/manager/travels', travel.id, 'feedback']"
+                      class="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >Avis</a
+                    >
                     <app-button
                       variant="danger"
                       [disabled]="deletingId() === travel.id"

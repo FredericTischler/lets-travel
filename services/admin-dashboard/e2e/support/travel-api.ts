@@ -1,4 +1,4 @@
-import { APIRequestContext } from '@playwright/test';
+import { APIRequestContext, Locator, Page } from '@playwright/test';
 
 import { TestUser, apiLogin } from './test-user';
 
@@ -26,7 +26,7 @@ export interface ArrangedTravel {
 export async function createTravelViaApi(
   request: APIRequestContext,
   manager: TestUser,
-  options: { startInDays?: number; name?: string } = {},
+  options: { startInDays?: number; name?: string; price?: number } = {},
 ): Promise<ArrangedTravel> {
   const token = await apiLogin(request, manager);
   const startInDays = options.startInDays ?? 60;
@@ -40,7 +40,8 @@ export async function createTravelViaApi(
       startDate: isoDaysFromNow(startInDays),
       endDate: isoDaysFromNow(startInDays + 5),
       managerId: manager.id,
-      price: 499,
+      // 0 = a free travel (ACTIVE at once); a price makes the subscribe call open a payment.
+      price: options.price ?? 499,
       capacity: 10,
       activities: ['Visite guidée'],
       accommodations: [],
@@ -51,6 +52,15 @@ export async function createTravelViaApi(
   }
 
   return { id: ((await response.json()) as { id: string }).id, name };
+}
+
+/**
+ * The catalogue link of a travel on /travels. The page also carries the
+ * "Suggestions pour vous" block, which can list the same travel: scoping to the
+ * catalogue keeps Playwright's strict-mode locators unambiguous.
+ */
+export function catalogueLink(page: Page, travelName: string): Locator {
+  return page.getByTestId('catalogue').getByRole('link', { name: travelName });
 }
 
 /** True when the Elasticsearch-backed endpoints answer (the `search` profile is up). */

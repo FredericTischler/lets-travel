@@ -6,11 +6,22 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { remainingTime } from './payment-rules';
+import { PendingPaymentComponent } from './pending-payment.component';
 import { SubscriptionStatus, SubscriptionService, TravelerSubscription } from './subscription.service';
 
 const STATUS_LABELS: Record<SubscriptionStatus, string> = {
   ACTIVE: 'Active',
+  PENDING_PAYMENT: 'En attente de paiement',
   CANCELLED: 'Annulée',
+  EXPIRED: 'Expirée',
+};
+
+const STATUS_TONES: Record<SubscriptionStatus, BadgeTone> = {
+  ACTIVE: 'success',
+  PENDING_PAYMENT: 'warning',
+  CANCELLED: 'neutral',
+  EXPIRED: 'neutral',
 };
 
 /**
@@ -22,7 +33,15 @@ const STATUS_LABELS: Record<SubscriptionStatus, string> = {
  */
 @Component({
   selector: 'app-my-subscriptions',
-  imports: [RouterLink, DatePipe, NgTemplateOutlet, AlertComponent, BadgeComponent, CardComponent],
+  imports: [
+    RouterLink,
+    DatePipe,
+    NgTemplateOutlet,
+    AlertComponent,
+    BadgeComponent,
+    CardComponent,
+    PendingPaymentComponent,
+  ],
   templateUrl: './my-subscriptions.component.html',
 })
 export class MySubscriptionsComponent implements OnInit {
@@ -51,8 +70,24 @@ export class MySubscriptionsComponent implements OnInit {
   protected readonly cancelled = computed(() =>
     this.sorted().filter((s) => s.status === 'CANCELLED'),
   );
+  /** Reservations still holding a seat: waiting for the payment, inside their deadline. */
+  protected readonly pending = computed(() =>
+    this.sorted().filter((s) => s.status === 'PENDING_PAYMENT' && !remainingTime(s.expiresAt).expired),
+  );
+  /** Unpaid reservations that ran out of time (EXPIRED, or PENDING_PAYMENT past its deadline). */
+  protected readonly expired = computed(() =>
+    this.sorted().filter(
+      (s) => s.status === 'EXPIRED' || (s.status === 'PENDING_PAYMENT' && remainingTime(s.expiresAt).expired),
+    ),
+  );
+
+  protected readonly actionError = signal<string | null>(null);
 
   ngOnInit(): void {
+    this.load();
+  }
+
+  protected load(): void {
     this.subscriptionService.mine().subscribe({
       next: (subscriptions) => {
         this.subscriptions.set(subscriptions);
@@ -65,11 +100,24 @@ export class MySubscriptionsComponent implements OnInit {
     });
   }
 
+  /** Cancels an unpaid reservation (always allowed) and refreshes the history. */
+  protected cancelPending(row: TravelerSubscription): void {
+    if (!confirm(`Annuler la réservation en attente pour ${row.destinationName} ?`)) {
+      return;
+    }
+    this.actionError.set(null);
+    this.subscriptionService.unsubscribe(row.destinationId).subscribe({
+      next: () => this.load(),
+      error: (err: unknown) =>
+        this.actionError.set(extractErrorMessage(err, 'Impossible d’annuler cette réservation.')),
+    });
+  }
+
   protected statusLabel(status: SubscriptionStatus): string {
     return STATUS_LABELS[status] ?? status;
   }
 
   protected statusTone(status: SubscriptionStatus): BadgeTone {
-    return status === 'ACTIVE' ? 'success' : 'neutral';
+    return STATUS_TONES[status] ?? 'neutral';
   }
 }

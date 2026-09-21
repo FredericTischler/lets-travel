@@ -53,7 +53,45 @@ export const routes: Routes = [
             (m) => m.MySubscriptionsComponent,
           ),
       },
+      {
+        path: 'my-stats',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/stats/traveler-stats.component').then((m) => m.TravelerStatsComponent),
+      },
+      {
+        path: 'managers/:id',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/managers/manager-page.component').then((m) => m.ManagerPageComponent),
+      },
+      {
+        // Where PayPal sends the payer back (?token=<orderId>): captures the order.
+        path: 'paypal/return',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/subscriptions/paypal-return.component').then(
+            (m) => m.PaypalReturnComponent,
+          ),
+      },
       // --- Travel Manager (also reachable by ADMIN) ---
+      {
+        // An admin may add ?managerId= to look at another manager's dashboard.
+        path: 'manager/dashboard',
+        canActivate: [roleGuard(ROLES.TRAVEL_MANAGER)],
+        loadComponent: () =>
+          import('./features/manager/manager-dashboard.component').then(
+            (m) => m.ManagerDashboardComponent,
+          ),
+      },
+      {
+        path: 'manager/travels/:id/feedback',
+        canActivate: [roleGuard(ROLES.TRAVEL_MANAGER)],
+        loadComponent: () =>
+          import('./features/manager/travel-feedback.component').then(
+            (m) => m.TravelFeedbackComponent,
+          ),
+      },
       {
         path: 'manager/travels',
         canActivate: [roleGuard(ROLES.TRAVEL_MANAGER)],
@@ -69,6 +107,22 @@ export const routes: Routes = [
           ),
       },
       // --- Admin ---
+      {
+        path: 'admin/dashboard',
+        canActivate: [roleGuard(ROLES.ADMIN)],
+        loadComponent: () =>
+          import('./features/admin/admin-dashboard.component').then(
+            (m) => m.AdminDashboardComponent,
+          ),
+      },
+      {
+        path: 'admin/feedback',
+        canActivate: [roleGuard(ROLES.ADMIN)],
+        loadComponent: () =>
+          import('./features/feedback/admin-feedback.component').then(
+            (m) => m.AdminFeedbackComponent,
+          ),
+      },
       {
         path: 'admin/reports',
         canActivate: [roleGuard(ROLES.ADMIN)],

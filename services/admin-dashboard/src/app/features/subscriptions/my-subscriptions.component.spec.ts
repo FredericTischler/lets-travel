@@ -100,4 +100,89 @@ describe('MySubscriptionsComponent', () => {
       'Impossible de charger vos abonnements.',
     );
   });
+
+  describe('payment states', () => {
+    const paymentUrl = `${environment.paymentApiUrl}/payments/pay-1`;
+    const inOneHour = () => new Date(Date.now() + 3600_000).toISOString();
+
+    it('shows a pending reservation with its payment panel, outside the three counters', () => {
+      fixture.detectChanges();
+      httpMock.expectOne(url).flush([
+        row({
+          destinationId: 'p',
+          destinationName: 'Pending trip',
+          status: 'PENDING_PAYMENT',
+          paymentId: 'pay-1',
+          expiresAt: inOneHour(),
+        }),
+      ]);
+      fixture.detectChanges();
+      httpMock
+        .expectOne(paymentUrl)
+        .flush({ id: 'pay-1', status: 'PENDING', provider: 'MANUAL', externalReference: null });
+      fixture.detectChanges();
+
+      const list = fixture.nativeElement.querySelector('[data-testid="pending-list"]');
+      expect(list.textContent).toContain('Pending trip');
+      expect(list.textContent).toContain('En attente de paiement');
+      expect(list.querySelector('[data-testid="manual-explanation"]')).not.toBeNull();
+      expect(count('count-upcoming')).toBe('0');
+    });
+
+    it('lists EXPIRED reservations, and unpaid ones past their deadline, as expired', () => {
+      fixture.detectChanges();
+      httpMock.expectOne(url).flush([
+        row({ destinationId: 'e1', destinationName: 'Expired one', status: 'EXPIRED' }),
+        row({
+          destinationId: 'e2',
+          destinationName: 'Late one',
+          status: 'PENDING_PAYMENT',
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        }),
+      ]);
+      fixture.detectChanges();
+
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('Réservations expirées');
+      expect(text).toContain('Expired one');
+      expect(text).toContain('Late one');
+      expect(fixture.nativeElement.querySelector('[data-testid="pending-list"]')).toBeNull();
+    });
+
+    it('cancels a pending reservation and reloads the history', () => {
+      vi.stubGlobal('confirm', vi.fn(() => true));
+      fixture.detectChanges();
+      httpMock.expectOne(url).flush([
+        row({
+          destinationId: 'p',
+          destinationName: 'Pending trip',
+          status: 'PENDING_PAYMENT',
+          paymentId: 'pay-1',
+          expiresAt: inOneHour(),
+        }),
+      ]);
+      fixture.detectChanges();
+      httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'PENDING', provider: 'MANUAL', externalReference: null });
+      fixture.detectChanges();
+
+      (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
+        .find((b) => b.textContent?.trim() === 'Annuler la réservation')!
+        .click();
+      const del = httpMock.expectOne(`${environment.travelApiUrl}/destinations/p/subscriptions`);
+      expect(del.request.method).toBe('DELETE');
+      del.flush(null, { status: 204, statusText: 'No Content' });
+      httpMock.expectOne(url).flush([]);
+      vi.unstubAllGlobals();
+    });
+
+    it('links each past trip to its feedback', () => {
+      fixture.detectChanges();
+      httpMock.expectOne(url).flush([
+        row({ destinationId: 'past1', destinationName: 'Past trip A', destinationStartDate: inDays(-40) }),
+      ]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('Donner / voir mon avis');
+    });
+  });
 });

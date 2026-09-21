@@ -1,6 +1,8 @@
 <div class="flex flex-col gap-6">
   <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Voyages</h1>
 
+  <app-recommendations />
+
   <app-card>
     <form class="flex flex-col gap-2 sm:flex-row sm:items-end" role="search" (ngSubmit)="search()">
       <div class="relative flex flex-1 flex-col gap-1">
@@ -78,7 +80,7 @@
       </p>
     }
 
-    <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="catalogue">
       @for (travel of travels(); track travel.id) {
         <li>
           <article

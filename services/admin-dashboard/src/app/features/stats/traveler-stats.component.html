@@ -1,0 +1,124 @@
+<div class="flex flex-col gap-6">
+  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Mes statistiques</h1>
+
+  @if (loading()) {
+    <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+  } @else if (error()) {
+    <app-alert variant="error">{{ error() }}</app-alert>
+  } @else if (stats(); as s) {
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-5" data-testid="kpis">
+      <app-stat-tile label="Voyages effectués" [value]="'' + s.pastParticipationCount" data-testid="kpi-past" />
+      <app-stat-tile label="Voyages à venir" [value]="'' + s.upcomingSubscriptionCount" data-testid="kpi-upcoming" />
+      <app-stat-tile
+        label="Annulations"
+        [value]="'' + s.cancellationCount"
+        hint="Inclut les annulations par un organisateur ou un paiement échoué."
+        data-testid="kpi-cancellations"
+      />
+      <app-stat-tile label="Avis donnés" [value]="'' + s.feedbackGivenCount" data-testid="kpi-feedback" />
+      <app-stat-tile
+        label="Signalements reçus"
+        [value]="reportCount() === null ? '—' : '' + reportCount()"
+        data-testid="kpi-reports"
+      />
+    </div>
+
+    <app-card title="Moyens de paiement préférés">
+      @if (s.partial || !s.payments) {
+        <p
+          role="status"
+          class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+          data-testid="payments-unavailable"
+        >
+          Données de paiement indisponibles pour le moment (service de paiement injoignable).
+        </p>
+      } @else if (s.payments.totalCount === 0) {
+        <p class="text-sm text-slate-500 dark:text-slate-400" data-testid="payments-none">
+          Aucun paiement effectué pour l'instant.
+        </p>
+      } @else {
+        <p class="mb-3 text-sm text-slate-700 dark:text-slate-200">
+          Moyen le plus utilisé :
+          <strong data-testid="preferred-provider">{{
+            s.preferredPaymentProvider ? providerLabels[s.preferredPaymentProvider] : '—'
+          }}</strong>
+          ({{ s.payments.totalCount }} paiement(s) terminé(s)).
+        </p>
+        <div class="table-shell">
+          <table class="table-base">
+            <thead>
+              <tr class="table-head-row">
+                <th class="table-head-cell" scope="col">Moyen</th>
+                <th class="table-head-cell" scope="col">Paiements</th>
+                <th class="table-head-cell" scope="col">Montants</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of s.payments.byProvider; track row.provider) {
+                <tr class="table-row">
+                  <td class="table-cell">{{ providerLabels[row.provider] }}</td>
+                  <td class="table-cell tabular-nums">{{ row.count }}</td>
+                  <td class="table-cell">{{ money(row.totals) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </app-card>
+
+    <app-card title="Historique des voyages effectués">
+      <div class="table-shell">
+        <table class="table-base">
+          <thead>
+            <tr class="table-head-row">
+              <th class="table-head-cell" scope="col">Voyage</th>
+              <th class="table-head-cell" scope="col">Pays</th>
+              <th class="table-head-cell" scope="col">Dates</th>
+              <th class="table-head-cell" scope="col">Avis</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of s.pastParticipations; track row.destinationId) {
+              <tr class="table-row" data-testid="participation">
+                <td class="table-cell">
+                  <a
+                    [routerLink]="['/travels', row.destinationId]"
+                    class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    >{{ row.name }}</a
+                  >
+                </td>
+                <td class="table-cell">{{ row.country }}</td>
+                <td class="table-cell">
+                  {{ row.startDate | date: 'dd/MM/yyyy' }} → {{ row.endDate | date: 'dd/MM/yyyy' }}
+                </td>
+                <td class="table-cell">
+                  @if (row.feedbackGiven) {
+                    <app-badge tone="success">Donné</app-badge>
+                  } @else {
+                    <a
+                      [routerLink]="['/travels', row.destinationId]"
+                      class="text-indigo-600 hover:underline dark:text-indigo-400"
+                      data-testid="give-feedback-link"
+                      >Donner mon avis</a
+                    >
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td class="table-empty-cell" colspan="4">Aucun voyage effectué pour l'instant.</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </app-card>
+
+    @if (myFeedback(); as mine) {
+      <app-card title="Vos avis">
+        <app-feedback-list [items]="mine" emptyMessage="Vous n'avez donné aucun avis pour l'instant." />
+      </app-card>
+    }
+  }
+</div>
