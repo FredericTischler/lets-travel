@@ -6,6 +6,8 @@
 # {{ ansible_managed }}
 POSTGRES_SUPERUSER_PASSWORD={{ app_secrets_postgres_superuser_password }}
 IDENTITY_DB_PASSWORD={{ app_secrets_identity_db_password }}
+BOOTSTRAP_ADMIN_EMAIL={{ app_secrets_bootstrap_admin_email }}
+BOOTSTRAP_ADMIN_PASSWORD={{ app_secrets_bootstrap_admin_password }}
 PAYMENT_DB_PASSWORD={{ app_secrets_payment_db_password }}
 STRIPE_API_KEY={{ app_secrets_stripe_api_key }}
 STRIPE_SECRET_KEY={{ app_secrets_stripe_secret_key }}

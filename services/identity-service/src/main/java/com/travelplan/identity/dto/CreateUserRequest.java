@@ -17,10 +17,10 @@ import jakarta.validation.constraints.Size;
  * {@code role} is optional: {@code @Pattern} does not validate a {@code null}
  * value (Bean Validation semantics), so an omitted role is left to
  * {@link com.travelplan.identity.service.UserService#create} to default to
- * {@code ADMIN} — backward compatibility with callers written before the
- * "Let's Travel" phase (docs/lets-travel-architecture-decisions.md §1). A
- * role that IS supplied must be one of the three known values, or this
- * fails validation with a 400, same as any other constraint.
+ * {@code TRAVELER} (least privilege). A role that IS supplied must be one of
+ * the three known values, or this fails validation with a 400, same as any
+ * other constraint; whether the caller is ALLOWED to ask for it (ADMIN needs
+ * an admin token) is an authorization decision made in the service, not here.
  */
 public class CreateUserRequest {
 

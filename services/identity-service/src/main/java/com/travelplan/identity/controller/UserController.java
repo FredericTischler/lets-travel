@@ -31,9 +31,10 @@ import java.util.UUID;
  * is no Spring Security filter chain in this codebase). Exception-to-HTTP
  * mapping is handled by {@link com.travelplan.identity.exception.GlobalExceptionHandler}.
  *
- * {@code POST /users} stays public: it is the only way to create the very
- * first account, so requiring a token here would be a chicken-and-egg
- * problem. {@code GET /users}, {@code GET /users/{id}},
+ * {@code POST /users} stays public so people can sign up, but creating an
+ * ADMIN account through it requires an ADMIN token (the very first admin is
+ * created at startup by {@code BootstrapAdminInitializer}, not through the
+ * API). {@code GET /users}, {@code GET /users/{id}},
  * {@code DELETE /users/{id}} and {@code PATCH /users/{id}} all require the
  * caller to be an administrator ({@link AuthService#requireAdmin}, 403 if the
  * token is valid but lacks the {@code ADMIN} role claim, 401 if the token
@@ -59,14 +60,22 @@ public class UserController {
     }
 
     /**
-     * Create a new user. Public — see class-level note.
+     * Create a new user. Public — see class-level note — but the role that
+     * may be requested depends on the caller: without a valid ADMIN token
+     * only {@code TRAVELER} (the default when {@code role} is omitted) and
+     * {@code TRAVEL_MANAGER} are allowed; an authenticated ADMIN may create
+     * any role. An absent/invalid/expired token is NOT a 401 here — the
+     * caller is simply treated as anonymous ({@link AuthService#isAdmin}).
      *
      * @return 201 Created with the created user, 409 if email is already active,
-     *         400 if the request body fails validation
+     *         400 if the request body fails validation, 403 if ADMIN is
+     *         requested without a valid ADMIN token
      */
     @PostMapping
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
-        UserResponse created = userService.create(request);
+    public ResponseEntity<UserResponse> create(
+            @Valid @RequestBody CreateUserRequest request,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        UserResponse created = userService.create(request, authService.isAdmin(authorizationHeader));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

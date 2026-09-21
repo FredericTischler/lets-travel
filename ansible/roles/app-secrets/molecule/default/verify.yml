@@ -47,7 +47,7 @@
     # (typiquement : template mis a jour mais pas la boucle) rendrait un .env
     # avec une variable VIDE — Compose l'accepterait et le `:?` cote fragment ne
     # se declencherait pas : bug silencieux, exactement ce que ce bloc attrape.
-    # Couverture IDENTIQUE pour les 11 secrets, identity inclus.
+    # Couverture IDENTIQUE pour les 13 entrees (11 secrets + 2 cles bootstrap-admin), identity inclus.
     # Cas a DEUX cles : payment/stripe et payment/paypal partagent chacun un
     # unique chemin Vault pour deux entrees de la boucle (suffix identique,
     # fact/env_var distincts). Les assertions (a)/(b) sont alors verifiees deux
@@ -82,6 +82,15 @@
           vault_path: identity/db
           fact: identity_db_password
           env_var: IDENTITY_DB_PASSWORD
+        # identity/bootstrap-admin : UN chemin, DEUX cles (meme cas que stripe/paypal).
+        - suffix: identity_bootstrap_admin
+          vault_path: identity/bootstrap-admin
+          fact: bootstrap_admin_email
+          env_var: BOOTSTRAP_ADMIN_EMAIL
+        - suffix: identity_bootstrap_admin
+          vault_path: identity/bootstrap-admin
+          fact: bootstrap_admin_password
+          env_var: BOOTSTRAP_ADMIN_PASSWORD
         - suffix: payment_db
           vault_path: payment/db
           fact: payment_db_password

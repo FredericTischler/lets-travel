@@ -14,7 +14,9 @@ docker-compose **orchestre** (profils core/full/ci).
 2. **Verifie** le moteur **KV v2** sur `secret/` (deja monte en dev mode ->
    check `sys/mounts`, pas d'enable aveugle).
 3. **Ecrit les secrets runtime** (KV v2, read-before-write idempotent) :
-   `secret/identity/db`, `secret/payment/db`, `secret/payment/stripe`,
+   `secret/identity/db`, `secret/identity/bootstrap-admin` (email + mot de
+   passe du premier ADMIN, cree au demarrage par identity-service),
+   `secret/payment/db`, `secret/payment/stripe`,
    `secret/payment/paypal`, `secret/travel/db`. Valeurs = placeholders
    `changeme_*`, injectees par Vault/ansible-vault en prod.
 4. **Pose les policies par service** (moindre privilege, §5) :

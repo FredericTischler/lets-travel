@@ -38,10 +38,9 @@ import java.util.Set;
  *
  * <p>No refresh token, no revocation/blacklist — out of scope for this
  * increment. The token does carry a single {@code role} claim (see
- * {@link #CLAIM_ROLE}): every account is {@code ADMIN} today (single-role
- * Admin Dashboard, no hierarchy — see {@code User.role}), but every protected
- * endpoint now checks this claim explicitly instead of merely trusting token
- * validity, per the least-privilege requirement in docs/sujet.md §4.</p>
+ * {@link #CLAIM_ROLE}, one of {@link #KNOWN_ROLES}); every protected endpoint
+ * checks this claim explicitly instead of merely trusting token validity, per
+ * the least-privilege requirement in docs/sujet.md §4.</p>
  */
 @Service
 public class JwtService {

@@ -17,9 +17,9 @@ const MIN_PASSWORD_LENGTH = 8;
 /**
  * Public sign-up: email, password and a choice between TRAVELER and
  * TRAVEL_MANAGER — ADMIN is deliberately absent from the choices
- * ({@link SIGN_UP_ROLES}). Known backend caveat, tracked separately: POST
- * /users is public and currently accepts `role: ADMIN` if a client sends it,
- * so hiding the option here is a UX choice, not a security control.
+ * ({@link SIGN_UP_ROLES}). This is a UX choice, not the security control: the
+ * backend itself refuses `role: ADMIN` on the public POST /users unless the
+ * caller carries an ADMIN token (403), see identity-service UserService#create.
  *
  * On success the user is logged in with the same credentials and lands on the
  * home page of their role.

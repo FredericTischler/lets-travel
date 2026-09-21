@@ -12,6 +12,8 @@ un fichier `.env` unique, auto-charge par Compose depuis le repertoire du
 | --- | --- | --- |
 | `POSTGRES_SUPERUSER_PASSWORD` | `secret/infra/postgres-superuser` | `password` |
 | `IDENTITY_DB_PASSWORD` | `secret/identity/db` | `password` |
+| `BOOTSTRAP_ADMIN_EMAIL` | `secret/identity/bootstrap-admin` | `email` |
+| `BOOTSTRAP_ADMIN_PASSWORD` | `secret/identity/bootstrap-admin` | `password` |
 | `PAYMENT_DB_PASSWORD` | `secret/payment/db` | `password` |
 | `STRIPE_API_KEY` | `secret/payment/stripe` | `api_key` |
 | `STRIPE_SECRET_KEY` | `secret/payment/stripe` | `secret_key` |

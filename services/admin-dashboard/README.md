@@ -163,9 +163,11 @@ Pattern d'un écran : `features/<nom>/*.component.ts|html` + `*.service.ts` (HTT
   sert qu'à lire des claims d'un token que le backend re-vérifie à chaque requête (le rôle
   lu ici ne décide que de ce qui est *affiché*).
 - **Inscription** : `POST /users` est public côté backend. Le formulaire n'offre que
-  TRAVELER et TRAVEL_MANAGER et refuse d'envoyer un autre rôle, mais **c'est de l'UX, pas
-  une protection** : le backend accepte aujourd'hui `role: ADMIN` sur cet endpoint public
-  (durcissement suivi séparément, non traité ici).
+  TRAVELER et TRAVEL_MANAGER et refuse d'envoyer un autre rôle. **C'est de l'UX** : la
+  protection est côté backend, qui répond 403 à `role: ADMIN` sans jeton admin
+  (`docs/security-audit.md`). Conséquence : l'écran admin « Utilisateurs » crée un compte
+  **sans rôle**, donc `TRAVELER` (plus `ADMIN` comme avant) — un sélecteur de rôle sur ce
+  formulaire reste à faire.
 
 ## Thème clair / sombre
 
@@ -209,10 +211,15 @@ Playwright (`playwright test --list` : 22 tests), rien de plus n'est garanti.
 | `destinations.spec.ts` | **modifié** (prix, capacité, organisateur désormais requis) — non ré-exécuté ; dernière exécution avant modification : 2026-09-17 |
 | `login`, `auth-guard`, `payments` | inchangés ; dernière exécution confirmée 2026-09-17 (5/5 avec `destinations`), avant la Phase 8 |
 
-Les specs de rôle créent leurs comptes par `POST /users` avec un `role` explicite — y
-compris `ADMIN`, ce qui repose sur le défaut backend signalé plus haut. Les comptes créés
-sans rôle par les anciens specs sont ADMIN par défaut (comportement rétrocompatible du
-backend).
+Les specs créent leurs comptes par `POST /users`. `TRAVELER` et `TRAVEL_MANAGER` passent par
+l'inscription publique ; **`ADMIN` ne le peut plus** (403 sans jeton admin, et un rôle omis
+donne désormais `TRAVELER`, plus jamais `ADMIN`). `createTestUser(request)` (défaut `ADMIN`)
+se connecte donc avec **l'admin de bootstrap** (créé au démarrage d'identity-service depuis
+Vault `secret/identity/bootstrap-admin`) puis crée le compte avec son jeton. Ses identifiants
+se passent par l'environnement : `E2E_ADMIN_EMAIL=... E2E_ADMIN_PASSWORD=... npm run e2e`
+(placeholders de dev dans `ansible/roles/vault/defaults/main.yml`) ; le helper échoue avec un
+message explicite s'ils manquent. Ce changement des specs est **typé et listé
+(`playwright test --list`) mais non exécuté** : il faut la stack Docker complète.
 
 ## Non implémenté
 

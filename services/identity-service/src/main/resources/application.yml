@@ -5,10 +5,13 @@ spring:
   datasource:
     # Variables injected by Docker Compose from Vault (secret/identity/db).
     # Keys: username, password, dbname, host, port — exact match with Vault path.
-    # Fail-fast on startup if any variable is absent (Spring Boot enforces :?).
-    url: jdbc:postgresql://${DB_HOST:?DB_HOST is required}:${DB_PORT:?DB_PORT is required}/${DB_NAME:?DB_NAME is required}
-    username: ${DB_USERNAME:?DB_USERNAME is required}
-    password: ${DB_PASSWORD:?DB_PASSWORD is required}
+    # Fail-fast on startup if any variable is absent: a placeholder with NO ':'
+    # is unresolvable -> PlaceholderResolutionException. (The Compose-style
+    # `${VAR:?msg}` is NOT fail-fast in Spring: everything after the first ':'
+    # is a literal default value, see the jwt.signing-key note below.)
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 10000
@@ -41,7 +44,18 @@ payment-service:
   # Base URL identity-service uses to cascade a user soft-delete to
   # payment-service (DELETE /payments/by-user/{userId}, see PaymentServiceClient).
   # No default, no Vault client here — same fail-fast idiom as DB_*/JWT_SIGNING_KEY.
-  url: ${PAYMENT_SERVICE_URL:?PAYMENT_SERVICE_URL is required}
+  # (No ':?msg' form here either — see the note on datasource above.)
+  url: ${PAYMENT_SERVICE_URL}
+
+bootstrap-admin:
+  # OPTIONAL first-admin bootstrap (see BootstrapAdminInitializer). Both unset
+  # = feature off; exactly one set, or a weak/invalid value = the service
+  # refuses to start. Unlike JWT_SIGNING_KEY this is not "required" (an
+  # already-provisioned deployment needs neither), and the empty default is
+  # inert: it never creates an account. Secret comes from Vault
+  # (secret/identity/bootstrap-admin) via Ansible app-secrets -> .env -> Compose.
+  email: ${BOOTSTRAP_ADMIN_EMAIL:}
+  password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
 cors:
   # Browser origins allowed to call this API (see CorsConfig). Not a secret —
@@ -59,4 +73,7 @@ management:
         include: health
   endpoint:
     health:
-      show-details: always
+      # `never`: /actuator/health is routed publicly by Traefik (Host identity.localhost)
+      # and `always` exposed DB/disk details to anonymous callers. Compose only needs
+      # the overall status ("UP") for its healthcheck.
+      show-details: never

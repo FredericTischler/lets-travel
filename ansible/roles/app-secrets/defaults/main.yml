@@ -56,6 +56,8 @@ app_secrets_env_owner: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'U
 # Contrat de nommage coherent avec ansible/roles/vault/defaults/main.yml.
 # infra/postgres-superuser -> password    (secret d'administration Postgres)
 # identity/db              -> password    (compte applicatif identity_user)
+# identity/bootstrap-admin -> email, password (premier compte ADMIN, cree au
+#                             demarrage par identity-service s'il n'existe aucun ADMIN)
 # payment/db               -> password    (compte applicatif payment_user)
 # payment/stripe           -> api_key, secret_key      (credentials Stripe)
 # payment/paypal           -> client_id, client_secret (credentials PayPal)
@@ -67,6 +69,7 @@ app_secrets_env_owner: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'U
 # cles sont ceux ecrits par roles/vault/defaults/main.yml — ne pas les deviner.
 app_secrets_vault_path_postgres_superuser: "infra/postgres-superuser"
 app_secrets_vault_path_identity_db: "identity/db"
+app_secrets_vault_path_identity_bootstrap_admin: "identity/bootstrap-admin"
 app_secrets_vault_path_payment_db: "payment/db"
 app_secrets_vault_path_payment_stripe: "payment/stripe"
 app_secrets_vault_path_payment_paypal: "payment/paypal"

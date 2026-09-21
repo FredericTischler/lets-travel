@@ -2,6 +2,8 @@ package com.travelplan.identity;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import com.travelplan.identity.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -37,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       a valid token whose subject maps to an active user AND whose
  *       {@code role} claim is {@code ADMIN} (docs/sujet.md §4, least
  *       privilege — enforcement, not just authentication).</li>
+ *   <li>An admin account cannot come from the public {@code POST /users}
+ *       any more: these tests get theirs from {@link TestAccounts}.</li>
  *   <li>CORS is wired for the admin dashboard's origins (see CorsConfig),
  *       verified here via a preflight (OPTIONS) request.</li>
  * </ul>
@@ -62,10 +67,26 @@ class UsersAuthorizationIntegrationTest {
         registry.add("DB_USERNAME", postgres::getUsername);
         registry.add("DB_PASSWORD", postgres::getPassword);
         registry.add("JWT_SIGNING_KEY", () -> "test-only-signing-key-must-be-at-least-32-bytes-long");
+        // Required since application.yml stopped hiding a missing PAYMENT_SERVICE_URL behind a
+        // literal default; nothing listens here (only the cascade-delete tests care).
+        registry.add("PAYMENT_SERVICE_URL", () -> "http://localhost:1");
     }
 
     @Autowired
     private TestRestTemplate restTemplate;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    private TestAccounts accounts;
+
+    @BeforeEach
+    void setUpAccounts() {
+        accounts = new TestAccounts(restTemplate, userRepository, passwordEncoder);
+    }
 
     @Test
     void getUsersWithoutAuthorizationHeaderReturns401() {
@@ -78,12 +99,8 @@ class UsersAuthorizationIntegrationTest {
     @Test
     void getUsersWithAValidTokenReturns200AndPreservesTheExistingBehaviour() {
         String email = "list-ok@example.com";
-        String password = "secret123";
-        restTemplate.postForEntity("/users", Map.of("email", email, "password", password), Map.class);
-
-        ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
-                "/login", Map.of("email", email, "password", password), Map.class);
-        String token = (String) loginResponse.getBody().get("token");
+        accounts.createAdmin(email);
+        String token = accounts.login(email, TestAccounts.DEFAULT_PASSWORD);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + token);
@@ -177,12 +194,8 @@ class UsersAuthorizationIntegrationTest {
     @Test
     void getUsersWithATokenCarryingTheAdminRoleClaimReturns200() {
         String email = "role-admin-claim@example.com";
-        String password = "secret123";
-        restTemplate.postForEntity("/users", Map.of("email", email, "password", password), Map.class);
-
-        ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
-                "/login", Map.of("email", email, "password", password), Map.class);
-        String token = (String) loginResponse.getBody().get("token");
+        accounts.createAdmin(email);
+        String token = accounts.login(email, TestAccounts.DEFAULT_PASSWORD);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + token);
@@ -190,6 +203,29 @@ class UsersAuthorizationIntegrationTest {
                 "/users", HttpMethod.GET, new HttpEntity<>(headers), List.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void everyAdminOnlyRouteRefusesATravelerAndATravelManagerWith403() {
+        for (String role : List.of("TRAVELER", "TRAVEL_MANAGER")) {
+            String email = "not-admin-" + role.toLowerCase() + "@example.com";
+            ResponseEntity<Map> created = restTemplate.postForEntity(
+                    "/users", Map.of("email", email, "password", "secret123", "role", role), Map.class);
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            String id = (String) created.getBody().get("id");
+            HttpEntity<Void> auth = new HttpEntity<>(TestAccounts.bearer(accounts.login(email, "secret123")));
+
+            assertThat(restTemplate.exchange("/users", HttpMethod.GET, auth, Map.class).getStatusCode())
+                    .as("GET /users as %s", role).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(restTemplate.exchange("/users/" + id, HttpMethod.GET, auth, Map.class).getStatusCode())
+                    .as("GET /users/{id} as %s", role).isEqualTo(HttpStatus.FORBIDDEN);
+            assertThat(restTemplate.exchange("/users/" + id, HttpMethod.DELETE, auth, Map.class).getStatusCode())
+                    .as("DELETE /users/{id} as %s", role).isEqualTo(HttpStatus.FORBIDDEN);
+            HttpEntity<Map<String, String>> patch = new HttpEntity<>(
+                    Map.of("email", "changed-" + email), TestAccounts.bearer(accounts.login(email, "secret123")));
+            assertThat(restTemplate.exchange("/users/" + id, HttpMethod.PATCH, patch, Map.class).getStatusCode())
+                    .as("PATCH /users/{id} as %s", role).isEqualTo(HttpStatus.FORBIDDEN);
+        }
     }
 
     /**
