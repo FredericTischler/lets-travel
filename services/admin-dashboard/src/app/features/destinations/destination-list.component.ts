@@ -1,69 +1,59 @@
-import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule, NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DecimalPipe } from '@angular/common';
+import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
+import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
-import { Destination, DestinationInput, DestinationService } from './destination.service';
+import { DestinationFormComponent } from './destination-form.component';
+import { Destination, DestinationCreateInput, DestinationService } from './destination.service';
 import { TRANSPORT_MODES, Transport, TransportMode, TransportService } from './transport.service';
 
 /**
- * Destinations screen: list (GET /destinations) plus create (POST
- * /destinations), edit (PUT /destinations/{id}) and delete actions. Every
- * successful mutation reloads the list from the server instead of mutating
- * the local signal directly.
- *
- * The create/edit form is a single Reactive Forms `FormGroup`, shared by
- * both flows: creating starts from an empty form, clicking "Modifier" on a
- * row patches the same form with that destination's data and switches
- * `editingDestinationId` to its id, submit then dispatches to create() or
- * update() accordingly. `activities`/`accommodations` are `FormArray`s so
- * rows can be added/removed dynamically.
+ * Admin destinations screen: every destination whatever its manager (GET
+ * /destinations), plus create (POST), edit (PUT) and delete. Create/edit go
+ * through the shared {@link DestinationFormComponent}; an admin types the
+ * owning manager's id themselves (a Travel Manager's own screen — see
+ * features/manager — pins it to their id). Every successful mutation reloads
+ * the list from the server instead of mutating the local signal.
  *
  * Also hosts the outgoing-transports sub-view for a single destination at a
  * time (toggle per row, GET /destinations/{id}/transports) plus a form to
  * create a new one-hop transport from that destination (POST
  * /destinations/{fromId}/transports). No PATCH/DELETE on Transport exists
- * server-side, so none is simulated here. Transports are a separate
- * resource, not embedded in this screen's create/edit form.
+ * server-side, so none is simulated here.
  */
 @Component({
   selector: 'app-destination-list',
   imports: [
     FormsModule,
-    ReactiveFormsModule,
+    RouterLink,
+    DecimalPipe,
     AlertComponent,
     ButtonComponent,
     CardComponent,
     InputComponent,
+    DestinationFormComponent,
   ],
   templateUrl: './destination-list.component.html',
 })
 export class DestinationListComponent implements OnInit {
   private readonly destinationService = inject(DestinationService);
   private readonly transportService = inject(TransportService);
-  private readonly fb = inject(NonNullableFormBuilder);
+
+  private readonly form = viewChild(DestinationFormComponent);
 
   protected readonly destinations = signal<Destination[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
 
-  // Create/edit form state. `editingDestinationId` is null while creating,
-  // set to the destination's id while editing it.
-  protected readonly editingDestinationId = signal<string | null>(null);
+  // Create/edit state: null while creating, the destination while editing it.
+  protected readonly editingDestination = signal<Destination | null>(null);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
-
-  protected readonly destinationForm = this.fb.group({
-    name: this.fb.control('', [Validators.required]),
-    country: this.fb.control('', [Validators.required]),
-    startDate: this.fb.control('', [Validators.required]),
-    endDate: this.fb.control('', [Validators.required]),
-    activities: this.fb.array<ReturnType<typeof this.createActivityControl>>([]),
-    accommodations: this.fb.array<ReturnType<typeof this.createAccommodationGroup>>([]),
-  });
 
   // Delete state.
   protected readonly deletingDestinationId = signal<string | null>(null);
@@ -109,136 +99,42 @@ export class DestinationListComponent implements OnInit {
     });
   }
 
-  // --- Activities FormArray -------------------------------------------------
-
-  private createActivityControl(name = '') {
-    return this.fb.control(name, [Validators.required]);
-  }
-
-  protected get activities() {
-    return this.destinationForm.controls.activities;
-  }
-
-  addActivity(): void {
-    this.activities.push(this.createActivityControl());
-  }
-
-  removeActivity(index: number): void {
-    this.activities.removeAt(index);
-  }
-
-  // --- Accommodations FormArray ----------------------------------------------
-
-  private createAccommodationGroup(accommodation?: {
-    name: string;
-    type: string;
-    checkIn: string | null;
-    checkOut: string | null;
-  }) {
-    return this.fb.group({
-      name: this.fb.control(accommodation?.name ?? '', [Validators.required]),
-      type: this.fb.control(accommodation?.type ?? '', [Validators.required]),
-      checkIn: this.fb.control(accommodation?.checkIn ?? ''),
-      checkOut: this.fb.control(accommodation?.checkOut ?? ''),
-    });
-  }
-
-  protected get accommodations() {
-    return this.destinationForm.controls.accommodations;
-  }
-
-  addAccommodation(): void {
-    this.accommodations.push(this.createAccommodationGroup());
-  }
-
-  removeAccommodation(index: number): void {
-    this.accommodations.removeAt(index);
-  }
-
   // --- Create / edit ---------------------------------------------------------
 
   startEdit(destination: Destination): void {
-    this.editingDestinationId.set(destination.id);
     this.saveError.set(null);
-
-    this.activities.clear();
-    destination.activities.forEach((activity) =>
-      this.activities.push(this.createActivityControl(activity.name)),
-    );
-
-    this.accommodations.clear();
-    destination.accommodations.forEach((accommodation) =>
-      this.accommodations.push(
-        this.createAccommodationGroup({
-          name: accommodation.name,
-          type: accommodation.type,
-          checkIn: accommodation.checkIn,
-          checkOut: accommodation.checkOut,
-        }),
-      ),
-    );
-
-    this.destinationForm.patchValue({
-      name: destination.name,
-      country: destination.country,
-      startDate: destination.startDate,
-      endDate: destination.endDate,
-    });
+    this.editingDestination.set(destination);
   }
 
   cancelEdit(): void {
-    this.resetForm();
-  }
-
-  private resetForm(): void {
-    this.editingDestinationId.set(null);
     this.saveError.set(null);
-    this.activities.clear();
-    this.accommodations.clear();
-    this.destinationForm.reset({ name: '', country: '', startDate: '', endDate: '' });
+    this.editingDestination.set(null);
   }
 
-  saveDestination(): void {
-    if (this.destinationForm.invalid) {
-      this.destinationForm.markAllAsTouched();
-      return;
-    }
-
-    const value = this.destinationForm.getRawValue();
-    const input: DestinationInput = {
-      name: value.name,
-      country: value.country,
-      startDate: value.startDate,
-      endDate: value.endDate,
-      activities: value.activities,
-      accommodations: value.accommodations.map((accommodation) => ({
-        name: accommodation.name,
-        type: accommodation.type,
-        checkIn: accommodation.checkIn || null,
-        checkOut: accommodation.checkOut || null,
-      })),
-    };
-
+  saveDestination(input: DestinationCreateInput): void {
     this.saving.set(true);
     this.saveError.set(null);
 
-    const editingId = this.editingDestinationId();
-    const request = editingId
-      ? this.destinationService.update(editingId, input)
+    const editing = this.editingDestination();
+    // PUT has no managerId: ownership is assigned once, at creation.
+    const { managerId: _managerId, ...updateInput } = input;
+    const request = editing
+      ? this.destinationService.update(editing.id, updateInput)
       : this.destinationService.create(input);
 
     request.subscribe({
       next: () => {
         this.saving.set(false);
-        this.resetForm();
+        this.editingDestination.set(null);
+        this.form()?.reset();
         this.loadDestinations();
       },
-      error: (err: HttpErrorResponse) => {
+      error: (err: unknown) => {
         this.saving.set(false);
         this.saveError.set(
-          this.extractErrorMessage(
+          extractErrorMessage(
             err,
-            editingId ? 'Impossible de modifier cette destination.' : 'Impossible de créer cette destination.',
+            editing ? 'Impossible de modifier cette destination.' : 'Impossible de créer cette destination.',
           ),
         );
       },
@@ -256,19 +152,19 @@ export class DestinationListComponent implements OnInit {
     this.destinationService.delete(destination.id).subscribe({
       next: () => {
         this.deletingDestinationId.set(null);
-        if (this.editingDestinationId() === destination.id) {
-          this.resetForm();
+        if (this.editingDestination()?.id === destination.id) {
+          this.cancelEdit();
         }
         this.loadDestinations();
       },
-      error: (err: HttpErrorResponse) => {
+      error: (err: unknown) => {
         this.deletingDestinationId.set(null);
-        this.deleteError.set(
-          this.extractErrorMessage(err, 'Impossible de supprimer cette destination.'),
-        );
+        this.deleteError.set(extractErrorMessage(err, 'Impossible de supprimer cette destination.'));
       },
     });
   }
+
+  // --- Transports ------------------------------------------------------------
 
   toggleTransports(destination: Destination): void {
     if (this.expandedDestinationId() === destination.id) {
@@ -290,10 +186,10 @@ export class DestinationListComponent implements OnInit {
         this.transports.set(transports);
         this.transportsLoading.set(false);
       },
-      error: (err: HttpErrorResponse) => {
+      error: (err: unknown) => {
         this.transportsLoading.set(false);
         this.transportsError.set(
-          this.extractErrorMessage(err, 'Impossible de charger les trajets de cette destination.'),
+          extractErrorMessage(err, 'Impossible de charger les trajets de cette destination.'),
         );
       },
     });
@@ -324,11 +220,9 @@ export class DestinationListComponent implements OnInit {
           this.resetCreateTransportForm();
           this.loadTransports(fromId);
         },
-        error: (err: HttpErrorResponse) => {
+        error: (err: unknown) => {
           this.creatingTransport.set(false);
-          this.createTransportError.set(
-            this.extractErrorMessage(err, 'Impossible de créer ce trajet.'),
-          );
+          this.createTransportError.set(extractErrorMessage(err, 'Impossible de créer ce trajet.'));
         },
       });
   }
@@ -338,9 +232,5 @@ export class DestinationListComponent implements OnInit {
     this.createTransportMode = '';
     this.createTransportDuration = null;
     this.createTransportError.set(null);
-  }
-
-  private extractErrorMessage(err: HttpErrorResponse, fallback: string): string {
-    return typeof err.error?.error === 'string' ? err.error.error : fallback;
   }
 }

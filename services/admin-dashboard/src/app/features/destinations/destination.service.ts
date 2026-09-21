@@ -40,6 +40,13 @@ export interface Destination {
   endDate: string;
   /** Always server-derived from startDate/endDate, never sent on writes. */
   durationDays: number;
+  /**
+   * Owning Travel Manager (identity-service user id, application-level
+   * reference). Null only for destinations created before Phase 1.
+   */
+  managerId: string | null;
+  price: number | null;
+  capacity: number | null;
   activities: Activity[];
   accommodations: Accommodation[];
   createdAt: string;
@@ -63,8 +70,31 @@ export interface DestinationInput {
   country: string;
   startDate: string;
   endDate: string;
+  /** >= 0 (backend `@PositiveOrZero`). */
+  price: number;
+  /** >= 1 (backend `@Positive`). */
+  capacity: number;
   activities: string[];
   accommodations: AccommodationInput[];
+}
+
+/**
+ * POST /destinations body: the update shape plus the owning manager. A
+ * TRAVEL_MANAGER may only send their own id (403 otherwise), an ADMIN any.
+ * PUT deliberately has no `managerId` — ownership is never reassigned.
+ */
+export interface DestinationCreateInput extends DestinationInput {
+  managerId: string;
+}
+
+/**
+ * One item of GET /destinations/autocomplete (travel-service
+ * AutocompleteSuggestion.java) — lighter than a full Destination.
+ */
+export interface AutocompleteSuggestion {
+  id: string;
+  name: string;
+  country: string;
 }
 
 /**
@@ -80,7 +110,29 @@ export class DestinationService {
     return this.http.get<Destination[]>(`${environment.travelApiUrl}/destinations`);
   }
 
-  create(input: DestinationInput): Observable<Destination> {
+  get(id: string): Observable<Destination> {
+    return this.http.get<Destination>(`${environment.travelApiUrl}/destinations/${id}`);
+  }
+
+  /**
+   * Elasticsearch full-text search (name, country, activities,
+   * accommodations...). Answers 503 when Elasticsearch is unreachable.
+   */
+  search(query: string): Observable<Destination[]> {
+    return this.http.get<Destination[]>(`${environment.travelApiUrl}/destinations/search`, {
+      params: { q: query },
+    });
+  }
+
+  /** Elasticsearch completion suggester on name/country (max 10). 503 if ES is down. */
+  autocomplete(prefix: string): Observable<AutocompleteSuggestion[]> {
+    return this.http.get<AutocompleteSuggestion[]>(
+      `${environment.travelApiUrl}/destinations/autocomplete`,
+      { params: { prefix } },
+    );
+  }
+
+  create(input: DestinationCreateInput): Observable<Destination> {
     return this.http.post<Destination>(`${environment.travelApiUrl}/destinations`, input);
   }
 

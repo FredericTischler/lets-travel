@@ -1,0 +1,113 @@
+<div class="flex flex-col gap-6">
+  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Voyages</h1>
+
+  <app-card>
+    <form class="flex flex-col gap-2 sm:flex-row sm:items-end" role="search" (ngSubmit)="search()">
+      <div class="relative flex flex-1 flex-col gap-1">
+        <label for="travelSearch" class="text-sm font-medium text-slate-700 dark:text-slate-200"
+          >Rechercher un voyage</label
+        >
+        <input
+          id="travelSearch"
+          name="travelSearch"
+          type="search"
+          autocomplete="off"
+          placeholder="Destination, pays, activité, hébergement…"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="travelSuggestions"
+          [attr.aria-expanded]="suggestions().length > 0"
+          [attr.aria-activedescendant]="activeSuggestion() >= 0 ? 'suggestion-' + activeSuggestion() : null"
+          [ngModel]="query()"
+          (ngModelChange)="onQueryChange($event)"
+          (keydown)="onKeydown($event)"
+          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+        />
+
+        @if (suggestions().length > 0) {
+          <ul
+            id="travelSuggestions"
+            role="listbox"
+            aria-label="Suggestions"
+            class="absolute top-full z-10 mt-1 w-full overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
+          >
+            @for (suggestion of suggestions(); track suggestion.id; let i = $index) {
+              <li
+                [id]="'suggestion-' + i"
+                role="option"
+                [attr.aria-selected]="i === activeSuggestion()"
+                class="cursor-pointer px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                [class.bg-slate-100]="i === activeSuggestion()"
+                [class.dark:bg-slate-700]="i === activeSuggestion()"
+                (mousedown)="openSuggestion(suggestion)"
+              >
+                {{ suggestion.name }}
+                <span class="text-slate-500 dark:text-slate-400">— {{ suggestion.country }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+
+      <div class="flex gap-2">
+        <app-button type="submit">Rechercher</app-button>
+        @if (activeSearch() !== null || query() !== '') {
+          <app-button type="button" variant="secondary" (clicked)="clear()">Effacer</app-button>
+        }
+      </div>
+    </form>
+  </app-card>
+
+  @if (notice()) {
+    <div
+      role="status"
+      class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+    >
+      {{ notice() }}
+    </div>
+  }
+
+  @if (loading()) {
+    <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+  } @else if (error()) {
+    <app-alert variant="error">{{ error() }}</app-alert>
+  } @else {
+    @if (activeSearch() !== null) {
+      <p class="text-sm text-slate-600 dark:text-slate-300">
+        {{ travels().length }} résultat(s) pour « {{ activeSearch() }} »
+      </p>
+    }
+
+    <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      @for (travel of travels(); track travel.id) {
+        <li>
+          <article
+            class="flex h-full flex-col gap-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
+          >
+            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              <a
+                [routerLink]="['/travels', travel.id]"
+                class="hover:text-indigo-600 hover:underline dark:hover:text-indigo-400"
+                >{{ travel.name }}</a
+              >
+            </h2>
+            <p class="text-sm text-slate-600 dark:text-slate-300">{{ travel.country }}</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">
+              {{ travel.startDate }} → {{ travel.endDate }} ({{ travel.durationDays }} j)
+            </p>
+            <p class="mt-auto text-sm font-medium text-slate-800 dark:text-slate-100">
+              {{ travel.price === null ? 'Prix non renseigné' : (travel.price | number: '1.2-2') + ' €' }}
+              <span class="font-normal text-slate-500 dark:text-slate-400">
+                · {{ travel.capacity ?? '—' }} place(s)
+              </span>
+            </p>
+          </article>
+        </li>
+      } @empty {
+        <li class="col-span-full text-sm text-slate-500 dark:text-slate-400">
+          Aucun voyage {{ activeSearch() !== null ? 'ne correspond à cette recherche' : 'disponible' }}.
+        </li>
+      }
+    </ul>
+  }
+</div>

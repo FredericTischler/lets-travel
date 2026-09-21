@@ -51,6 +51,7 @@
             <tr class="table-head-row">
               <th class="table-head-cell">Id</th>
               <th class="table-head-cell">Email</th>
+              <th class="table-head-cell">Rôle</th>
               <th class="table-head-cell">Créé le</th>
               <th class="table-head-cell">Actions</th>
             </tr>
@@ -60,7 +61,7 @@
               <tr class="table-row">
                 <td class="table-cell">{{ user.id }}</td>
                 @if (editingUserId() === user.id) {
-                  <td class="table-cell" colspan="2">
+                  <td class="table-cell" colspan="3">
                     <form class="flex flex-wrap items-end gap-2" (ngSubmit)="saveEdit(user)">
                       <app-input
                         class="flex-1"
@@ -91,6 +92,7 @@
                   </td>
                 } @else {
                   <td class="table-cell">{{ user.email }}</td>
+                  <td class="table-cell">{{ user.role }}</td>
                   <td class="table-cell">{{ user.createdAt }}</td>
                 }
                 <td class="table-cell">
@@ -110,7 +112,7 @@
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="4">Aucun utilisateur.</td>
+                <td class="table-empty-cell" colspan="5">Aucun utilisateur.</td>
               </tr>
             }
           </tbody>

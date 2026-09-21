@@ -1,7 +1,9 @@
 # admin-dashboard
 
-Front d'administration **Angular 22** : application standalone, routes lazy-loaded,
-signals, Tailwind 4, tests Vitest.
+Front **Angular 22** de Let's Travel : application standalone, routes lazy-loaded,
+signals, Tailwind 4, tests Vitest + Playwright. Depuis la Phase 8 c'est une
+application **selon le rôle** (Admin / Travel Manager / Voyageur) et plus
+seulement un CRUD d'administration.
 
 Ce README décrit **ce qui existe réellement dans le code**. Ce qui est absent est
 regroupé dans [Non implémenté](#non-implémenté).
@@ -26,124 +28,216 @@ les mêmes valeurs) :
 | `travelApiUrl` | `https://travel.localhost` |
 
 La stack backend doit donc tourner (profil `full`) et le certificat auto-signé de
-Traefik être accepté par le navigateur.
+Traefik être accepté par le navigateur. La recherche Elasticsearch demande en plus
+le profil Compose `search` ; sans lui l'écran Voyages bascule sur la liste simple
+(voir [Recherche](#recherche-voyageur)).
 
-## Écrans
+## Rôles, navigation et routes
 
-Quatre écrans, tous réellement câblés à un backend (`src/app/features/`) :
+Le rôle vient de la claim `role` du JWT (`AuthService.role`). La hiérarchie du sujet
+est appliquée côté front comme côté backend (`core/auth/roles.ts`) :
+**ADMIN ⊃ TRAVEL_MANAGER ⊃ TRAVELER** — un admin passe partout, un organisateur passe
+aussi sur les écrans voyageur.
 
-| Route | Écran | Opérations câblées |
-|---|---|---|
-| `/login` | Connexion | `POST /login` ; le JWT retourné est stocké en `localStorage` |
-| `/users` | Utilisateurs | Liste (`GET /users`), création (email + mot de passe), modification de **l'email seulement** (`PATCH /users/{id}`), suppression (`DELETE /users/{id}`) |
-| `/payments` | Paiements | Liste (`GET /payments`), création (montant + devise), transition de statut `PENDING → COMPLETED`/`FAILED` (`PATCH /payments/{id}/status`), suppression |
-| `/destinations` | Destinations | Liste, création, suppression ; sous-vue par ligne listant les `TRANSPORT` **sortants** (`GET /destinations/{id}/transports`) et formulaire de création d'un transport 1-hop (`POST /destinations/{fromId}/transports`) |
+| Route | Écran | Rôle minimal | Backend appelé |
+|---|---|---|---|
+| `/login` | Connexion (lien vers l'inscription) | public | `POST /login` |
+| `/register` | Inscription : email, mot de passe, **Voyageur ou Organisateur** (jamais Admin) ; connecte puis redirige | public | `POST /users` (avec `role`), `POST /login` |
+| `/travels` | Catalogue + recherche Elasticsearch + autocomplétion | TRAVELER | `GET /destinations`, `/destinations/search?q=`, `/destinations/autocomplete?prefix=` |
+| `/travels/:id` | Détail d'un voyage, s'inscrire / se désinscrire, signaler l'organisateur | TRAVELER | `GET /destinations/{id}`, `POST`/`DELETE /destinations/{id}/subscriptions`, `GET /travelers/me/subscriptions`, `POST /reports`, `GET /reports/count/{userId}` |
+| `/my-subscriptions` | Mes abonnements : à venir, effectués, annulés + compteurs | TRAVELER | `GET /travelers/me/subscriptions` |
+| `/manager/travels` | Mes voyages organisés : créer / modifier / supprimer (dates, prix, capacité, activités, hébergements) | TRAVEL_MANAGER | `GET`, `POST`, `PUT`, `DELETE /destinations` |
+| `/manager/travels/:id/subscribers` | Abonnés d'un voyage + désinscription forcée | TRAVEL_MANAGER | `GET /destinations/{id}/subscriptions`, `DELETE /destinations/{id}/subscriptions/{travelerId}` |
+| `/admin/reports` | File de modération des signalements (filtre par statut, `OPEN` → `REVIEWED`/`DISMISSED`/`ACTIONED`) | ADMIN | `GET /reports`, `PATCH /reports/{id}/status`, `GET /users` (emails, best-effort) |
+| `/users` | Utilisateurs (liste avec rôle, création, modification de l'email, suppression) | ADMIN | `/users` |
+| `/payments` | Paiements manuels (liste, création, transition de statut, suppression) | ADMIN | `/payments` |
+| `/destinations` | Toutes les destinations (tous organisateurs) : créer (l'admin saisit l'id de l'organisateur), modifier, supprimer, trajets `TRANSPORT`, lien vers les abonnés | ADMIN | `/destinations`, `/destinations/{id}/transports` |
 
-Détails vérifiables dans le code :
+Page d'accueil par rôle (`/`, URL inconnue, après login) : ADMIN → `/users`,
+TRAVEL_MANAGER → `/manager/travels`, TRAVELER → `/travels`.
 
-- À la création d'un paiement, le `userId` n'est **pas** un champ de formulaire : il
-  est lu dans la claim `sub` du JWT stocké (`AuthService.getCurrentUserId()`).
-- La liste des modes de transport (`TRAIN`, `PLANE`, `BUS`, `CAR`, `BOAT`) est un
-  miroir de la liste fermée imposée par `travel-service`, pas un enum appartenant au
-  front.
-- Le select de destination cible exclut la destination courante : l'UI n'offre jamais
-  une boucle sur soi-même (le backend la rejette aussi en 400).
-- Après chaque mutation réussie, l'écran **recharge la liste depuis le serveur** plutôt
-  que de muter le signal local.
+**Fallbacks de rôle** (`core/guards/role.guard.ts`) : pas de token → `/login` ; rôle connu
+mais interdit sur la route → page d'accueil de son rôle ; token **sans rôle ou avec un
+rôle inconnu** (ex. token d'avant la Phase 1) → le token est purgé et redirection vers
+`/login`, plutôt qu'une boucle de redirection.
+
+Ces guards ne sont **qu'un confort d'interface** : chaque appel est revérifié par le
+backend (403), un front modifié n'obtient aucun droit supplémentaire.
+
+### Shell (`shared/layout/`)
+
+`AppShellComponent` est piloté par les données : `nav-items.ts` liste
+`{label, route, roles}` et le shell n'affiche que les entrées permises au rôle courant
+(même fonction `hasAccess` que les guards). Il affiche aussi l'email (claim `email`),
+un badge de rôle, la bascule de thème et le bouton **Se déconnecter**
+(`AuthService.logout()` puis `/login`). Ajouter un écran = une route gardée + une
+entrée dans `nav-items.ts`.
+
+**Responsive** : sous le breakpoint `lg` (1024 px) la navigation et les contrôles se
+replient derrière un bouton « Menu » (`aria-expanded`), refermé au clic sur un lien.
+Il n'y a qu'**un seul** `<nav>` dans le DOM (le CSS décide barre ou liste déroulante).
+Les listes de données sont des tableaux à défilement horizontal (`table-shell`) ou des
+grilles de cartes `1 / 2 / 3` colonnes ; les formulaires passent en une colonne sur mobile.
+Vérifié visuellement à 375 px (menu mobile) sur le dev server ; pas de test automatisé
+multi-navigateurs au-delà du spec Playwright « on a phone ».
+
+## Détails par écran
+
+### Recherche (voyageur)
+
+- Frappe → `GET /destinations/autocomplete` après **300 ms** de debounce (`switchMap` :
+  une réponse périmée est écartée), à partir de 2 caractères ; navigation clavier
+  (↑ ↓ Entrée Échap) et ARIA `combobox`/`listbox`.
+- Envoi du formulaire → `GET /destinations/search?q=` ; requête vide → liste simple.
+- **Elasticsearch indisponible (503)** sur l'un ou l'autre appel : pas d'erreur bloquante,
+  l'écran affiche la liste complète des voyages avec un bandeau « recherche momentanément
+  indisponible ». C'est la liste **non filtrée** (pas de filtre client de remplacement).
+  Toute autre erreur reste une erreur affichée.
+
+### Abonnement (voyageur)
+
+- L'état « déjà inscrit » vient de l'historique personnel (`GET /travelers/me/subscriptions`,
+  ligne `ACTIVE` pour ce voyage).
+- Le délai d'annulation de **3 jours** (`features/subscriptions/cancellation-rules.ts`,
+  miroir de la règle backend `startDate < aujourd'hui + 3 j`) est annoncé avant le clic
+  (date limite, ou avertissement si déjà dépassé) ; le bouton reste actif : **le backend
+  fait foi**, son 409 est converti en message explicite (« Désinscription refusée : il
+  reste moins de 3 jours… »). Un voyage déjà commencé désactive l'inscription.
+- « Mes abonnements » sépare à venir / effectués (`ACTIVE` dont la date de départ est
+  passée) / annulés, avec les trois compteurs (participations passées, annulations : les
+  statistiques personnelles du sujet, partie abonnements).
+
+### Mes voyages organisés (organisateur)
+
+- Le backend n'a pas de requête « par organisateur » : la liste est `GET /destinations`
+  **filtrée côté client** sur `managerId === sub` du JWT. C'est un confort, pas une
+  sécurité : le backend refuse (403) toute écriture sur le voyage d'un autre et toute
+  création avec un `managerId` qui n'est pas le sien. Le champ organisateur n'est pas
+  affiché : il est imposé (`fixedManagerId`).
+- Le formulaire (`features/destinations/destination-form.component`) est **partagé** avec
+  l'écran admin : validation prix ≥ 0, capacité entière ≥ 1, date de fin ≥ date de début,
+  activités et hébergements dynamiques (`FormArray`). Le `PUT` n'envoie jamais `managerId`
+  (l'appartenance n'est jamais réassignée).
+- Abonnés : l'API n'expose que l'**id** du voyageur (pas d'email ni de profil) — c'est
+  ce qui est affiché, avec le statut, les dates et le remplissage (actifs / capacité).
+
+### Signalements
+
+- Voyageur/organisateur : bouton « Signaler l'organisateur » sur le détail d'un voyage
+  (motif ≤ 2000 caractères) et compteur de signalements reçus par l'organisateur.
+  Le bouton n'est pas proposé sur ses propres voyages (le backend refuse l'auto-signalement).
+- Admin : file triée `OPEN` d'abord, puis du plus récent ; les ids sont résolus en emails
+  via `GET /users` quand il répond. Un signalement décidé est **immuable** côté backend
+  (409) : aucune action n'est proposée dessus, et un 409 recharge la file.
 
 ## Structure
 
 ```
 src/app/
-  core/auth/          AuthService (JWT en localStorage, décodage de la claim sub)
-  core/guards/        authGuard
+  core/auth/          AuthService (JWT, claims sub/role/email, register), roles.ts (rôles, hiérarchie, accueils)
+  core/guards/        authGuard, roleGuard(...roles), homeGuard
   core/interceptors/  authInterceptor
   core/theme/         ThemeService
-  features/           login, users, payments, destinations (+ leurs services HTTP)
-  shared/layout/      AppShellComponent (nav + bascule de thème)
-  shared/ui/          alert, button, card, input
+  features/           login, register, travels (traveler), subscriptions, manager, reports,
+                      users, payments, destinations (admin + formulaire partagé)
+  shared/layout/      AppShellComponent + nav-items.ts
+  shared/ui/          alert, badge, button, card, input
+  shared/http-error.ts  extraction du message d'erreur backend
+e2e/                  specs Playwright + support/ (création de comptes/voyages par API)
 ```
 
-- `/login` est hors du layout ; les 3 routes métier sont des enfants de
-  `AppShellComponent` et protégées par `authGuard`.
-- **Composants réutilisables** sous `shared/ui/` (`app-alert`, `app-button`,
-  `app-card`, `app-input`) : les 3 écrans métier les utilisent au lieu de redéclarer
-  leurs propres champs, boutons et bandeaux d'erreur.
+Pattern d'un écran : `features/<nom>/*.component.ts|html` + `*.service.ts` (HTTP) +
+`.spec.ts`. Composants réutilisables : `app-alert`, `app-badge` (statuts/rôles),
+`app-button`, `app-card`, `app-input`, `app-destination-form`.
 
 ## Authentification (état réel)
 
 - `AuthService` conserve le JWT dans `localStorage` (clé `admin-dashboard.jwt`) et
-  l'expose via un signal.
+  l'expose via un signal ; il en décode les claims `sub`, `role` et `email`.
 - `authInterceptor` ajoute `Authorization: Bearer <token>` à toute requête dont l'URL
   commence par l'une des 3 URLs d'API, et **sur 401** : purge le token et redirige
   vers `/login`.
 - **Pas de refresh token, pas de renouvellement silencieux** : le JWT backend dure
   15 min, à l'expiration l'utilisateur retombe sur `/login`.
 - `AuthService.decodeJwtPayload()` ne fait **aucune vérification de signature** — il ne
-  sert qu'à lire la claim `sub` d'un token que le backend re-vérifie à chaque requête.
+  sert qu'à lire des claims d'un token que le backend re-vérifie à chaque requête (le rôle
+  lu ici ne décide que de ce qui est *affiché*).
+- **Inscription** : `POST /users` est public côté backend. Le formulaire n'offre que
+  TRAVELER et TRAVEL_MANAGER et refuse d'envoyer un autre rôle, mais **c'est de l'UX, pas
+  une protection** : le backend accepte aujourd'hui `role: ADMIN` sur cet endpoint public
+  (durcissement suivi séparément, non traité ici).
 
 ## Thème clair / sombre
 
 - `ThemeService` : signal `theme` (`'light' | 'dark'`) + `effect` qui bascule la classe
   `dark` sur `<html>` et persiste le choix dans `localStorage`
   (clé `admin-dashboard.theme`).
-- La variante `dark:` de Tailwind est pilotée par cette classe.
-- Un **script inline dans `index.html`** applique le thème persisté à `<html>` avant le
-  bootstrap Angular, pour éviter un flash du mauvais thème au rechargement. C'est
-  pourquoi `ThemeService` lit sa valeur initiale dans la classe de `<html>` et non dans
-  `localStorage` : une seule source de vérité.
-- La bascule est exposée par un bouton dans l'en-tête de `AppShellComponent`.
+- Un **script inline dans `index.html`** applique le thème persisté avant le bootstrap
+  Angular, pour éviter un flash du mauvais thème.
 
-## Dette assumée : aucun contrôle de rôle, malgré le nom « admin »
+## Sécurité front (XSS)
 
-Vérifiable dans `src/app/core/auth/auth.service.ts` et
-`src/app/core/guards/auth.guard.ts` :
+Aucun `[innerHTML]`, aucun `bypassSecurityTrust*` dans le code : tout texte libre
+(motif d'un signalement, noms de voyages, activités…) passe par l'interpolation Angular,
+qui échappe. Des specs le vérifient (motif de signalement contenant du HTML, nom de voyage
+contenant une balise).
 
-- Le JWT émis par `identity-service` **ne porte aucune claim de rôle**. `AuthService`
-  n'expose que `isAuthenticated` (= « un token est stocké ») et `getCurrentUserId()`
-  (claim `sub`). Il n'existe ni notion de rôle, ni profil « Admin », ni RBAC.
-- `authGuard` ne teste **que la présence d'un token** : il ne lit aucune claim, ne
-  compare rien.
+## Tests
 
-Conséquence directe et non maquillée : **n'importe quel utilisateur authentifié — et
-pas seulement un administrateur — a accès à la totalité de ce dashboard**, y compris
-la liste des utilisateurs, leur modification et leur suppression. Le nom
-« admin-dashboard » décrit une intention, pas une restriction d'accès effective.
-Cette dette est côté backend d'abord (le token ne transporte pas de rôle) ; aucun
-contrôle front ne pourrait la combler.
+**Vitest** — `npm test` : 27 fichiers, 183 tests, tous verts. Couvrent : rôles/hiérarchie,
+guards (`roleGuard`, `homeGuard`, fallbacks de rôle inconnu), `AuthService` (rôle, email,
+inscription), shell et navigation par rôle (dont menu mobile et logout), règles du délai
+de 3 jours, services HTTP (destinations, abonnements, signalements), et les composants
+avec logique (formulaire de destination, catalogue avec debounce/503, détail voyage
+avec ses cas 409, mes abonnements, mes voyages, abonnés, file de signalements,
+inscription, connexion, destinations admin). `ng build` est vert.
 
-## Tests E2E (Playwright, contre le vrai backend)
+**Playwright** (`npm run e2e`, contre le vrai backend, sans mock) — **les specs ci-dessous
+ont été écrites mais NON exécutées dans cette phase** : la suite exige la stack Docker
+complète, dont les images étaient périmées (construites avant les changements backend des
+phases 2/3/6) et qui n'a volontairement pas été démarrée. Ils sont typés et listés par
+Playwright (`playwright test --list` : 22 tests), rien de plus n'est garanti.
 
-`e2e/*.spec.ts` (login, auth-guard, destinations, payments) tournent sans mock,
-contre le vrai `ng serve` (port 4200) et la vraie stack Docker Compose
-(identity/payment/travel-service, Postgres, Neo4j, Vault, Traefik).
+| Spec | Statut |
+|---|---|
+| `register.spec.ts` (inscription voyageur / organisateur, pas d'Admin, logout) | écrit, non exécuté |
+| `role-navigation.spec.ts` (guards par rôle, navigation par rôle, menu mobile 375 px) | écrit, non exécuté |
+| `subscription-flow.spec.ts` (inscription, désinscription, refus à moins de 3 jours, abonnés + désinscription forcée) | écrit, non exécuté |
+| `manager-travels.spec.ts` (créer/modifier/supprimer, voyages des autres masqués, validation des dates) | écrit, non exécuté |
+| `reports.spec.ts` (signalement puis décision admin, texte libre non interprété) | écrit, non exécuté |
+| `travel-search.spec.ts` (autocomplétion + recherche si Elasticsearch est up, sinon repli + bandeau) | écrit, non exécuté |
+| `destinations.spec.ts` | **modifié** (prix, capacité, organisateur désormais requis) — non ré-exécuté ; dernière exécution avant modification : 2026-09-17 |
+| `login`, `auth-guard`, `payments` | inchangés ; dernière exécution confirmée 2026-09-17 (5/5 avec `destinations`), avant la Phase 8 |
 
-```bash
-npm start        # ng serve, dans un terminal séparé
-npm run e2e       # playwright test
-```
-
-**Dernière exécution confirmée : 2026-09-17, 5/5 tests passent** (stack Docker déjà up
-depuis ~21h, `ng serve` déjà démarré depuis la veille — aucune anomalie d'environnement
-rencontrée).
+Les specs de rôle créent leurs comptes par `POST /users` avec un `role` explicite — y
+compris `ADMIN`, ce qui repose sur le défaut backend signalé plus haut. Les comptes créés
+sans rôle par les anciens specs sont ADMIN par défaut (comportement rétrocompatible du
+backend).
 
 ## Non implémenté
 
-- **Pas de RBAC ni de profil Admin** (voir ci-dessus) : ni côté JWT, ni côté guard.
-- **Pas de bouton de déconnexion** : `AuthService.logout()` existe mais n'est câblé à
-  aucun contrôle du layout ; il n'est appelé que par l'interceptor sur 401.
-- **Pas de modification des destinations** : `travel-service` expose bien
-  `PUT /destinations/{id}`, mais l'écran n'offre que création, liste et suppression
-  (`DestinationService` n'a pas de méthode `update`). Un commentaire de
-  `destination.service.ts` affirme à tort que le backend n'expose aucun `PUT`.
-- **Pas de mise à jour ni de suppression d'un `TRANSPORT`** : le backend ne les expose
-  pas, le front ne les simule pas.
-- **Pas de conteneurisation** : aucun `Dockerfile`, aucun fragment Compose, aucune
-  route Traefik pour ce front. Il ne tourne aujourd'hui que via `ng serve` sur
-  `http://localhost:4200` (origine autorisée par la config CORS des services).
-- **Couverture de test unitaire quasi nulle** : côté Vitest, une seule spec
-  (`src/app/app.spec.ts`), qui vérifie uniquement que le composant racine s'instancie.
-  Aucun test unitaire des écrans, des services HTTP, du guard ni de l'intercepteur.
-  La couverture fonctionnelle existe côté E2E (voir [Tests E2E](#tests-e2e-playwright-contre-le-vrai-backend)
-  ci-dessus), mais reste limitée à 4 parcours (login, auth-guard, destinations,
-  payments) — pas de couverture E2E pour l'écran utilisateurs ni pour le thème.
+- **Paiement d'un abonnement** : aucune UI de paiement côté voyageur (Stripe / PayPal /
+  manuel). L'écran `/payments` reste l'écran d'administration des paiements manuels.
+  Volontairement non branché : l'API de paiement d'abonnement n'était pas mergée.
+- **Feedback** : ni saisie d'un avis/note après un voyage, ni affichage des avis (voyageur,
+  organisateur, admin).
+- **Page organisateur** (statistiques, notes passées, nombre de signalements) : seul le
+  compteur de signalements est affiché sur le détail d'un voyage ; pas de page dédiée. Pas de
+  profil voyageur non plus (l'API n'expose que l'id aux organisateurs).
+- **Tableau de bord statistiques de l'organisateur** (revenus, nombre de voyages, de
+  voyageurs) et **tableaux de bord admin** (revenus, meilleurs organisateurs/voyages,
+  historique des voyages, classement des organisateurs) : non construits, aucun endpoint
+  correspondant n'existe encore.
+- **Recommandations Neo4j** (« suggestions personnalisées ») et statistiques personnelles
+  complètes du voyageur (moyens de paiement préférés) : non branchés.
+- **PWA** et **i18n** (bonus du sujet) : non faits. Les libellés sont en français,
+  codés en dur dans les templates, sans infrastructure de traduction.
+- **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
+  depuis l'écran organisateur), création et liste sortante seulement — le backend n'expose
+  ni mise à jour ni suppression.
+- **Pas de conteneurisation** de ce front (aucun `Dockerfile`, fragment Compose ni route
+  Traefik) : il ne tourne que via `ng serve` sur `http://localhost:4200`.
+- Pas de refresh token (voir Authentification) ; pas de vérification de signature du JWT
+  côté front (voulu).
+- Accessibilité : rôles/labels ARIA soignés sur la navigation, la recherche et les
+  formulaires, mais **aucun audit** (lecteur d'écran, contrastes) n'a été mené.
