@@ -7,10 +7,14 @@
 Basic CRUD skeleton for the `User` resource, plus password-based
 authentication:
 
-- `POST /users` — create a user (email + password). Public — it is the only
-  way to create the very first account. Rejects with 409 if the email is
-  already active. The plaintext password is hashed with BCrypt before
-  persistence; it never reaches the repository.
+- `POST /users` — create a user (email + password + optional `role`). Public,
+  so people can sign up, **but the role depends on the caller**: without a
+  valid ADMIN token only `TRAVELER` and `TRAVEL_MANAGER` may be requested
+  (asking for `ADMIN` is a 403 and creates nothing; an absent/invalid token is
+  treated as anonymous, not as a 401), an authenticated ADMIN may create any
+  role, and an omitted `role` means `TRAVELER` — never a silent ADMIN. Rejects
+  with 409 if the email is already active. The plaintext password is hashed
+  with BCrypt before persistence; it never reaches the repository.
 - `GET /users/{id}` — get an active user by id (404 if absent or
   soft-deleted). Requires a valid `Authorization: Bearer <token>` header.
 - `GET /users` — list all active users. Requires a valid
@@ -32,12 +36,33 @@ is manual: every controller reuses the exact same mechanism (read the header,
 validate via `AuthService`/`JwtService`) and returns the exact same generic
 401 body on failure. Since docs/lets-travel-architecture-decisions.md §1,
 `POST /users` accepts an explicit `role` (`ADMIN`/`TRAVEL_MANAGER`/`TRAVELER`,
-defaults to `ADMIN` when omitted) and every JWT carries that role as a claim.
+defaults to `TRAVELER` when omitted; `ADMIN` needs an admin caller) and every
+JWT carries that role as a claim.
 `GET /users`, `GET /users/{id}`, `PATCH /users/{id}` and `DELETE /users/{id}`
 require the caller to be an `ADMIN` (`AuthService#requireAdmin`); the report
 endpoints below use a looser `AuthService#requireAnyRole` gate (any of the 3
 known roles, still authenticated). `POST /users` and `POST /login` remain
 public.
+
+## First admin (bootstrap)
+
+Since `POST /users` cannot mint an ADMIN for an anonymous caller, the very
+first admin is created **at startup** by `BootstrapAdminInitializer`, from two
+optional environment variables (Vault `secret/identity/bootstrap-admin` →
+Ansible `app-secrets` → `/opt/travel-plan/.env` → `docker-compose.identity.yml`):
+
+- `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` both unset: nothing happens.
+- Exactly one set, an invalid email, or a password shorter than 12 characters:
+  the service **refuses to start** (fail-fast).
+- Both set: the admin is created **only if no active ADMIN exists** — idempotent
+  across restarts and replicas; password hashed with BCrypt; neither password
+  nor email is ever logged. If every admin is later deleted, the next startup
+  recreates the bootstrap one (a deliberate break-glass path).
+
+Rationale and rejected alternatives: `docs/lets-travel-architecture-decisions.md`
+§1 addendum. There is still **no password-change or reset endpoint** (listed in
+`docs/security-audit.md`), so rotating the bootstrap password means changing the
+Vault value and soft-deleting the admin row so the next startup recreates it.
 
 ## Reports (signalements)
 
@@ -89,9 +114,8 @@ constraint on `email` only applies among active (non-deleted) rows.
 
 - Passwords are hashed with BCrypt (`BCryptPasswordEncoder`).
 - On login, tokens are HS256-signed JWTs with a 15-minute expiration. There is
-  no refresh token, no revocation/blacklist, and no roles/permissions carried
-  in the token — out of scope for this increment.
-- The token subject is the user id; the only custom claim is the email.
+  no refresh token and no revocation/blacklist.
+- The token subject is the user id; custom claims are the email and the `role`.
 
 ## Assumed debt
 
@@ -107,8 +131,12 @@ constraint on `email` only applies among active (non-deleted) rows.
 
 All connection and secret values are externalized via environment variables
 in `application.yml` (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`,
-`DB_PASSWORD`, `JWT_SIGNING_KEY`, `SERVER_PORT`). The service fails fast at
-startup if any of them is absent — no silent default for a secret.
+`DB_PASSWORD`, `JWT_SIGNING_KEY`, `PAYMENT_SERVICE_URL`, `SERVER_PORT`). The service
+fails fast at startup if any of them (except `SERVER_PORT`) is absent — no silent
+default for a secret. (Spring placeholders are bare `${VAR}`: the Compose-style
+`${VAR:?msg}` is *not* fail-fast in Spring — it resolves to the literal `?msg`;
+`ConfigFailFastTest` guards against reintroducing it.) `BOOTSTRAP_ADMIN_EMAIL` /
+`BOOTSTRAP_ADMIN_PASSWORD` are optional (see "First admin").
 `CORS_ALLOWED_ORIGINS` is also externalized but, unlike the values above, it
 is not a secret, so it ships with a sensible default (see CORS section).
 

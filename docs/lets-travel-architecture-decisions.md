@@ -65,6 +65,84 @@ l'introduire maintenant reviendrait à réécrire l'autorisation existante en
 double, pour un gain marginal sur un projet où chaque contrôleur a déjà son
 check explicite et testé.
 
+### Addendum — Bootstrap et création d'ADMIN (Phase 10, durcissement sécurité)
+
+#### Constat de code
+
+Le texte ci-dessus fait choisir le `role` « à la création du compte » par
+`POST /users`. Or cet endpoint est **public** (l'inscription doit l'être) : n'importe
+qui pouvait donc s'auto-créer un compte `ADMIN`, et omettre `role` donnait
+silencieusement `ADMIN` (défaut du code **et** `DEFAULT 'ADMIN'` en base, V3). C'était
+une élévation de privilège complète, ouverte à un appelant anonyme — le front ne
+proposait pas `ADMIN` (§8), mais l'API l'acceptait (§8 le notait comme « non traité »).
+
+#### Décision
+
+- **`POST /users` reste public, mais le rôle demandé dépend de l'appelant.** Sans jeton
+  ADMIN valide (jeton absent, malformé, expiré, mal signé, utilisateur supprimé, ou
+  jeton d'un TRAVELER/TRAVEL_MANAGER) : seuls `TRAVELER` et `TRAVEL_MANAGER` sont
+  permis ; `role: ADMIN` → **403**, rien n'est créé. Un jeton invalide n'est **pas** un
+  401 ici : l'appelant est traité comme anonyme (`AuthService#isAdmin`, non levante).
+  Avec un jeton ADMIN valide : tous les rôles, `ADMIN` compris.
+- **`role` omis = `TRAVELER`** (moindre privilège), y compris pour un admin. Le
+  `DEFAULT 'ADMIN'` est supprimé en base (`V6__drop_role_default.sql`) : un `INSERT`
+  qui oublie le rôle échoue (`NOT NULL`) au lieu de créer un administrateur.
+- **Le tout premier admin est créé au démarrage** par `BootstrapAdminInitializer`
+  (`ApplicationRunner`), depuis deux variables d'environnement **optionnelles**
+  `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD`, acheminées comme tous les
+  secrets du repo : Vault `secret/identity/bootstrap-admin` (clés `email`, `password`)
+  → rôle Ansible `app-secrets` → `/opt/travel-plan/.env` → fragment
+  `docker-compose.identity.yml`. Règles : les deux absentes = fonction inactive ;
+  une seule renseignée, email invalide ou mot de passe < 12 caractères = **le service
+  refuse de démarrer** (fail-fast) ; les deux présentes = l'admin est créé **si et
+  seulement s'il n'existe aucun ADMIN actif** (idempotent au redémarrage et entre
+  replicas ; la course entre deux replicas est arbitrée par l'index unique partiel sur
+  l'email). Mot de passe haché en BCrypt comme tout autre, **jamais loggué** (ni l'email :
+  seul l'id du compte créé l'est).
+- Corollaire assumé : si tous les admins sont supprimés, le démarrage suivant recrée
+  l'admin de bootstrap (chemin de secours volontaire), tant que la clé est dans Vault.
+
+#### Justification
+
+Le trou se ferme à l'endroit où il est exploitable (le contrôle est dans le service,
+comme tout le reste de l'autorisation, §1), sans toucher à l'inscription publique que le
+sujet exige. Le bootstrap par variable d'environnement réutilise exactement le circuit
+des secrets existants (Vault → Ansible → `.env` → Compose) au lieu d'inventer un
+mécanisme (endpoint « setup » à usage unique, script SQL manuel) qu'il faudrait lui-même
+protéger. « Créer seulement si aucun ADMIN actif » rend la chose rejouable sans effet.
+
+#### Ce que je sacrifie
+
+- Un mot de passe d'administrateur **vit dans Vault et dans `/opt/travel-plan/.env`
+  (0600)** tant qu'on ne retire pas la clé ; le placeholder de dev
+  (`changeme_bootstrap_admin`, `vault/defaults/main.yml`) est un compte admin à mot de
+  passe connu sur toute stack de dev — il **doit** être surchargé (ansible-vault) hors
+  poste local.
+- **Aucun endpoint de changement/réinitialisation de mot de passe n'existe** : faire
+  tourner le mot de passe du bootstrap = changer la valeur Vault **et** supprimer (soft)
+  la ligne admin pour que le démarrage suivant la recrée. Manque listé dans
+  `docs/security-audit.md`.
+- Pas de promotion de rôle (`User.role` reste sans setter) : si l'email de bootstrap est
+  déjà pris par un compte non-admin et qu'aucun admin n'existe, le service refuse de
+  démarrer plutôt que d'élever ce compte.
+- L'écran admin « Utilisateurs » du front crée un compte sans rôle, donc `TRAVELER`
+  (avant : `ADMIN`) ; un sélecteur de rôle reste à ajouter côté front.
+- Correctif au passage (même thème « fail-fast ») : dans `application.yml`, la syntaxe
+  Compose `${VAR:?msg}` **n'est pas** fail-fast en Spring (le texte après le premier `:`
+  est une valeur par défaut littérale) ; `PAYMENT_SERVICE_URL` en dépendait et démarrait donc
+  avec la chaîne `?PAYMENT_SERVICE_URL is required` comme URL (les `DB_*` aussi, rattrapés
+  seulement par les `@Value` nus de `DataSourceConfig`). Remplacé par `${VAR}`, garanti par
+  `ConfigFailFastTest` ; les tests d'intégration fournissent désormais `PAYMENT_SERVICE_URL`.
+
+#### Alternative rejetée
+
+(a) Un endpoint public à usage unique « `POST /setup` » (créer l'admin tant que la table
+est vide) : une fenêtre d'exploitation entre le déploiement et le premier appel, plus un
+état global à protéger. (b) Un admin inséré par migration Flyway avec mot de passe fixé
+dans le dépôt : un secret commité, identique sur tous les environnements. (c) Laisser
+`POST /users` créer un ADMIN si la table `users` est vide : même défaut que (a), et
+dépend de l'ordre d'arrivée des requêtes.
+
 ---
 
 ## 2. Domaine `Travel` (Neo4j, travel-service)
@@ -855,6 +933,147 @@ justification orale demandée par l'audit ("ask the students to elaborate") —
 une requête de contenu à 3 champs pondérés est plus simple à défendre et à
 tester avec 2 comptes de démo aux profils différents.
 
+### Correctif — implémentation réelle (relu avant de coder cette section)
+
+Comme pour §3 à §6, lire « Travel » comme `Destination` (§2, correctif). Deux
+écarts avec le texte initial ci-dessus, constatés en relisant le code :
+il n'y a **pas** de relation `HAS_DESTINATION` (la destination *est* le voyage),
+et `Activity` n'a **pas** de champ `activityType` — seulement `name`.
+Les champs réellement comparables d'un voyage sont donc : `country`,
+`Activity.name`, `Accommodation.type` et `price`. Quatre champs, le sujet en
+exige trois. (`name`, `managerId`, dates et capacité existent aussi mais ne
+sont pas des critères de ressemblance : les dates et la capacité servent à
+décider si un voyage est *proposable*, voir ci-dessous.)
+
+#### Décision A — endpoint et éligibilité
+
+`GET /travelers/me/recommendations` (tout rôle connu, pour l'appelant ;
+`?travelerId=` réservé à `ADMIN`, sinon 403 ; `?limit=` 10 par défaut, borné à
+1..50) renvoie, pour chaque voyage proposé : `destinationId`, `name`, `country`,
+`startDate`, `endDate`, `price`, `score` et `reasons` (liste de phrases).
+Un voyage est **proposable** si et seulement si : non soft-deleté ;
+`startDate >= aujourd'hui` (la règle exacte de `subscribe`, pour ne jamais
+suggérer ce que l'API refuserait par un 409) ; le voyageur n'y a pas déjà un
+abonnement *vivant* (`ACTIVE`, ou `PENDING_PAYMENT` encore dans son délai — un
+`CANCELLED` ou un `PENDING_PAYMENT` expiré ne bloque pas, on peut se
+réabonner) ; et il reste une place (`ACTIVE` + `PENDING_PAYMENT` valides <
+`capacity`, compté comme dans `SubscriptionRepository`).
+
+#### Décision B — la formule
+
+```
+score(C) = Σ sur les voyages H de l'historique du voyageur  de  poids(H) × similarité(C, H)
+
+similarité(C, H) =  3 × [même pays]
+                 +  1 × min(nb d'activités en commun, 3)
+                 +  1 × [au moins un type d'hébergement en commun]
+                 +  1 × [prix à ±25 % de celui de H]        (deux voyages gratuits se ressemblent)
+
+poids(H) = par note   5 → +3   4 → +2   3 → +0,5   2 → −1,5   1 → −3     si le voyageur a noté H
+         = +1                                                                sinon, s'il a un abonnement ACTIVE sur H
+```
+
+- **Historique** = les voyages non supprimés où le voyageur a un abonnement
+  `ACTIVE` (participation) ou un `GAVE_FEEDBACK` (note). `PENDING_PAYMENT` et
+  `CANCELLED` n'en font pas partie (pas payé / pas participé, même règle que
+  §5ter.1). Une note **prime** sur la simple participation : un avis vaut mieux
+  qu'une présence.
+- **Signal négatif** : un 1 ou un 2 donne un poids négatif, donc les voyages
+  qui *ressemblent* à celui-là perdent des points (jusqu'à −18 dans l'exemple).
+  Ils restent dans la liste, en bas, avec leur raison, plutôt que d'être
+  filtrés : c'est ce qui rend la rétrogradation visible et démontrable.
+- **Ordre** : score décroissant ; à égalité, le plus d'abonnés `ACTIVE`
+  (popularité), puis `startDate` la plus proche, puis nom, puis id — sortie
+  déterministe.
+- **Cold start** (aucun historique : ni participation `ACTIVE`, ni note) :
+  `score` = nombre d'abonnés `ACTIVE`, mêmes départages, et une `reason` qui le
+  dit (« No history yet … ranked by popularity, then soonest start »). Un
+  voyage qui ne ressemble à rien dans l'historique d'un voyageur non vierge
+  score 0 et l'annonce (« Nothing in common with your past trips … »).
+- **`reasons`** : chaque raison se termine par les points qu'elle apporte,
+  signés (`… which you rated 5 (+9)`, `… which you rated 1 (-3) - pulls this
+  destination down`), donc le score est la somme des raisons. Au-delà de 6, les
+  plus petites sont repliées en une dernière ligne « N smaller factors (±x) ».
+
+Répartition du travail, pour que la formule tienne en un seul endroit
+lisible : le **Cypher** (`RecommendationRepository`) n'établit que des *faits*
+(même pays ? quelles activités/types en commun ? prix proches ?), avec
+`deletedAt IS NULL` sur chaque nœud parcouru (candidat, voyage d'historique,
+`Activity`, `Accommodation`) ; les **poids** sont des constantes nommées de
+`RecommendationScorer`, Java pur sans Spring ni E/S, testable sans base. La
+comparaison de chaînes ignore casse et espaces de bord ; le seul paramètre qui
+traverse la frontière est la tolérance de prix.
+
+#### Exemple chiffré (le même que `RecommendationScorerTest` et `RecommendationIntegrationTest`)
+
+Historique d'Alice : *Lisbon Surf Camp* (Portugal, 500, activités surf/yoga,
+hostel) notée **5** (poids +3) ; *Alps Ski Week* (Suisse, 1200, ski, hotel)
+notée **1** (poids −3). Bob : *Alps Ski Week* notée **5** (+3).
+
+| Voyage à venir | vs Lisbon | vs Alps | Alice | Bob |
+|---|---|---|---|---|
+| Algarve Surf Week (Portugal, 480, surf, hostel) | 3+1+1+1 = 6 → +3×6 | 0 | **+18** | 0 |
+| Porto Wine Trip (Portugal, 700, wine, hotel) | pays seul = 3 → +3×3 | hotel = 1 → −3×1 | **+6** | +3 |
+| Tokyo Food Tour (Japon, 2000, cooking, ryokan) | 0 | 0 | **0** | 0 |
+| Zermatt Ski Weekend (Suisse, 1100, ski, hotel) | 0 | 3+1+1+1 = 6 → −3×6 | **−18** | +18 |
+
+Alice : Algarve (18) > Porto (6) > Tokyo (0) > Zermatt (−18). Bob : Zermatt (18) >
+Porto (3) > Algarve (0) > Tokyo (0). Deux comptes, deux historiques, deux listes
+différentes — et chaque ligne dit pourquoi (raisons de « Porto » pour Alice :
+`same country (Portugal) as "Lisbon Surf Camp", which you rated 5 (+9)` et
+`same accommodation type 'hotel' as "Alps Ski Week", which you rated 1 (-3) - pulls
+this destination down`).
+
+#### Justification
+
+C'est une similarité de contenu pondérée par l'historique, la seule chose que
+l'on peut expliquer à l'oral en une phrase : « on additionne, pour chaque voyage
+que tu as fait, à quel point celui-ci lui ressemble, multiplié par ce que tu en
+as pensé ». Le pays pèse le plus (culture, climat, langue, visa suivent) ; les
+activités, l'hébergement et le budget affinent. Le prix est comparé à ce que le
+voyageur a réellement réservé, pas à une grille arbitraire (« budget / premium »)
+qui aurait des effets de bord aux frontières de tranche. Séparer les faits
+(Cypher) des poids (Java) évite de disperser la formule entre une requête et du
+code, et permet de tester la formule sans conteneur. Neo4j fait ce pour quoi il
+est là : parcourir `TravelerRef → SUBSCRIBED/GAVE_FEEDBACK → Destination →
+HAS_ACTIVITY/HAS_ACCOMMODATION` pour établir ce que deux voyages ont en commun.
+
+#### Ce que je sacrifie
+
+- **Poids choisis à la main**, non appris ni validés sur des données réelles :
+  ils sont défendables, pas optimaux. Ils sont des constantes nommées, donc
+  ajustables en un endroit.
+- **Correspondance de chaînes exacte** (casse et espaces normalisés) : « surf »
+  et « surfing », « Portugal » et « Portuguese » ne se ressemblent pas. Pas de
+  taxonomie ni de synonymes.
+- **Tolérance de prix fixe** (±25 %), avec un effet de seuil (499 est « proche » de
+  500, 626 ne l'est pas) et **sans devise** (`Destination` ne porte pas de devise,
+  §4 : la comparaison suppose une seule devise, `EUR` par défaut).
+- **Pas de décroissance dans le temps ni de normalisation** : un 5 d'il y a cinq
+  ans pèse comme un 5 d'hier ; le score d'un voyageur à long historique est plus
+  grand en valeur absolue (les scores ne se comparent qu'au sein d'une même
+  liste).
+- **Une annulation n'est pas un signal négatif** : elle a mille causes (date,
+  argent, paiement échoué — voir §4) et le sujet ne l'exige pas.
+- **Calcul à la demande, sans cache** : la requête parcourt tous les voyages
+  proposables × l'historique. Correct en démo, pas à 100 000 voyages ; sans
+  pagination ni filtre (pays, prix) côté API.
+- Un manager ou un admin est un voyageur comme un autre : son historique
+  s'utilise de la même façon.
+
+#### Alternative rejetée
+
+- **Tout calculer en Cypher** (poids inclus, en dur ou en paramètres) : rejeté,
+  les phrases de `reasons` ont besoin des faits (quelle activité ? quel voyage ?)
+  et non du score seul, la formule aurait été coupée en deux endroits, et elle
+  n'aurait pu être testée qu'avec un conteneur.
+- **Similarité normalisée** (Jaccard/cosinus sur un vecteur de caractéristiques) :
+  rejetée, plus « mathématique » mais impossible à défendre à l'oral avec des
+  nombres que l'on peut recalculer à la main devant l'auditeur.
+- **Tranches de prix fixes** (gratuit / <100 / 100–500 …) : rejetées, voir
+  Justification.
+- **Filtrage collaboratif** : déjà rejeté ci-dessus, inchangé.
+
 ---
 
 ## 8. Dashboards par rôle (admin-dashboard, Angular)
@@ -914,9 +1133,9 @@ Le texte ci-dessus prévoyait `authGuard` → `roleGuard` et des dossiers `admin
   confort d'affichage, pas une frontière de sécurité (le backend refuse déjà
   les écritures sur le voyage d'autrui, §2).
 - **Inscription publique** : le sélecteur de rôle n'offre que `TRAVELER` et
-  `TRAVEL_MANAGER`. Ce n'est **pas** une protection — `POST /users` accepte
-  aujourd'hui `ADMIN` — mais un choix d'UX ; le durcissement backend est un
-  chantier séparé.
+  `TRAVEL_MANAGER`. Ce n'est **pas** une protection — mais un choix d'UX. Le
+  durcissement backend (`POST /users` refuse `ADMIN` sans jeton admin) est fait :
+  voir l'addendum de §1.
 
 Ce qui reste hors périmètre de ce front (aucun endpoint mergé à ce stade) :
 paiement d'abonnement, feedback, statistiques organisateur, tableaux de bord
@@ -945,6 +1164,12 @@ puisque cette phase introduit du texte libre saisi par les travelers) et
 qu'aucun nouvel endpoint ne réintroduit une requête Cypher/SQL concatenée
 à partir d'un paramètre utilisateur. À faire via le skill `/security-review`
 une fois chaque phase codée, pas en amont.
+
+> **Phase 10 (fait).** Cette vérification a été menée et **a trouvé un vrai trou** —
+> l'auto-création d'un compte `ADMIN` par `POST /users` public — corrigé (addendum de
+> §1). Les preuves (injection SQL/Cypher, XSS, hachage, JWT/secrets, TLS, matrice
+> endpoint × rôle, données personnelles) et la liste des manques connus sont dans
+> `docs/security-audit.md`.
 
 ---
 

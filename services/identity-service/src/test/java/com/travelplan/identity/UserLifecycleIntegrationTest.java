@@ -1,15 +1,17 @@
 package com.travelplan.identity;
 
+import com.travelplan.identity.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -29,11 +31,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - A soft-deleted user does NOT block re-registration (partial unique index).
  * - An ACTIVE user DOES block re-registration (HTTP 409).
  *
- * GET /users/{id} and DELETE /users/{id} now require a valid Bearer token
- * (see UserController) — this test logs in a bystander account once and
- * reuses its token for every authenticated call, since "protected" here
- * means "any authenticated caller", not ownership of the target account
- * (no roles, no ownership check — out of scope, see UserController javadoc).
+ * GET /users/{id} and DELETE /users/{id} require an ADMIN token (see
+ * UserController) — this test obtains a throwaway admin from
+ * {@link TestAccounts} (an admin can no longer be created through the public
+ * POST /users) and reuses its token for every authenticated call.
  *
  * Uses Testcontainers (postgres:17.5-bookworm, same image as production).
  * DynamicPropertySource satisfies the :? fail-fast guards in application.yml.
@@ -66,13 +67,26 @@ class UserLifecycleIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    private TestAccounts accounts;
+
+    @BeforeEach
+    void setUpAccounts() {
+        accounts = new TestAccounts(restTemplate, userRepository, passwordEncoder);
+    }
+
     @Test
     void createDeleteRecreateConflict() {
         String email = "test@example.com";
 
         // Bystander account, used only to obtain a valid Bearer token for the
         // now-protected GET /users/{id} and DELETE /users/{id} calls below.
-        HttpEntity<Void> authEntity = authenticatedEntity();
+        HttpEntity<Void> authEntity = accounts.newAdminEntity();
 
         // Step 1 — POST /users → 201 Created
         Map<String, String> body = Map.of("email", email, "password", "test_password_1");
@@ -109,26 +123,5 @@ class UserLifecycleIntegrationTest {
         ResponseEntity<Map> conflictResponse = restTemplate.postForEntity("/users", body, Map.class);
         assertThat(conflictResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(conflictResponse.getBody()).containsEntry("status", 409);
-    }
-
-    /**
-     * Registers a throwaway bystander account, logs in, and wraps its Bearer
-     * token in an {@link HttpEntity} usable directly with
-     * {@link TestRestTemplate#exchange}. Any authenticated caller — not
-     * necessarily the target account's own token — satisfies the protected
-     * routes exercised in this test (no ownership check, see UserController).
-     */
-    private HttpEntity<Void> authenticatedEntity() {
-        String email = "bystander-" + UUID.randomUUID() + "@example.com";
-        String password = "bystander_password_1";
-        restTemplate.postForEntity("/users", Map.of("email", email, "password", password), Map.class);
-
-        ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
-                "/login", Map.of("email", email, "password", password), Map.class);
-        String token = (String) loginResponse.getBody().get("token");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + token);
-        return new HttpEntity<>(headers);
     }
 }

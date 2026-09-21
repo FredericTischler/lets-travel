@@ -76,6 +76,21 @@ services:
       # Aucune valeur en dur : `:?` fait echouer le parsing Compose des trois
       # fragments a l'identique si la cle manque.
       JWT_SIGNING_KEY: "${JWT_SIGNING_KEY:?set via env/Vault}"
+      # --- Premier compte ADMIN (bootstrap, OPTIONNEL) ----------------------
+      # POST /users refuse de creer un ADMIN a un appelant non-admin : le tout
+      # premier admin est donc cree AU DEMARRAGE par BootstrapAdminInitializer,
+      # uniquement s'il n'existe aucun ADMIN actif (idempotent, second replica
+      # inclus). Source : Vault secret/identity/bootstrap-admin (cles `email`,
+      # `password`) -> role Ansible app-secrets -> /opt/travel-plan/.env.
+      #
+      # `:-` (vide) et PAS `:?` ICI, exception DELIBEREE a la regle fail-fast :
+      # ce n'est pas un secret dont l'absence rend le service dangereux, c'est un
+      # secret dont l'ABSENCE est le cas normal une fois l'admin cree (on peut
+      # retirer la cle de Vault). Le fail-fast est porte par le service lui-meme :
+      # un seul des deux renseigne, un email invalide ou un mot de passe < 12
+      # caracteres => le service refuse de demarrer.
+      BOOTSTRAP_ADMIN_EMAIL: "${BOOTSTRAP_ADMIN_EMAIL:-}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
       # --- Cascade vers payment-service ------------------------------------
       # Utilise par PaymentServiceClient pour DELETE /payments/by-user/{userId}
       # apres un DELETE /users/{id} reussi. Nom de service Docker

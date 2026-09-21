@@ -5,16 +5,18 @@ import com.sun.net.httpserver.HttpServer;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import com.travelplan.identity.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -98,6 +100,19 @@ class UserDeleteCascadeIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
+
+    private TestAccounts accounts;
+
+    @BeforeEach
+    void setUpAccounts() {
+        accounts = new TestAccounts(restTemplate, userRepository, passwordEncoder);
+    }
+
     @Test
     void deletingAUserCascadesToPaymentServiceWithAServiceScopedToken() throws InterruptedException {
         String email = "cascade-target@example.com";
@@ -107,7 +122,7 @@ class UserDeleteCascadeIntegrationTest {
         String userId = (String) createResponse.getBody().get("id");
 
         ResponseEntity<Void> deleteResponse = restTemplate.exchange(
-                "/users/" + userId, HttpMethod.DELETE, authenticatedEntity(), Void.class);
+                "/users/" + userId, HttpMethod.DELETE, accounts.newAdminEntity(), Void.class);
         assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
         HttpExchange received = RECEIVED_REQUESTS.poll(5, TimeUnit.SECONDS);
@@ -122,19 +137,5 @@ class UserDeleteCascadeIntegrationTest {
         SecretKey key = Keys.hmacShaKeyFor(SIGNING_KEY.getBytes(StandardCharsets.UTF_8));
         Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
         assertThat(claims.getSubject()).isEqualTo("service:identity");
-    }
-
-    private HttpEntity<Void> authenticatedEntity() {
-        String email = "cascade-bystander-" + System.nanoTime() + "@example.com";
-        String password = "bystander_password_1";
-        restTemplate.postForEntity("/users", Map.of("email", email, "password", password), Map.class);
-
-        ResponseEntity<Map> loginResponse = restTemplate.postForEntity(
-                "/login", Map.of("email", email, "password", password), Map.class);
-        String token = (String) loginResponse.getBody().get("token");
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + token);
-        return new HttpEntity<>(headers);
     }
 }

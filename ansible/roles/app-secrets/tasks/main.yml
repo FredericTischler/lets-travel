@@ -24,6 +24,7 @@
   loop:
     - "{{ app_secrets_vault_path_postgres_superuser }}"
     - "{{ app_secrets_vault_path_identity_db }}"
+    - "{{ app_secrets_vault_path_identity_bootstrap_admin }}"
     - "{{ app_secrets_vault_path_payment_db }}"
     - "{{ app_secrets_vault_path_payment_stripe }}"
     - "{{ app_secrets_vault_path_payment_paypal }}"
@@ -50,6 +51,17 @@
     app_secrets_identity_db_password: >-
       {{ _vault_app_secrets.results
          | selectattr('item', 'equalto', app_secrets_vault_path_identity_db)
+         | map(attribute='secret.password')
+         | first }}
+    # identity/bootstrap-admin : UN chemin -> DEUX cles (email, password).
+    app_secrets_bootstrap_admin_email: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_identity_bootstrap_admin)
+         | map(attribute='secret.email')
+         | first }}
+    app_secrets_bootstrap_admin_password: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_identity_bootstrap_admin)
          | map(attribute='secret.password')
          | first }}
     app_secrets_payment_db_password: >-

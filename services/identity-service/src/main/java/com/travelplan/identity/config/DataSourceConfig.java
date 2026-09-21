@@ -9,9 +9,9 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Fail-fast guard for required DataSource environment variables.
  *
- * Spring Boot's {@code :?} syntax in application.yml already prevents startup
- * when a variable is absent (throws {@link IllegalArgumentException} with a
- * clear placeholder name). This class provides an explicit, human-readable
+ * An unresolvable {@code ${DB_*}} placeholder in application.yml already
+ * prevents startup when a variable is absent (Spring throws with the
+ * placeholder name). This class provides an explicit, human-readable
  * log entry that names WHICH variable is missing and WHY it is required,
  * making container log triage faster than reading a raw Spring exception.
  *
@@ -23,8 +23,8 @@ import org.springframework.context.annotation.Configuration;
  *   DB_PASSWORD <- password
  *
  * If any variable is absent, Spring Boot fails before this bean is instantiated
- * (the :? in application.yml fires first). This @PostConstruct is a secondary
- * check that runs after binding to confirm resolved values are non-blank.
+ * (the placeholder in application.yml fires first). This @PostConstruct is a
+ * secondary check that runs after binding to confirm resolved values are non-blank.
  */
 @Configuration
 public class DataSourceConfig {
@@ -44,7 +44,7 @@ public class DataSourceConfig {
     private String dbUsername;
 
     // DB_PASSWORD is intentionally NOT logged. Its presence is validated by
-    // the :? placeholder in application.yml; we do not re-inject it here to
+    // the placeholder in application.yml; we do not re-inject it here to
     // avoid any accidental exposure in heap dumps or debug output.
 
     @PostConstruct
