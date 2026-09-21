@@ -1142,6 +1142,101 @@ paiement d'abonnement, feedback, statistiques organisateur, tableaux de bord
 admin, recommandations. Le détail, écran par écran, est dans
 `services/admin-dashboard/README.md`.
 
+> **Mis à jour par l'addendum « Deuxième vague du front » ci-dessous** : tout ce qui
+> précède comme « hors périmètre » est construit (sauf Stripe.js, voir plus bas).
+
+### Addendum — Deuxième vague du front (paiement, avis, suggestions, statistiques, dashboards)
+
+Les endpoints du backend étant mergés (§4, §5ter, §7, §8bis), le front les consomme. Décisions
+prises à l'implémentation, non anticipées par le texte ci-dessus.
+
+#### A. Graphiques : composants maison, pas de bibliothèque
+
+**Décision.** Trois composants HTML/CSS dans `shared/ui/` — `app-bar-chart`, `app-stat-tile`,
+`app-rating` — plutôt qu'une bibliothèque de graphiques. Une seule série, une seule couleur (slot 1 de la
+palette dataviz, jeux clair/sombre en variables CSS dans `styles.css`), colonnes fines, infobulle au survol
+**et au focus clavier**, et un **tableau équivalent** sous chaque graphique.
+
+**Justification.** L'audit demande de justifier chaque paquet ; le seul graphique nécessaire est « revenus
+par mois » (une série, ≤ 24 colonnes). Une bibliothèque (Chart.js, ngx-charts, D3) ajouterait un poids et une
+surface de dépendances sans rapport avec le besoin, et rendrait plus dur l'accessibilité (canvas) et le
+thème clair/sombre (que des variables CSS donnent gratuitement). Le tableau équivalent rend chaque valeur
+lisible sans survol.
+
+**Ce que je sacrifie.** Pas de zoom, de légende multi-séries, de courbes ni d'animations ; chaque nouveau type de
+graphique (barres empilées, lignes) est à écrire. La palette n'a pas été re-validée par le script du skill
+dataviz (introuvable au moment de la vérification) : une seule couleur, celle du slot 1 déjà validé.
+
+**Alternative rejetée.** Chart.js / ngx-charts : rejetées pour la dépendance et l'accessibilité du canvas.
+
+#### B. Paiement : PayPal complet, MANUAL expliqué, Stripe volontairement non branché
+
+**Décision.** Le détail d'un voyage payant demande le moyen de paiement ; la réponse `PENDING_PAYMENT` ouvre un
+panneau (compte à rebours jusqu'à `expiresAt`, annulation, et par moyen : MANUAL = « un administrateur confirme »,
+PAYPAL = redirection + capture, STRIPE = référence et état). PayPal : l'`approveUrl` n'est renvoyée **qu'une fois**
+par l'API, donc mémorisée dans le `localStorage` (jamais un secret) pour reprendre un paiement ; l'id de commande
+est le `token` de cette URL (ou `externalReference` relu par `GET /payments/{id}`) ; la redirection est **refusée si
+l'URL n'est pas en `https` sur `paypal.com`** ; la capture se fait au retour sur `/paypal/return?token=` ou avec un
+bouton « J'ai approuvé le paiement ». **Stripe.js n'est pas intégré** : le panneau le dit et n'affiche ni ne stocke le
+`clientSecret`.
+
+**Justification.** Rien n'est testable contre PayPal/Stripe ici ; intégrer Stripe.js (clé publiable dans
+`environment.ts`, script tiers, Payment Element, URL de retour) n'est pas « simple » et ne pourrait pas être
+vérifié — le mieux est de le dire. Le bouton de capture manuel rend le flux PayPal utilisable même si l'URL de
+retour n'est pas configurée côté PayPal (le backend crée la commande sans URL de retour). Valider l'hôte avant de
+rediriger empêche une réponse falsifiée d'envoyer le payeur ailleurs.
+
+**Ce que je sacrifie.** Choisir Stripe crée une réservation qui **ne peut pas être payée depuis l'interface** et
+finit par expirer (le formulaire propose Stripe en le signalant, PayPal étant préselectionné). Le flux PayPal n'a
+jamais tourné contre PayPal. L'`approveUrl` perdue (autre navigateur, stockage vidé) oblige à annuler et
+recommencer, ou à utiliser le bouton de capture si le payeur a déjà approuvé.
+
+**Alternative rejetée.** Masquer Stripe du choix : rejeté, le backend le supporte et l'audit demande « various
+methods » ; mieux vaut l'afficher avec sa limite. Stocker le `clientSecret` pour reprendre un paiement Stripe :
+rejeté, le backend précise qu'il n'est jamais rendu deux fois.
+
+#### C. Signalements : compte lu par le front, N appels pour le classement
+
+**Décision.** Le nombre de signalements (page organisateur, statistiques du voyageur, classement admin) vient de
+`GET /reports/count/{id}` d'identity-service, appelé par le front — conformément à §8bis. Pour le classement
+complet des organisateurs, un appel par organisateur, en `forkJoin`, chaque échec isolé (`—`).
+
+**Justification.** Cela évite un couplage travel → identity que §8bis a écarté. Le volume (quelques organisateurs)
+rend N appels acceptables, et un échec ne casse pas la page.
+
+**Ce que je sacrifie.** N+1 appels HTTP sur le classement (acceptable en démo, pas avec des milliers
+d'organisateurs : il faudrait un endpoint de comptage en lot dans identity-service).
+
+**Alternative rejetée.** Un compte en lot dans identity-service (rejeté en §8bis, coût de couplage pour une donnée
+d'affichage).
+
+#### D. Mode dégradé : dire « indisponible », jamais afficher 0
+
+**Décision.** Quand `partial: true` (payment-service injoignable), les dashboards et les statistiques voyageur
+affichent un bandeau « Données de revenus indisponibles », des tuiles « Indisponible », pas de graphique et
+`indisponible` dans les tableaux ; le reste est servi. De même une note sans avis est `—`, pas `0`, et un
+compteur de signalements illisible est `—`.
+
+**Justification.** Un revenu affiché à 0 serait une fausse information (« vous n'avez rien gagné ») indiscernable
+d'une vraie absence de revenu ; le fallback de l'audit (« continuité en cas de panne d'un service ») exige un mode
+dégradé honnête.
+
+**Ce que je sacrifie.** Rien de fonctionnel ; un état de plus à tester dans chaque écran concerné.
+
+**Alternative rejetée.** Masquer silencieusement les tuiles de revenus : rejeté, l'absence inexpliquée de données
+est pire qu'un bandeau.
+
+#### E. Divers
+
+- **Sélecteur de rôle** sur l'écran admin « Utilisateurs » (ADMIN / TRAVEL_MANAGER / TRAVELER, `TRAVELER` par
+  défaut, rôle toujours envoyé explicitement) : ferme le point laissé ouvert par l'addendum de §1.
+- **Éligibilité à l'avis** décidée côté front de façon conservatrice (ACTIVE + `endDate < aujourd'hui` + pas
+  d'avis déjà donné) ; le backend reste l'autorité et ses 403/409 sont traduits. L'avis est non modifiable : le
+  formulaire le dit avant l'envoi.
+- **Page d'accueil par rôle inchangée** (`/users`, `/manager/travels`, `/travels`) : les dashboards sont des
+  entrées de navigation ; changer l'atterrissage aurait cassé l'hypothèse de tous les specs e2e existants.
+  **Sacrifié** : l'admin n'atterrit pas sur son tableau de bord.
+
 ---
 
 ## 9. Tests & CI
