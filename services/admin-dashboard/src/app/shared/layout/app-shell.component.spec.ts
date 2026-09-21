@@ -42,7 +42,7 @@ describe('AppShellComponent', () => {
   it('shows only the traveler entries to a TRAVELER, with their email and role badge', () => {
     setup('TRAVELER');
 
-    expect(linkLabels()).toEqual(['Voyages', 'Mes abonnements']);
+    expect(linkLabels()).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
     expect(fixture.nativeElement.textContent).toContain('user@example.com');
     expect(fixture.nativeElement.textContent).toContain('Voyageur');
   });
@@ -50,7 +50,13 @@ describe('AppShellComponent', () => {
   it('adds the manager entry for a TRAVEL_MANAGER', () => {
     setup('TRAVEL_MANAGER');
 
-    expect(linkLabels()).toEqual(['Voyages', 'Mes abonnements', 'Mes voyages organisés']);
+    expect(linkLabels()).toEqual([
+      'Voyages',
+      'Mes abonnements',
+      'Mes statistiques',
+      'Tableau de bord organisateur',
+      'Mes voyages organisés',
+    ]);
     expect(fixture.nativeElement.textContent).toContain('Organisateur');
   });
 
@@ -60,7 +66,11 @@ describe('AppShellComponent', () => {
     expect(linkLabels()).toEqual([
       'Voyages',
       'Mes abonnements',
+      'Mes statistiques',
+      'Tableau de bord organisateur',
       'Mes voyages organisés',
+      'Tableau de bord admin',
+      'Avis',
       'Signalements',
       'Utilisateurs',
       'Paiements',

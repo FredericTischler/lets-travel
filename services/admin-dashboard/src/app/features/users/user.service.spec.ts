@@ -43,14 +43,18 @@ describe('UserService', () => {
     expect(result).toEqual([sampleUser]);
   });
 
-  it('create() performs a POST /users with the given email and password', () => {
+  it('create() performs a POST /users with the given email, password and explicit role', () => {
     let result: User | undefined;
 
-    service.create('admin@example.com', 'secret').subscribe((user) => (result = user));
+    service.create('admin@example.com', 'secret', 'TRAVEL_MANAGER').subscribe((user) => (result = user));
 
     const req = httpMock.expectOne(baseUrl);
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ email: 'admin@example.com', password: 'secret' });
+    expect(req.request.body).toEqual({
+      email: 'admin@example.com',
+      password: 'secret',
+      role: 'TRAVEL_MANAGER',
+    });
     req.flush(sampleUser);
 
     expect(result).toEqual(sampleUser);
