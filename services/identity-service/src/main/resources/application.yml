@@ -57,6 +57,21 @@ bootstrap-admin:
   email: ${BOOTSTRAP_ADMIN_EMAIL:}
   password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
+login-throttle:
+  # Brute-force protection of POST /login (see LoginThrottle). These are tunables,
+  # NOT secrets, so safe defaults are fine (unlike DB_*/JWT_SIGNING_KEY). Counters
+  # are in memory and PER REPLICA. A key (normalised email, or client IP) locked
+  # after N failures inside the sliding window gets 429 + Retry-After.
+  email-max-failures: ${LOGIN_THROTTLE_EMAIL_MAX_FAILURES:5}
+  ip-max-failures: ${LOGIN_THROTTLE_IP_MAX_FAILURES:50}
+  window-seconds: ${LOGIN_THROTTLE_WINDOW_SECONDS:900}
+  max-tracked-keys: ${LOGIN_THROTTLE_MAX_TRACKED_KEYS:10000}
+  # Use the rightmost X-Forwarded-For hop (added by Traefik) as the client IP.
+  # false = TCP peer only (safe when exposed directly). Behind Traefik (the
+  # Compose deployment, where identity publishes no port) it is set to true,
+  # otherwise every user would share the proxy's single IP bucket.
+  trust-forwarded-for: ${LOGIN_THROTTLE_TRUST_FORWARDED_FOR:false}
+
 cors:
   # Browser origins allowed to call this API (see CorsConfig). Not a secret —
   # a sensible default is fine here, unlike JWT_SIGNING_KEY/DB_* above.

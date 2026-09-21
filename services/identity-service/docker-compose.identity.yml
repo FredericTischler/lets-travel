@@ -104,6 +104,15 @@ services:
       # payment-service tourne a N > 1. Un container_name en dur ici aurait casse
       # au premier scale (nom non resoluble car inexistant en N exemplaires).
       PAYMENT_SERVICE_URL: "http://payment-service:8080"
+      # --- Limitation des tentatives de POST /login (LoginThrottle) --------
+      # Reglages, PAS des secrets : les valeurs par defaut de application.yml
+      # (5 echecs/email, 50/IP, fenetre 900 s) s'appliquent. Seul reglage impose
+      # ici : identity ne publie aucun port, tout le trafic passe par Traefik,
+      # qui ajoute l'IP du client en DERNIER element de X-Forwarded-For. Sans ce
+      # drapeau, tous les utilisateurs partageraient l'IP de Traefik et le
+      # compteur par IP les verrouillerait ensemble. Les compteurs sont en
+      # memoire et PAR REPLIQUE (voir docs/security-audit.md, G4).
+      LOGIN_THROTTLE_TRUST_FORWARDED_FOR: "true"
     networks:
       - data-net
       - backend-net
