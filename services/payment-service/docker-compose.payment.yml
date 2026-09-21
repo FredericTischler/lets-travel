@@ -83,6 +83,10 @@ services:
       # provisionne au runtime au lieu d'echouer au parsing Compose.
       STRIPE_API_KEY: "${STRIPE_API_KEY:?set via env/Vault}"
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:?set via env/Vault}"
+      # Secret de signature du webhook Stripe (verification HMAC de POST /webhooks/stripe).
+      # Reste a provisionner en Vault (secret/payment/stripe, cle webhook_secret) : depuis que
+      # application.yml est vraiment fail-fast (audit G3), son absence empeche le demarrage.
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:?set via env/Vault}"
       PAYPAL_CLIENT_ID: "${PAYPAL_CLIENT_ID:?set via env/Vault}"
       PAYPAL_CLIENT_SECRET: "${PAYPAL_CLIENT_SECRET:?set via env/Vault}"
       # --- URL de travel-service (rapport du resultat d'un paiement d'abonnement) ---

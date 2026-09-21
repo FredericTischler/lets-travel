@@ -118,7 +118,7 @@
           - "s_payment_db.data.data.username == 'payment_user'"
           - "s_payment_db.data.data.dbname == 'payment_db'"
           # payment/stripe
-          - "['api_key','secret_key'] | difference(s_stripe.data.data.keys() | list) | length == 0"
+          - "['api_key','secret_key','webhook_secret'] | difference(s_stripe.data.data.keys() | list) | length == 0"
           # payment/paypal
           - "['client_id','client_secret'] | difference(s_paypal.data.data.keys() | list) | length == 0"
           # travel/db : creds Neo4j placeholder, memes NOMS de cles.

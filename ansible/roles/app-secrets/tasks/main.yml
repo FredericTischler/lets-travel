@@ -81,6 +81,11 @@
          | selectattr('item', 'equalto', app_secrets_vault_path_payment_stripe)
          | map(attribute='secret.secret_key')
          | first }}
+    app_secrets_stripe_webhook_secret: >-
+      {{ _vault_app_secrets.results
+         | selectattr('item', 'equalto', app_secrets_vault_path_payment_stripe)
+         | map(attribute='secret.webhook_secret')
+         | first }}
     app_secrets_paypal_client_id: >-
       {{ _vault_app_secrets.results
          | selectattr('item', 'equalto', app_secrets_vault_path_payment_paypal)

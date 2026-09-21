@@ -95,6 +95,7 @@ vault_secrets:
     data:
       api_key: "changeme_stripe_api_key"          # noqa: injecte par Vault en prod
       secret_key: "changeme_stripe_secret_key"    # noqa: injecte par Vault en prod
+      webhook_secret: "whsec_changeme_stripe_webhook"  # noqa: injecte par Vault en prod
   - path: "payment/paypal"
     data:
       client_id: "changeme_paypal_client_id"          # noqa: injecte par Vault en prod

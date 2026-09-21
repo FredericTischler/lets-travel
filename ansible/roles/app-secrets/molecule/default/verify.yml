@@ -103,6 +103,10 @@
           vault_path: payment/stripe
           fact: stripe_secret_key
           env_var: STRIPE_SECRET_KEY
+        - suffix: payment_stripe
+          vault_path: payment/stripe
+          fact: stripe_webhook_secret
+          env_var: STRIPE_WEBHOOK_SECRET
         - suffix: payment_paypal
           vault_path: payment/paypal
           fact: paypal_client_id

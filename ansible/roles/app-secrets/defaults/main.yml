@@ -59,7 +59,7 @@ app_secrets_env_owner: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'U
 # identity/bootstrap-admin -> email, password (premier compte ADMIN, cree au
 #                             demarrage par identity-service s'il n'existe aucun ADMIN)
 # payment/db               -> password    (compte applicatif payment_user)
-# payment/stripe           -> api_key, secret_key      (credentials Stripe)
+# payment/stripe           -> api_key, secret_key, webhook_secret (credentials Stripe)
 # payment/paypal           -> client_id, client_secret (credentials PayPal)
 # travel/db                -> password    (compte admin Neo4j, unique en CE)
 # shared/jwt               -> signing_key (cle HS256 PARTAGEE identity/payment/travel)

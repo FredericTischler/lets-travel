@@ -17,6 +17,7 @@ un fichier `.env` unique, auto-charge par Compose depuis le repertoire du
 | `PAYMENT_DB_PASSWORD` | `secret/payment/db` | `password` |
 | `STRIPE_API_KEY` | `secret/payment/stripe` | `api_key` |
 | `STRIPE_SECRET_KEY` | `secret/payment/stripe` | `secret_key` |
+| `STRIPE_WEBHOOK_SECRET` | `secret/payment/stripe` | `webhook_secret` |
 | `PAYPAL_CLIENT_ID` | `secret/payment/paypal` | `client_id` |
 | `PAYPAL_CLIENT_SECRET` | `secret/payment/paypal` | `client_secret` |
 | `NEO4J_PASSWORD` | `secret/travel/db` | `password` |
