@@ -39,7 +39,7 @@
       <app-stat-tile
         label="Revenus (total)"
         [value]="d.income ? money(d.income.totals) : 'Indisponible'"
-        [hint]="d.income ? d.months + ' derniers mois : ' + money(d.income.windowTotals) : null"
+        [hint]="d.income ? d.income.months + ' derniers mois : ' + money(d.income.windowTotals) : null"
         data-testid="kpi-income"
       />
       <app-stat-tile
@@ -60,7 +60,7 @@
     <app-card [title]="'Revenus par mois (' + (d.income?.referenceCurrency ?? 'EUR') + ')'">
       @if (d.income) {
         <app-bar-chart
-          [title]="'Revenus par mois sur les ' + d.months + ' derniers mois'"
+          [title]="'Revenus par mois sur les ' + d.income.months + ' derniers mois'"
           [data]="chartPoints()"
           [format]="chartFormat()"
           valueLabel="Revenus"
