@@ -119,6 +119,26 @@ public class TokenValidationService {
     }
 
     /**
+     * Reject the request unless the {@code Authorization} header carries a
+     * valid Bearer token with the {@code ADMIN} role. For endpoints reserved
+     * to administrators with no ownership dimension (global feedback list,
+     * manager ranking).
+     *
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, or the token fails signature/expiration
+     *         validation
+     * @throws InsufficientRoleException if the token is otherwise valid but
+     *         does not carry the {@code ADMIN} role
+     */
+    public Claims requireAdmin(String authorizationHeader) {
+        Claims claims = validateAndParse(authorizationHeader);
+        if (!isAdmin(claims)) {
+            throw new InsufficientRoleException("Administrator role required");
+        }
+        return claims;
+    }
+
+    /**
      * Reject unless {@code claims} carries the {@code ADMIN} role (implicit
      * full oversight, docs/lets-travel-architecture-decisions.md §1) or its
      * subject is exactly {@code resourceManagerId} — the ownership half of

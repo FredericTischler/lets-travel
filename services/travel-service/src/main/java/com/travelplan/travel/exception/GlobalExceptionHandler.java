@@ -58,6 +58,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(FeedbackConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleFeedbackConflict(FeedbackConflictException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(FeedbackNotAllowedException.class)
+    public ResponseEntity<Map<String, Object>> handleFeedbackNotAllowed(FeedbackNotAllowedException ex) {
+        return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
     @ExceptionHandler(SearchUnavailableException.class)
     public ResponseEntity<Map<String, Object>> handleSearchUnavailable(SearchUnavailableException ex) {
         return buildResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());

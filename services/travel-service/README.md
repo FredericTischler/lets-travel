@@ -67,6 +67,30 @@ own subscription history.
   (any status), across every active destination. Any of the 3 known roles,
   self only.
 
+Increment 5 (docs/lets-travel-architecture-decisions.md §5, §5ter): feedback
+on participated destinations, its quality-control visibility for
+managers/admins, and manager statistics/ranking built from it.
+
+- `POST /destinations/{id}/feedback` — give feedback as the caller themselves
+  (author = JWT subject, never the body). Body: `rating` (integer 1..5,
+  required), `comment` (optional plain text, non-blank, max 1000 chars). Any of
+  the 3 known roles. 201 with the feedback; 400 on a bad rating/comment
+  (including a non-integer rating such as `4.5`); 403 if the caller has no
+  `ACTIVE` subscription on the destination; 404 if the destination is
+  absent/soft-deleted; 409 if the destination's `endDate` is not strictly in
+  the past yet, or the caller already gave feedback on it.
+- `GET /destinations/{id}/feedback` — every feedback on a destination.
+  Restricted to the destination's own `TRAVEL_MANAGER` or `ADMIN` (403 for a
+  non-owning manager or a traveler); 404 if absent/soft-deleted.
+- `GET /travelers/me/feedback` — the caller's own feedback, across every active
+  destination. Any known role, self only.
+- `GET /feedback` — every feedback on every active destination. `ADMIN` only.
+- `GET /managers/{managerId}/stats` — `activeTravels`, `pastTravels`,
+  `subscribers`, `feedbackCount`, `averageRating`, `pastRatings` (per past
+  destination). Any known role; aggregates only.
+- `GET /managers/ranking` — managers ordered by average rating then number of
+  feedbacks. `ADMIN` only.
+
 `Destination.id` is application-assigned (a plain UUID), not Neo4j's
 internal (opaque) element id.
 
@@ -127,6 +151,50 @@ rewrite the whole relation collection on save).
   first-time subscribes for the same traveler can't create two distinct
   `TravelerRef` nodes.
 
+## Feedback (docs/lets-travel-architecture-decisions.md §5, §5ter)
+
+`(TravelerRef {userId})-[:GAVE_FEEDBACK {id, rating, comment, createdAt}]->(Destination)`.
+Same explicit-Cypher-via-`Neo4jClient` approach as `SUBSCRIBED`
+(`FeedbackRepository`), with `deletedAt IS NULL` filtered on the `Destination`
+side of every read, so a soft-deleted destination's feedback vanishes from
+every list, statistic and the ranking without the relation being touched.
+
+- **Participation rule**: only a traveler with an `ACTIVE` subscription on the
+  destination, whose `endDate` is strictly before today, may give feedback. A
+  cancelled, force-unsubscribed or `PENDING_PAYMENT` subscription does not
+  count (403); an `ACTIVE` one on a trip that has not ended is a 409.
+- **One feedback per traveler per destination**, enforced by a single
+  `MERGE ... ON CREATE SET` (409 on a second one). Neo4j Community cannot
+  enforce relationship uniqueness natively, so under truly concurrent requests
+  a duplicate is narrowed, not impossible — the same documented gap as
+  `SUBSCRIBED`.
+- **Immutable**: no edit, no delete endpoint (an admin cannot remove an
+  abusive comment either). Deliberate for this phase, see the ADR.
+- **Comment = plain text, never HTML**: stored and returned verbatim (only
+  surrounding whitespace is trimmed) — the backend neither strips nor
+  HTML-encodes it. XSS protection is the renderer's responsibility (Angular
+  escapes interpolation by default; no `[innerHTML]` on feedback). Cypher is
+  parameterised.
+- The manager/admin list exposes the author's user id (a UUID; names and
+  e-mails stay in identity-service).
+
+## Manager statistics (docs/lets-travel-architecture-decisions.md §5ter.5)
+
+Read-only aggregations in `ManagerStatsRepository`/`ManagerStatsService`.
+Definitions: `activeTravels` = the manager's non-soft-deleted destinations
+(dates ignored), `pastTravels` = those already ended, `subscribers` = distinct
+travelers with an `ACTIVE` subscription on them, `averageRating` = mean over
+all feedbacks (not a mean of per-destination means), rounded to 2 decimals and
+`null` when there is no feedback. A manager id owning no active destination
+yields zeros with a 200, not a 404 (manager identity lives in identity-service).
+
+Income (payment-service) and report counts (identity-service) are **not**
+included and travel-service does not call those services: the dashboard (or a
+later phase) combines the three sources into the final performance score. The
+ranking is therefore **provisional**: average rating descending, then number of
+feedbacks descending, managers without feedback last. It has no smoothing —
+one 5-star review outranks a hundred 4.9-star ones.
+
 ## Soft-delete
 
 Nodes are never physically removed. "Delete" sets `deletedAt` on the node to
@@ -179,6 +247,15 @@ startup if any required variable is absent.
   (docs/lets-travel-architecture-decisions.md §4) — a `SUBSCRIBED` relation
   goes straight to `ACTIVE`, there is no `PENDING_PAYMENT` intermediate
   status in this phase.
-- No feedback, search, or recommendations yet
-  (docs/lets-travel-architecture-decisions.md §5, §6, §7) — `price` on
-  `Destination` still exists only to leave a clean seam for those.
+- No recommendations yet (docs/lets-travel-architecture-decisions.md §7) —
+  `SUBSCRIBED` and `GAVE_FEEDBACK` are now both in the graph, ready to be
+  consumed by them. (The Elasticsearch search/autocomplete of §6 exists in the
+  code but is not described in this README yet — outside the feedback
+  increment.)
+- Feedback is immutable: no edit, no delete, no admin moderation of an abusive
+  comment (see "Feedback" above). No pagination on the feedback lists.
+- Manager statistics are partial by design: no income (payment-service) and no
+  report count (identity-service), and the manager ranking is a provisional
+  score (rating, then number of feedbacks) — see "Manager statistics" above.
+  Assembling the final performance score is left to the dashboard / a later
+  phase; travel-service makes no inter-service call for it.
