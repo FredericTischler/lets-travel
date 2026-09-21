@@ -111,6 +111,10 @@ managers/admins, and manager statistics/ranking built from it.
   destination). Any known role; aggregates only.
 - `GET /managers/ranking` — managers ordered by average rating then number of
   feedbacks. `ADMIN` only.
+- `GET /travelers/me/recommendations` — personalised suggestions with a score
+  and reasons, from the caller's participation and feedback history (see
+  "Recommendations" below). Any known role, self only (`?travelerId=` is
+  `ADMIN`-only).
 
 `Destination.id` is application-assigned (a plain UUID), not Neo4j's
 internal (opaque) element id.
@@ -220,6 +224,41 @@ later phase) combines the three sources into the final performance score. The
 ranking is therefore **provisional**: average rating descending, then number of
 feedbacks descending, managers without feedback last. It has no smoothing —
 one 5-star review outranks a hundred 4.9-star ones.
+
+## Recommendations (docs/lets-travel-architecture-decisions.md §7)
+
+`GET /travelers/me/recommendations` — the destinations the caller could still
+join, best first, each with a `score` and human-readable `reasons`. Any known
+role, for the caller; `?travelerId=` is `ADMIN`-only (403 otherwise, 400 if not
+a UUID); `?limit=` defaults to 10 and is clamped to 1..50.
+
+- **Eligible**: not soft-deleted, `startDate >= today` (same rule as
+  subscribing), not already live for the caller (`ACTIVE` or an unexpired
+  `PENDING_PAYMENT`; a `CANCELLED`/expired one does not block), not full.
+- **History** = destinations the caller holds an `ACTIVE` subscription on
+  (participation) or rated (`GAVE_FEEDBACK`). `PENDING_PAYMENT`/`CANCELLED`
+  alone do not count; soft-deleted destinations are ignored.
+- **Score** = sum over the history of `weight × similarity`. Similarity uses
+  four fields of the travel: country (+3), activities in common (+1 each, max
+  3), accommodation type in common (+1), price within ±25 % (+1). Weight is
+  set by the rating (5 -> +3, 4 -> +2, 3 -> +0.5, 2 -> -1.5, 1 -> -3), or +1 for
+  participation without a rating: a 5 pulls similar trips up, a 1-2 pushes
+  them down (they stay listed, lower, with their reason). Every reason ends
+  with its signed points, so the score is the sum of the reasons (more than 6
+  are folded into a last "smaller factors" line).
+- **Ties** are broken by most `ACTIVE` subscribers, then soonest start, then
+  name. **Cold start** (no history): `score` = number of `ACTIVE`
+  subscribers, same ties, and the reason says so.
+- The Cypher (`RecommendationRepository`) only establishes facts about a
+  (candidate, history) pair; all weights are named constants in
+  `RecommendationScorer` (plain Java, unit-tested without a database). The
+  worked example and the trade-offs are in the ADR §7 addendum.
+
+Limits (deliberate, see the ADR): hand-picked weights; exact (case-insensitive)
+string matching for country/activity/accommodation type, no synonyms; a fixed
+price tolerance and no currency; no time decay; cancellations are not a
+negative signal; computed on demand over the whole catalogue, no cache and no
+pagination or filters.
 
 ## Paying for a subscription (docs/lets-travel-architecture-decisions.md §4 addendum, Phase 4)
 
@@ -331,10 +370,10 @@ secrets/URLs, so they do have defaults.
 - The dashboard-facing "pay now" screens are not part of this service; the
   subscribe response gives the traveler what they need (payment id, Stripe
   `clientSecret` / PayPal `approveUrl`, `expiresAt`).
-- No recommendations yet (docs/lets-travel-architecture-decisions.md §7) —
-  `SUBSCRIBED` and `GAVE_FEEDBACK` are now both in the graph, ready to be
-  consumed by them. (The Elasticsearch search/autocomplete of §6 exists in the
-  code but is not described in this README yet.)
+- Recommendations exist (see "Recommendations") but are a hand-weighted
+  content-based score, not a learned model or collaborative filtering. (The
+  Elasticsearch search/autocomplete of §6 exists in the code but is not
+  described in this README yet.)
 - Feedback is immutable: no edit, no delete, no admin moderation of an abusive
   comment (see "Feedback" above). No pagination on the feedback lists.
 - Manager statistics are partial by design: no income (payment-service) and no

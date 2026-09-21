@@ -855,6 +855,147 @@ justification orale demandée par l'audit ("ask the students to elaborate") —
 une requête de contenu à 3 champs pondérés est plus simple à défendre et à
 tester avec 2 comptes de démo aux profils différents.
 
+### Correctif — implémentation réelle (relu avant de coder cette section)
+
+Comme pour §3 à §6, lire « Travel » comme `Destination` (§2, correctif). Deux
+écarts avec le texte initial ci-dessus, constatés en relisant le code :
+il n'y a **pas** de relation `HAS_DESTINATION` (la destination *est* le voyage),
+et `Activity` n'a **pas** de champ `activityType` — seulement `name`.
+Les champs réellement comparables d'un voyage sont donc : `country`,
+`Activity.name`, `Accommodation.type` et `price`. Quatre champs, le sujet en
+exige trois. (`name`, `managerId`, dates et capacité existent aussi mais ne
+sont pas des critères de ressemblance : les dates et la capacité servent à
+décider si un voyage est *proposable*, voir ci-dessous.)
+
+#### Décision A — endpoint et éligibilité
+
+`GET /travelers/me/recommendations` (tout rôle connu, pour l'appelant ;
+`?travelerId=` réservé à `ADMIN`, sinon 403 ; `?limit=` 10 par défaut, borné à
+1..50) renvoie, pour chaque voyage proposé : `destinationId`, `name`, `country`,
+`startDate`, `endDate`, `price`, `score` et `reasons` (liste de phrases).
+Un voyage est **proposable** si et seulement si : non soft-deleté ;
+`startDate >= aujourd'hui` (la règle exacte de `subscribe`, pour ne jamais
+suggérer ce que l'API refuserait par un 409) ; le voyageur n'y a pas déjà un
+abonnement *vivant* (`ACTIVE`, ou `PENDING_PAYMENT` encore dans son délai — un
+`CANCELLED` ou un `PENDING_PAYMENT` expiré ne bloque pas, on peut se
+réabonner) ; et il reste une place (`ACTIVE` + `PENDING_PAYMENT` valides <
+`capacity`, compté comme dans `SubscriptionRepository`).
+
+#### Décision B — la formule
+
+```
+score(C) = Σ sur les voyages H de l'historique du voyageur  de  poids(H) × similarité(C, H)
+
+similarité(C, H) =  3 × [même pays]
+                 +  1 × min(nb d'activités en commun, 3)
+                 +  1 × [au moins un type d'hébergement en commun]
+                 +  1 × [prix à ±25 % de celui de H]        (deux voyages gratuits se ressemblent)
+
+poids(H) = par note   5 → +3   4 → +2   3 → +0,5   2 → −1,5   1 → −3     si le voyageur a noté H
+         = +1                                                                sinon, s'il a un abonnement ACTIVE sur H
+```
+
+- **Historique** = les voyages non supprimés où le voyageur a un abonnement
+  `ACTIVE` (participation) ou un `GAVE_FEEDBACK` (note). `PENDING_PAYMENT` et
+  `CANCELLED` n'en font pas partie (pas payé / pas participé, même règle que
+  §5ter.1). Une note **prime** sur la simple participation : un avis vaut mieux
+  qu'une présence.
+- **Signal négatif** : un 1 ou un 2 donne un poids négatif, donc les voyages
+  qui *ressemblent* à celui-là perdent des points (jusqu'à −18 dans l'exemple).
+  Ils restent dans la liste, en bas, avec leur raison, plutôt que d'être
+  filtrés : c'est ce qui rend la rétrogradation visible et démontrable.
+- **Ordre** : score décroissant ; à égalité, le plus d'abonnés `ACTIVE`
+  (popularité), puis `startDate` la plus proche, puis nom, puis id — sortie
+  déterministe.
+- **Cold start** (aucun historique : ni participation `ACTIVE`, ni note) :
+  `score` = nombre d'abonnés `ACTIVE`, mêmes départages, et une `reason` qui le
+  dit (« No history yet … ranked by popularity, then soonest start »). Un
+  voyage qui ne ressemble à rien dans l'historique d'un voyageur non vierge
+  score 0 et l'annonce (« Nothing in common with your past trips … »).
+- **`reasons`** : chaque raison se termine par les points qu'elle apporte,
+  signés (`… which you rated 5 (+9)`, `… which you rated 1 (-3) - pulls this
+  destination down`), donc le score est la somme des raisons. Au-delà de 6, les
+  plus petites sont repliées en une dernière ligne « N smaller factors (±x) ».
+
+Répartition du travail, pour que la formule tienne en un seul endroit
+lisible : le **Cypher** (`RecommendationRepository`) n'établit que des *faits*
+(même pays ? quelles activités/types en commun ? prix proches ?), avec
+`deletedAt IS NULL` sur chaque nœud parcouru (candidat, voyage d'historique,
+`Activity`, `Accommodation`) ; les **poids** sont des constantes nommées de
+`RecommendationScorer`, Java pur sans Spring ni E/S, testable sans base. La
+comparaison de chaînes ignore casse et espaces de bord ; le seul paramètre qui
+traverse la frontière est la tolérance de prix.
+
+#### Exemple chiffré (le même que `RecommendationScorerTest` et `RecommendationIntegrationTest`)
+
+Historique d'Alice : *Lisbon Surf Camp* (Portugal, 500, activités surf/yoga,
+hostel) notée **5** (poids +3) ; *Alps Ski Week* (Suisse, 1200, ski, hotel)
+notée **1** (poids −3). Bob : *Alps Ski Week* notée **5** (+3).
+
+| Voyage à venir | vs Lisbon | vs Alps | Alice | Bob |
+|---|---|---|---|---|
+| Algarve Surf Week (Portugal, 480, surf, hostel) | 3+1+1+1 = 6 → +3×6 | 0 | **+18** | 0 |
+| Porto Wine Trip (Portugal, 700, wine, hotel) | pays seul = 3 → +3×3 | hotel = 1 → −3×1 | **+6** | +3 |
+| Tokyo Food Tour (Japon, 2000, cooking, ryokan) | 0 | 0 | **0** | 0 |
+| Zermatt Ski Weekend (Suisse, 1100, ski, hotel) | 0 | 3+1+1+1 = 6 → −3×6 | **−18** | +18 |
+
+Alice : Algarve (18) > Porto (6) > Tokyo (0) > Zermatt (−18). Bob : Zermatt (18) >
+Porto (3) > Algarve (0) > Tokyo (0). Deux comptes, deux historiques, deux listes
+différentes — et chaque ligne dit pourquoi (raisons de « Porto » pour Alice :
+`same country (Portugal) as "Lisbon Surf Camp", which you rated 5 (+9)` et
+`same accommodation type 'hotel' as "Alps Ski Week", which you rated 1 (-3) - pulls
+this destination down`).
+
+#### Justification
+
+C'est une similarité de contenu pondérée par l'historique, la seule chose que
+l'on peut expliquer à l'oral en une phrase : « on additionne, pour chaque voyage
+que tu as fait, à quel point celui-ci lui ressemble, multiplié par ce que tu en
+as pensé ». Le pays pèse le plus (culture, climat, langue, visa suivent) ; les
+activités, l'hébergement et le budget affinent. Le prix est comparé à ce que le
+voyageur a réellement réservé, pas à une grille arbitraire (« budget / premium »)
+qui aurait des effets de bord aux frontières de tranche. Séparer les faits
+(Cypher) des poids (Java) évite de disperser la formule entre une requête et du
+code, et permet de tester la formule sans conteneur. Neo4j fait ce pour quoi il
+est là : parcourir `TravelerRef → SUBSCRIBED/GAVE_FEEDBACK → Destination →
+HAS_ACTIVITY/HAS_ACCOMMODATION` pour établir ce que deux voyages ont en commun.
+
+#### Ce que je sacrifie
+
+- **Poids choisis à la main**, non appris ni validés sur des données réelles :
+  ils sont défendables, pas optimaux. Ils sont des constantes nommées, donc
+  ajustables en un endroit.
+- **Correspondance de chaînes exacte** (casse et espaces normalisés) : « surf »
+  et « surfing », « Portugal » et « Portuguese » ne se ressemblent pas. Pas de
+  taxonomie ni de synonymes.
+- **Tolérance de prix fixe** (±25 %), avec un effet de seuil (499 est « proche » de
+  500, 626 ne l'est pas) et **sans devise** (`Destination` ne porte pas de devise,
+  §4 : la comparaison suppose une seule devise, `EUR` par défaut).
+- **Pas de décroissance dans le temps ni de normalisation** : un 5 d'il y a cinq
+  ans pèse comme un 5 d'hier ; le score d'un voyageur à long historique est plus
+  grand en valeur absolue (les scores ne se comparent qu'au sein d'une même
+  liste).
+- **Une annulation n'est pas un signal négatif** : elle a mille causes (date,
+  argent, paiement échoué — voir §4) et le sujet ne l'exige pas.
+- **Calcul à la demande, sans cache** : la requête parcourt tous les voyages
+  proposables × l'historique. Correct en démo, pas à 100 000 voyages ; sans
+  pagination ni filtre (pays, prix) côté API.
+- Un manager ou un admin est un voyageur comme un autre : son historique
+  s'utilise de la même façon.
+
+#### Alternative rejetée
+
+- **Tout calculer en Cypher** (poids inclus, en dur ou en paramètres) : rejeté,
+  les phrases de `reasons` ont besoin des faits (quelle activité ? quel voyage ?)
+  et non du score seul, la formule aurait été coupée en deux endroits, et elle
+  n'aurait pu être testée qu'avec un conteneur.
+- **Similarité normalisée** (Jaccard/cosinus sur un vecteur de caractéristiques) :
+  rejetée, plus « mathématique » mais impossible à défendre à l'oral avec des
+  nombres que l'on peut recalculer à la main devant l'auditeur.
+- **Tranches de prix fixes** (gratuit / <100 / 100–500 …) : rejetées, voir
+  Justification.
+- **Filtrage collaboratif** : déjà rejeté ci-dessus, inchangé.
+
 ---
 
 ## 8. Dashboards par rôle (admin-dashboard, Angular)
