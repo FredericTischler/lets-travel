@@ -175,12 +175,9 @@ class FeedbackIntegrationTest {
     void feedbackOnADestinationThatHasNotEndedIsRejected() {
         UUID managerId = UUID.randomUUID();
         UUID destinationId = createDestination(managerId, LocalDate.now().plusDays(10), LocalDate.now().plusDays(15));
-        UUID travelerId = UUID.randomUUID();
-        // Subscribe through the real API: an active subscription on a future trip is not enough.
-        ResponseEntity<Map> subscribed = restTemplate.exchange(
-                "/destinations/" + destinationId + "/subscriptions", HttpMethod.POST,
-                authorized(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", travelerId)), Map.class);
-        assertThat(subscribed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        // Seeded ACTIVE directly: this destination is priced, so the real subscribe API would now
+        // require a payment provider (Phase 4). An active subscription on a future trip is not enough.
+        UUID travelerId = participant(destinationId, "ACTIVE");
 
         ResponseEntity<Map> response = postFeedback(destinationId, travelerId, feedbackBody(5, "too early"));
 
