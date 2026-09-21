@@ -25,7 +25,17 @@ authentication:
   no token can exist before a successful login. Returns 200 with the user's
   id, email, and a signed JWT on success; 401 with a generic message on any
   failure (unknown email and wrong password are indistinguishable to the
-  caller, including in response timing).
+  caller, including in response timing). Brute-force protection
+  (`LoginThrottle`): after 5 failures for a normalised email or 50 for a client
+  IP within 900 s, further attempts get 429 with `Retry-After`, before any
+  lookup; a success resets the email counter. Tunables (not secrets, so they
+  have defaults): `LOGIN_THROTTLE_EMAIL_MAX_FAILURES`, `_IP_MAX_FAILURES`,
+  `_WINDOW_SECONDS`, `_MAX_TRACKED_KEYS`; `LOGIN_THROTTLE_TRUST_FORWARDED_FOR`
+  (default `false`, set to `true` in the Compose fragment: behind Traefik the
+  client IP is the last `X-Forwarded-For` hop). **Limits**: counters are in
+  memory and per replica (N replicas = up to N times the budget, reset on
+  restart), a third party can lock a known email for one window, and a flood of
+  random emails can evict entries (ADR §10, addendum G4).
 - `GET /me` — resolve the active user identified by the
   `Authorization: Bearer <token>` header. Returns 401 (same generic message)
   if the header is absent/malformed, the token is expired/invalid, or its

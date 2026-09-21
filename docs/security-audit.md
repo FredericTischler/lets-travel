@@ -10,10 +10,12 @@
 > Décision de conception associée : `docs/lets-travel-architecture-decisions.md`, §1
 > (addendum « Bootstrap et création d'ADMIN ») et §10.
 
-**Résultat en une phrase.** La vérification a trouvé **un vrai trou**, corrigé ici
-(n'importe qui pouvait s'auto-créer un compte `ADMIN` par `POST /users`), et **trois
-manques d'autorisation/robustesse hors d'identity-service** (§9, G1-G3) laissés à leurs
-propriétaires ; le reste des exigences est tenu, avec les réserves de §9.
+**Résultat en une phrase.** La vérification a trouvé **un vrai trou**, corrigé
+(n'importe qui pouvait s'auto-créer un compte `ADMIN` par `POST /users`), puis **trois
+manques hors d'identity-service** (G1 transports, G2 capture PayPal, G3 placeholders
+non fail-fast), le détail de `/actuator/health` (G6) et l'absence de limitation de
+tentatives sur `/login` (G4), **tous corrigés dans le second passage de durcissement**
+(preuves ci-dessous) ; restent les manques listés en §9, dits tels quels.
 
 ## 0. Le trou trouvé et corrigé : élévation de privilège par `POST /users`
 
@@ -108,7 +110,23 @@ existait, l'exfiltrerait (G8).
 
 **Non couvert.** Longueur minimale 8 seulement, aucune règle de complexité, pas de liste de
 mots de passe compromis ; **aucun endpoint de changement/réinitialisation de mot de
-passe** (G5) ; **aucune limitation de tentatives** sur `/login` (G4).
+passe** (G5).
+
+**Limitation des tentatives sur `/login` (G4, corrigé).** `service/LoginThrottle` : deux
+compteurs d'échecs en fenêtre glissante (email normalisé, IP cliente), en mémoire et bornés ;
+au seuil (défauts 5 / email, 50 / IP, 900 s ; env `LOGIN_THROTTLE_*`) → **429 + `Retry-After`**
+avant toute lecture en base ou BCrypt ; un succès remet à zéro l'email ; un email inconnu est
+compté et verrouillé comme un email connu (le `dummyHash` reste en place). Preuves :
+`LoginThrottleIntegrationTest` (N échecs puis 429 même avec le bon mot de passe, casse
+ignorée ; autre email inaffecté ; succès qui remet à zéro ; email inconnu traité à
+l'identique — mêmes 401 puis même 429/corps/`Retry-After` ; IP verrouillée par credential
+stuffing sur des emails distincts), `LoginThrottleTest` (fenêtre glissante avec horloge
+contrôlée, normalisation, borne mémoire, IP : seul le dernier `X-Forwarded-For` est lu, et
+seulement si `LOGIN_THROTTLE_TRUST_FORWARDED_FOR=true`). **Limites assumées** (ADR §10,
+addendum G4) : état **par réplique** (N répliques = jusqu'à N fois le budget, oublié au
+redémarrage), verrouillage volontaire d'un compte par un tiers possible (≤ 1 fenêtre),
+entrées évinçables par un flot d'emails aléatoires, pas de CAPTCHA ; un limiteur de débit
+au bord (Traefik) reste un complément utile, non fait.
 
 ## 4. JWT et gestion des secrets
 
@@ -140,14 +158,22 @@ voulue, `CLAUDE.md`).
   est irrésolvable. Cette preuve a révélé un défaut réel, corrigé : en Spring,
   `${VAR:?msg}` (syntaxe Compose) n'est **pas** fail-fast, le texte après `:` est une valeur
   par défaut littérale ; identity l'employait pour `PAYMENT_SERVICE_URL` (et `DB_*`).
-  **payment-service a encore la même syntaxe pour `DB_*`** (G3).
+  payment-service avait la même syntaxe pour `DB_*` et travel-service pour `NEO4J_*` :
+  **corrigé (G3)**, chaque service a désormais son `ConfigFailFastTest` (payment : les 10
+  secrets/URLs + chaque `DB_*` isolément ; travel : `NEO4J_*` isolément, `JWT_SIGNING_KEY`,
+  `PAYMENT_SERVICE_URL`). Les suites de tests fournissent toutes les variables requises
+  (`@DynamicPropertySource` + `src/test/resources/application.properties`).
 - Journaux : JSON structuré, `requestId`, méthode + chemin + statut (`RequestIdFilter`) ;
   aucun mot de passe, jeton, en-tête `Authorization` ni corps de requête n'est journalisé
   (lecture des `log.*` des trois services) ; l'URL JDBC est loggée **sans** mot de passe
   (`DataSourceConfig`).
 - `GET /actuator/health` exposait des détails (base, disque) à un anonyme : `show-details`
-  passé à `never` (identity ; test `theHealthEndpointStaysUpButExposesNoInternalDetails`).
-  **payment et travel exposent encore `show-details: always`** (G6).
+  passé à `never` (identity ; test `theHealthEndpointStaysUpButExposesNoInternalDetails`),
+  puis **aussi dans payment et travel (G6, corrigé)** : `PaymentServiceApplicationTests#actuatorHealthReportsUp`
+  et `TravelServiceApplicationTests#actuatorHealthReportsUpWithoutExposingInternalDetailsToAnAnonymousCaller`
+  (statut `UP`, aucun `components`), `ConfigFailFastTest#healthDetailsAreNeverShownToAnonymousCallers`.
+  Les sondes ne lisent que le code HTTP (`curl -fsS` dans `docker-compose.payment.yml`/
+  `docker-compose.travel.yml`, `httpGet` dans `k8s/3*.yaml`) : elles ne sont pas affectées.
 
 **Non couvert.** La clé HS256 est **partagée** par les trois services (compromission d'un
 service = falsification de jetons pour tous) ; pas de rotation, pas de révocation, pas de
@@ -210,7 +236,7 @@ lecture du code).
 | `DELETE /payments/{id}` | ✘ | own | own | ✔ | — (`PaymentService#delete`, même filtre propriétaire) |
 | `POST /payments/reconcile-subscriptions` | ✘ | ✘ | ✘ | ✔ | `SubscriptionPaymentIntegrationTest#onlyAnAdminMayTriggerReconciliation` |
 | `DELETE /payments/by-user/{userId}` | ✘ | ✘ | ✘ | ✔ ou jeton `service:identity` | `PaymentUserOwnershipIntegrationTest#deleteByUserAcceptsServiceToken` |
-| `POST /payments/paypal/{orderId}/capture` | ✘ | ✔ **n'importe quel order** | ✔ | ✔ | — **manque : pas de contrôle de propriétaire (G2)** |
+| `POST /payments/paypal/{orderId}/capture` | ✘ | own (sinon 404, comme un order inconnu) | own | ✔ | `PayPalCaptureOwnershipIntegrationTest` (owner OK, autre user/manager 404 sans appel PayPal, admin OK, inconnu 404), `PayPalPaymentServiceTest#captureOrder_masksAnotherUsersPaymentAsNotFound_andNeverCallsPayPal` |
 | `POST /webhooks/stripe` | pas de JWT : **signature HMAC Stripe** vérifiée | | | | `StripeWebhookIntegrationTest#rejectsInvalidSignature` |
 
 ### travel-service (`…/travel-service/src/test/java/com/travelplan/travel/`)
@@ -220,7 +246,7 @@ lecture du code).
 | `GET /destinations`, `/{id}`, `/search`, `/autocomplete`, `/{id}/transports` | ✘ | ✔ | ✔ | ✔ | `TravelCatalogueRbacIntegrationTest#travelerCanListDestinations` |
 | `POST /destinations` | ✘ | ✘ | own (`managerId` = `sub`) | ✔ | `…#travelerCannotCreateADestination`, `…#travelManagerCannotCreateADestinationInSomeoneElsesName` |
 | `PUT/DELETE /destinations/{id}` | ✘ | ✘ | own | ✔ | `TravelOwnershipIntegrationTest` (`anotherManagerCannotUpdate…/Delete…`) |
-| `POST /destinations/{fromId}/transports` | ✘ | ✘ | ✔ **sur n'importe quelle destination** | ✔ | — **manque : pas de contrôle de propriétaire (G1)** |
+| `POST /destinations/{fromId}/transports` | ✘ | ✘ | own (origine ; la cible n'a pas à l'être) | ✔ | `TransportOwnershipIntegrationTest` (propriétaire OK, autre manager 403 — même avec cible inconnue —, admin OK, traveler 403, origine/cible inconnue 404) |
 | `POST /destinations/{id}/subscriptions`, `DELETE …/subscriptions` (soi-même), `GET /travelers/me/subscriptions` | ✘ | own | own | own | `SubscriptionIntegrationTest` |
 | `GET /destinations/{id}/subscriptions`, `DELETE …/subscriptions/{travelerId}` | ✘ | ✘ | own destination | ✔ | `SubscriptionIntegrationTest#anotherManagerCannotListSubscribersForSomeoneElsesDestination`, `…#anotherManagerCannotForceUnsubscribe…` |
 | `POST /destinations/{id}/feedback`, `GET /travelers/me/feedback` | ✘ | own (a participé) | own | own | `FeedbackIntegrationTest` |
@@ -269,8 +295,11 @@ elles ne sont protégées que par leur jeton de service / signature, pas par le 
 ## 8. Comment rejouer les preuves
 
 ```bash
-# identity-service : 68 tests dont toutes les preuves ci-dessus (Testcontainers PostgreSQL)
+# identity-service : 85 tests dont toutes les preuves ci-dessus (Testcontainers PostgreSQL)
 cd services/identity-service && ./mvnw test
+# payment-service : 64 tests (3 ignorés : sandbox PayPal/Stripe réel) ; travel-service : 155 tests (Neo4j)
+cd services/payment-service && ./mvnw test
+cd services/travel-service && ./mvnw test
 # Recherches (aucune concaténation de requête, aucun contournement du sanitizer Angular)
 grep -rnE 'nativeQuery|createNativeQuery' services/*/src/main
 grep -rnE 'innerHTML|bypassSecurityTrust' services/admin-dashboard/src
@@ -281,17 +310,18 @@ curl -vk https://identity.localhost/actuator/health
 ## 9. Manques connus
 
 Sévérité : **H** = à corriger avant toute exposition réelle ; **M** = à planifier ;
-**B** = dette assumée. « Propriétaire » = qui doit agir ; les items hors identity-service
-n'ont **pas** été modifiés par cette phase (périmètre : identity-service uniquement).
+**B** = dette assumée. « Propriétaire » = qui doit agir. **G1-G4 et G6 sont corrigés** (second
+passage de durcissement, preuves dans les sections citées) : leur ligne reste pour la
+traçabilité, marquée ✔. Tout le reste est **ouvert**.
 
 | # | Sév. | Manque | Où | Propriétaire |
 |---|---|---|---|---|
-| G1 | **M/H** | `POST /destinations/{fromId}/transports` : tout `TRAVEL_MANAGER` peut relier n'importe quelle destination, même celle d'un autre manager (`TransportController`, `requireManagerOrAdmin` sans contrôle de `managerId`). Escalade horizontale. | travel | à corriger (`requireOwnerOrAdmin` sur l'origine) |
-| G2 | **M/H** | `POST /payments/paypal/{orderId}/capture` : aucun contrôle de propriétaire — n'importe quel utilisateur authentifié connaissant un `orderId` déclenche la capture (limite déjà nommée dans le Javadoc du contrôleur, mais réelle). | payment | à corriger |
-| G3 | M | payment-service utilise `${DB_*:?msg}` dans `application.yml` : en Spring ce n'est **pas** fail-fast (voir §4). Corrigé dans identity, pas ailleurs. | payment | à corriger (+ un `ConfigFailFastTest`) |
-| G4 | M | Aucune limitation de tentatives / verrouillage sur `POST /login` (force brute, credential stuffing). | identity | à faire (limiteur au bord Traefik ou en service) |
+| G1 ✔ | **M/H** | ~~`POST /destinations/{fromId}/transports` : tout `TRAVEL_MANAGER` pouvait relier n'importe quelle destination.~~ **Corrigé** : propriété de l'origine exigée (ou `ADMIN`), la cible doit seulement exister (ADR §10, addendum G1). Preuve : `TransportOwnershipIntegrationTest` (§6). | travel | fait |
+| G2 ✔ | **M/H** | ~~`POST /payments/paypal/{orderId}/capture` sans contrôle de propriétaire.~~ **Corrigé** : propriétaire ou `ADMIN`, sinon 404 identique à un order inconnu, avant tout appel PayPal (ADR §10, addendum G2). Preuve : `PayPalCaptureOwnershipIntegrationTest` (§6). | payment | fait |
+| G3 ✔ | M | ~~`${VAR:?msg}` non fail-fast dans `application.yml` (payment `DB_*`, travel `NEO4J_*`).~~ **Corrigé** en `${VAR}`, avec un `ConfigFailFastTest` par service (§4). | payment, travel | fait |
+| G4 ✔ | M | ~~Aucune limitation de tentatives sur `POST /login`.~~ **Corrigé** en service (`LoginThrottle`, 429 + `Retry-After`) ; **limites assumées** : état par réplique, verrouillage volontaire possible, pas de limiteur de débit au bord (§3, ADR §10 addendum G4). | identity | fait, complément Traefik à faire |
 | G5 | M | Aucun endpoint de changement ni de réinitialisation de mot de passe ; rotation du mot de passe bootstrap = Vault + suppression (soft) de la ligne admin (ADR §1 addendum). | identity | à faire |
-| G6 | B | `management.endpoint.health.show-details: always` reste dans payment et travel (détails base/disque à un anonyme). Corrigé dans identity. | payment, travel | à corriger |
+| G6 ✔ | B | ~~`show-details: always` dans payment et travel.~~ **Corrigé** : `never` dans les trois services (§4). | payment, travel | fait |
 | G7 | M | Aucun en-tête de sécurité HTTP (CSP, `X-Content-Type-Options`, `X-Frame-Options`, HSTS). | bord (Traefik) / front | à faire |
 | G8 | B | Jeton en `localStorage` (vol par XSS) ; pas de cookie `HttpOnly`. | front | assumé (Phase 8) |
 | G9 | B | Trafic interne et vers les bases en clair ; certificat auto-signé ; TLS min. et suites non fixés ; pas de HSTS ; `/internal/*` et `/webhooks/*` joignables via le routeur public (protégés par jeton/signature seulement). | infra | assumé Phase 0 / à durcir |

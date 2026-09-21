@@ -20,7 +20,10 @@ lifecycle:
 
 - `POST /payments/stripe`, `POST /payments/paypal`, `POST /payments/paypal/{orderId}/capture`,
   `POST /webhooks/stripe` — provider-backed payments (Stripe PaymentIntent +
-  signed webhook, PayPal order + explicit capture).
+  signed webhook, PayPal order + explicit capture). The capture is
+  ownership-aware: only the payment's owner or an `ADMIN` may capture an order;
+  anyone else gets the same 404 as for an unknown order, before PayPal is called
+  (ADR §10, addendum G2).
 - `GET /payments/summary[?userId=]` — the caller's payment summary (count and
   total per provider over `COMPLETED` payments, totals per currency, most-used
   provider). Any role, own payments only; `userId` of someone else is `ADMIN`
@@ -103,10 +106,12 @@ All connection values are externalized via environment variables in
 `application.yml` (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`,
 `DB_PASSWORD`, `JWT_SIGNING_KEY`, the Stripe/PayPal credentials,
 `TRAVEL_SERVICE_URL`, `SERVER_PORT`). The service fails fast at startup if any
-of them is absent — including `TRAVEL_SERVICE_URL`, the base URL of
+of them is absent (bare `${VAR}` placeholders — the Compose-style `${VAR:?msg}`
+is *not* fail-fast in Spring; `ConfigFailFastTest` proves it) — including `TRAVEL_SERVICE_URL`, the base URL of
 travel-service used for the subscription payment callback. (The test suite
 supplies a test-only default in `src/test/resources/application.properties`;
-production has none.)
+production has none.) `GET /actuator/health` returns the aggregate status only
+(`show-details: never`).
 
 Schema is owned by Flyway (`src/main/resources/db/migration/`); Hibernate
 `ddl-auto` is set to `validate` only.

@@ -43,7 +43,9 @@ enforced.
   `mode`, `durationMinutes`). 201 if both endpoints exist and are active; 400
   if `fromId == toDestinationId`, `mode` is not one of `TRAIN`/`PLANE`/`BUS`/
   `CAR`/`BOAT`, or `durationMinutes <= 0`; 404 if origin or target is
-  absent/soft-deleted.
+  absent/soft-deleted; 403 unless the caller is `ADMIN` or the `TRAVEL_MANAGER`
+  who owns the **origin** destination (the target only has to exist — ADR §10,
+  addendum G1). Ownership is checked before the target lookup.
 - `GET /destinations/{id}/transports` — one-hop traversal: destinations
   reachable from `id` via an outgoing `TRANSPORT` relationship. Filters
   `deletedAt IS NULL` at both hops (origin and target), so a soft-deleted
@@ -375,6 +377,9 @@ Order: score, then feedback count, then manager id.
 All connection values are externalized via environment variables in
 `application.yml` (`NEO4J_HOST`, `NEO4J_PORT`, `NEO4J_USERNAME`,
 `NEO4J_PASSWORD`, `JWT_SIGNING_KEY`, `PAYMENT_SERVICE_URL`, `SERVER_PORT`).
+Required placeholders are bare `${VAR}` (the Compose-style `${VAR:?msg}` is *not*
+fail-fast in Spring; `ConfigFailFastTest` proves it). `GET /actuator/health`
+returns the aggregate status only (`show-details: never`).
 There is no `dbname` variable: Neo4j Community Edition has a single default
 database. The service fails fast at startup if any required variable is absent
 — including `PAYMENT_SERVICE_URL`, the base URL of payment-service (the test
