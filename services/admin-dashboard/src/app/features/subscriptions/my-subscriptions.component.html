@@ -24,7 +24,33 @@
       </app-card>
     </div>
 
-    <ng-template #table let-rows>
+    @if (actionError()) {
+      <app-alert variant="error">{{ actionError() }}</app-alert>
+    }
+
+    @if (pending().length > 0) {
+      <app-card title="Paiement en attente">
+        <ul class="flex flex-col gap-4" data-testid="pending-list">
+          @for (row of pending(); track row.destinationId + row.subscribedAt) {
+            <li class="flex flex-col gap-2">
+              <a
+                [routerLink]="['/travels', row.destinationId]"
+                class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                >{{ row.destinationName }}</a
+              >
+              <app-pending-payment
+                [paymentId]="row.paymentId ?? null"
+                [expiresAt]="row.expiresAt ?? null"
+                (cancelRequested)="cancelPending(row)"
+                (settled)="load()"
+              />
+            </li>
+          }
+        </ul>
+      </app-card>
+    }
+
+    <ng-template #table let-rows let-review="review">
       <div class="table-shell">
         <table class="table-base">
           <thead>
@@ -35,6 +61,9 @@
               <th class="table-head-cell">Statut</th>
               <th class="table-head-cell">Inscrit le</th>
               <th class="table-head-cell">Annulé le</th>
+              @if (review) {
+                <th class="table-head-cell">Avis</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -56,10 +85,19 @@
                 <td class="table-cell">
                   {{ row.cancelledAt ? (row.cancelledAt | date: 'dd/MM/yyyy HH:mm') : '—' }}
                 </td>
+                @if (review) {
+                  <td class="table-cell">
+                    <a
+                      [routerLink]="['/travels', row.destinationId]"
+                      class="text-indigo-600 hover:underline dark:text-indigo-400"
+                      >Donner / voir mon avis</a
+                    >
+                  </td>
+                }
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="6">Aucun voyage.</td>
+                <td class="table-empty-cell" colspan="7">Aucun voyage.</td>
               </tr>
             }
           </tbody>
@@ -72,11 +110,20 @@
     </app-card>
 
     <app-card title="Voyages effectués">
-      <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: past() }" />
+      <ng-container
+        [ngTemplateOutlet]="table"
+        [ngTemplateOutletContext]="{ $implicit: past(), review: true }"
+      />
     </app-card>
 
     <app-card title="Abonnements annulés">
       <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: cancelled() }" />
     </app-card>
+
+    @if (expired().length > 0) {
+      <app-card title="Réservations expirées (jamais payées)">
+        <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: expired() }" />
+      </app-card>
+    }
   }
 </div>
