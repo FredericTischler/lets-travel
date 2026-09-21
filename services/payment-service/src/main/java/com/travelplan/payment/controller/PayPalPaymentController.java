@@ -22,11 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
  * No business logic here — all decisions are delegated to
  * {@link PayPalPaymentService}. Same role-and-ownership protection as
  * {@link PaymentController} for {@code create} (see its class javadoc).
- * {@code capture} only requires a recognized role, with no ownership check:
- * it takes no {@code userId}, only a provider {@code orderId} that a caller
- * would only know by having initiated that order — accepted as a narrower
- * scope-limit than the rest of this controller, named rather than silently
- * skipped (see docs/lets-travel-architecture-decisions.md §1).
+ * {@code capture} takes no {@code userId}, only a provider {@code orderId}: the
+ * owner is resolved from the payment row by {@link PayPalPaymentService}, which
+ * applies the ownership rule before calling PayPal and answers a non-owner with
+ * the same 404 as an unknown order (security audit G2 — an order id is not a
+ * credential).
  */
 @RestController
 @RequestMapping("/payments/paypal")
@@ -64,11 +64,12 @@ public class PayPalPaymentController {
 
     /**
      * Capture a previously-created, payer-approved PayPal Order. Requires a
-     * valid Bearer token carrying a recognized role — no ownership check,
-     * see class javadoc.
+     * valid Bearer token carrying a recognized role, whose caller is the
+     * payment's owner or an {@code ADMIN} — see class javadoc.
      *
      * @return 200 with the updated payment (COMPLETED if the capture
-     *         succeeded), 404 if no payment has this order id, 409 if that
+     *         succeeded), 404 if no payment has this order id or it belongs to
+     *         another user (indistinguishable), 409 if that
      *         payment's status is already terminal, 502 if PayPal's capture
      *         call fails (the payment is transitioned to FAILED first),
      *         401/403 per {@link TokenValidationService#requireAnyRole}
@@ -77,7 +78,8 @@ public class PayPalPaymentController {
     public ResponseEntity<PaymentResponse> capture(
             @PathVariable String orderId,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireAnyRole(authorizationHeader);
-        return ResponseEntity.ok(payPalPaymentService.captureOrder(orderId));
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(payPalPaymentService.captureOrder(
+                orderId, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims)));
     }
 }

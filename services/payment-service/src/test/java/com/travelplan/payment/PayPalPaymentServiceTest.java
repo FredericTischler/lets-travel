@@ -27,7 +27,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -63,8 +65,10 @@ class PayPalPaymentServiceTest {
         payPalPaymentService = new PayPalPaymentService(paymentRepository, paypalServerSdkClient, eventPublisher);
     }
 
+    private static final UUID OWNER = UUID.randomUUID();
+
     private Payment pendingPayment(String orderId) {
-        return new Payment(UUID.randomUUID(), new BigDecimal("19.99"), "USD",
+        return new Payment(OWNER, new BigDecimal("19.99"), "USD",
                 PaymentProvider.PAYPAL, orderId);
     }
 
@@ -80,7 +84,7 @@ class PayPalPaymentServiceTest {
         order.setStatus(OrderStatus.COMPLETED);
         when(ordersController.captureOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
 
-        var response = payPalPaymentService.captureOrder(orderId);
+        var response = payPalPaymentService.captureOrder(orderId, OWNER, false);
 
         assertThat(response.getStatus()).isEqualTo(Payment.STATUS_COMPLETED);
         assertThat(payment.getStatus()).isEqualTo(Payment.STATUS_COMPLETED);
@@ -98,7 +102,7 @@ class PayPalPaymentServiceTest {
         order.setStatus(OrderStatus.APPROVED);
         when(ordersController.captureOrder(any())).thenReturn(new ApiResponse<>(200, null, order));
 
-        var response = payPalPaymentService.captureOrder(orderId);
+        var response = payPalPaymentService.captureOrder(orderId, OWNER, false);
 
         assertThat(response.getStatus()).isEqualTo(Payment.STATUS_FAILED);
     }
@@ -112,7 +116,7 @@ class PayPalPaymentServiceTest {
         when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
         when(ordersController.captureOrder(any())).thenThrow(new ApiException("PayPal rejected the capture"));
 
-        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId))
+        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, OWNER, false))
                 .isInstanceOf(PaymentProviderException.class);
 
         assertThat(payment.getStatus()).isEqualTo(Payment.STATUS_FAILED);
@@ -124,7 +128,7 @@ class PayPalPaymentServiceTest {
         String orderId = "ORDER-UNKNOWN";
         when(paymentRepository.findActiveByExternalReference(orderId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId))
+        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, OWNER, false))
                 .isInstanceOf(PaymentNotFoundException.class);
     }
 
@@ -135,7 +139,37 @@ class PayPalPaymentServiceTest {
         payment.setStatus(Payment.STATUS_COMPLETED);
         when(paymentRepository.findActiveByExternalReference(orderId)).thenReturn(Optional.of(payment));
 
-        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId))
+        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, OWNER, false))
                 .isInstanceOf(PaymentAlreadyTerminalException.class);
+    }
+
+    @Test
+    void captureOrder_masksAnotherUsersPaymentAsNotFound_andNeverCallsPayPal() {
+        String orderId = "ORDER-5";
+        Payment payment = pendingPayment(orderId);
+        when(paymentRepository.findActiveByExternalReference(orderId)).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, UUID.randomUUID(), false))
+                .isInstanceOf(PaymentNotFoundException.class);
+
+        verifyNoInteractions(paypalServerSdkClient);
+        verify(paymentRepository, never()).save(any());
+        assertThat(payment.getStatus()).isEqualTo(Payment.STATUS_PENDING);
+    }
+
+    @Test
+    void captureOrder_lets_anAdminCaptureAnyonesPayment() throws Exception {
+        String orderId = "ORDER-6";
+        Payment payment = pendingPayment(orderId);
+        when(paymentRepository.findActiveByExternalReference(orderId)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        Order order = new Order();
+        order.setStatus(OrderStatus.COMPLETED);
+        when(ordersController.captureOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
+
+        var response = payPalPaymentService.captureOrder(orderId, UUID.randomUUID(), true);
+
+        assertThat(response.getStatus()).isEqualTo(Payment.STATUS_COMPLETED);
     }
 }

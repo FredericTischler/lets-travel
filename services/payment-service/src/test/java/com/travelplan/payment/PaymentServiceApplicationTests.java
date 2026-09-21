@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * Uses Testcontainers to spin up a real Postgres instance (same major version
  * as production: 17.x). DynamicPropertySource injects the connection details
- * plus a test JWT signing key so that every {@code :?} fail-fast guard in
+ * plus a test JWT signing key so that every fail-fast `${VAR}` placeholder in
  * application.yml (DB_* and JWT_SIGNING_KEY) is satisfied without requiring
  * an external Docker Compose stack.
  *
@@ -86,6 +86,8 @@ class PaymentServiceApplicationTests {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).containsEntry("status", "UP");
+        // `show-details: never` (security audit G6): an anonymous caller gets the status only.
+        assertThat(response.getBody()).doesNotContainKey("components");
     }
 
     @Test
