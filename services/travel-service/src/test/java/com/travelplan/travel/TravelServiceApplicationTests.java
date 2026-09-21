@@ -14,8 +14,6 @@ import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -33,8 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   2. Neo4jConnectionConfig.validateNeo4jConnectionVariables() passes.
  *   3. Neo4jSchemaInitializer's CommandLineRunner creates the Destination.id
  *      uniqueness constraint against a live Neo4j instance.
- *   4. /actuator/health returns UP, with the "neo4j" component reported UP
- *      (Neo4jHealthContributorAutoConfiguration, native — no custom indicator).
+ *   4. /actuator/health returns UP and exposes no component detail to an anonymous caller.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Testcontainers
@@ -68,15 +65,15 @@ class TravelServiceApplicationTests {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void actuatorHealthReportsUp() {
-        ResponseEntity<Map> response = restTemplate.getForEntity("/actuator/health", Map.class);
+    void actuatorHealthReportsUpWithoutExposingInternalDetailsToAnAnonymousCaller() {
+        // `show-details: never` (security audit G6): Traefik routes /actuator/health
+        // publicly, so an anonymous caller only gets the overall status. Compose/K8s
+        // probes only look at the HTTP status / "UP". The Neo4j indicator still feeds
+        // the aggregate (a dead Neo4j turns it DOWN), it is just not itemised.
+        ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsEntry("status", "UP");
-
-        Map<String, Object> components = (Map<String, Object>) response.getBody().get("components");
-        Map<String, Object> neo4jComponent = (Map<String, Object>) components.get("neo4j");
-        assertThat(neo4jComponent).containsEntry("status", "UP");
+        assertThat(response.getBody()).contains("\"status\":\"UP\"")
+                .doesNotContain("components").doesNotContain("neo4j").doesNotContain("diskSpace");
     }
 }

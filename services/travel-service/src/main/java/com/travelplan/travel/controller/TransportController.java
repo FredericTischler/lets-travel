@@ -4,6 +4,7 @@ import com.travelplan.travel.dto.CreateTransportRequest;
 import com.travelplan.travel.dto.TransportResponse;
 import com.travelplan.travel.service.TokenValidationService;
 import com.travelplan.travel.service.TransportService;
+import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +35,12 @@ import java.util.UUID;
  * §1, {@code create} (mutation) is restricted to {@code ADMIN}/
  * {@code TRAVEL_MANAGER} and {@code getOutgoing} (read) is open to any of the
  * three known roles — same split as {@link DestinationController}.
+ *
+ * <p>{@code create} is also ownership-aware (security audit G1): the link hangs
+ * off its origin destination, so a {@code TRAVEL_MANAGER} may only create it
+ * from a destination whose {@code managerId} is their own id; {@code ADMIN}
+ * bypasses ownership. The check lives in {@link TransportService}, which alone
+ * loads the origin — same split as {@code DestinationController.update/delete}.</p>
  */
 @RestController
 @RequestMapping("/destinations")
@@ -55,15 +62,19 @@ public class TransportController {
      * @return 201 Created with the created link, 400 on a request rule
      *         violation (self-loop, invalid mode, non-positive duration),
      *         404 if origin or target is absent/soft-deleted,
-     *         401 with a generic message if the Authorization header is missing/invalid/expired
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the caller is a {@code TRAVEL_MANAGER} who does not own the origin
+     *         destination (ownership is checked on the origin only — see
+     *         {@link TransportService#create})
      */
     @PostMapping("/{fromId}/transports")
     public ResponseEntity<TransportResponse> create(
             @PathVariable UUID fromId,
             @Valid @RequestBody CreateTransportRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
-        tokenValidationService.requireManagerOrAdmin(authorizationHeader);
-        TransportResponse created = transportService.create(fromId, request);
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        TransportResponse created = transportService.create(
+                fromId, request, tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

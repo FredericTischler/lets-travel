@@ -6,13 +6,18 @@ spring:
     # Variables injected by Docker Compose from Vault (secret/travel/db).
     # Keys: username, password, host, port — exact match with Vault path.
     # No "dbname": Neo4j Community Edition has a single default database.
-    # Fail-fast on startup if any variable is absent (Spring Boot enforces :?).
-    uri: bolt://${NEO4J_HOST:?NEO4J_HOST is required}:${NEO4J_PORT:?NEO4J_PORT is required}
+    # Fail-fast on startup if any variable is absent: a placeholder with NO ':'
+    # is unresolvable -> PlaceholderResolutionException. (The Compose-style
+    # `${VAR:?msg}` is NOT fail-fast in Spring: everything after the first ':'
+    # is a literal default value, see the jwt.signing-key note below. It used
+    # to be used here: a missing NEO4J_PASSWORD silently became the text
+    # "?NEO4J_PASSWORD is required". Proven by ConfigFailFastTest.)
+    uri: bolt://${NEO4J_HOST}:${NEO4J_PORT}
     authentication:
       # Neo4j Community Edition: single admin account (username "neo4j"), no
       # per-service scoped account possible — see Neo4jConnectionConfig javadoc.
-      username: ${NEO4J_USERNAME:?NEO4J_USERNAME is required}
-      password: ${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
+      username: ${NEO4J_USERNAME}
+      password: ${NEO4J_PASSWORD}
 
 elasticsearch:
   # Variables injected by Docker Compose from the docker-compose.travel.yml
@@ -20,14 +25,14 @@ elasticsearch:
   # docs/lets-travel-architecture-decisions.md §6). Dev-mode instance,
   # security disabled — no username/password to read.
   #
-  # DELIBERATE DEVIATION from the NEO4J_* `:?` fail-fast idiom above: Neo4j is
+  # DELIBERATE DEVIATION from the NEO4J_* bare-`${VAR}` fail-fast idiom above: Neo4j is
   # this service's sole primary store, always required whenever travel-service
   # runs at all — a missing value there is a misconfiguration, never a valid
   # state. Elasticsearch is optional, additive infra behind its OWN Compose
   # profile (`search`, not part of `core`/`full`) — travel-service MUST stay
   # bootable (CRUD, transports, existing test suite) when `search` is not up
   # and ES_HOST/ES_PORT are not set by the environment at all (e.g. plain
-  # `mvn test`, or `full` without `search`). A `:?` placeholder here would make
+  # `mvn test`, or `full` without `search`). A bare `${VAR}` placeholder here would make
   # every one of those cases fail to start, defeating the whole point of an
   # additive profile. The defaults below point at nothing real in production
   # (docker-compose.travel.yml always overrides them to the `elasticsearch`
@@ -95,7 +100,10 @@ management:
         include: health
   endpoint:
     health:
-      show-details: always
+      # `never`: /actuator/health is routed publicly by Traefik and `always`
+      # exposed Neo4j/disk details to anonymous callers. The Docker healthcheck
+      # only needs the overall status ("UP") — see docker-compose.travel.yml.
+      show-details: never
   health:
     # Disable Spring Boot Actuator's built-in Elasticsearch health indicator
     # (auto-activated by the mere presence of the org.elasticsearch.client.RestClient

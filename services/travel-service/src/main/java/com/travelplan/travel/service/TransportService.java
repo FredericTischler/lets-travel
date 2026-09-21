@@ -4,6 +4,7 @@ import com.travelplan.travel.dto.CreateTransportRequest;
 import com.travelplan.travel.dto.TransportResponse;
 import com.travelplan.travel.entity.Destination;
 import com.travelplan.travel.exception.DestinationNotFoundException;
+import com.travelplan.travel.exception.InsufficientRoleException;
 import com.travelplan.travel.exception.InvalidTransportRequestException;
 import com.travelplan.travel.repository.DestinationRepository;
 import com.travelplan.travel.repository.TransportRepository;
@@ -48,11 +49,20 @@ public class TransportService {
      *
      * @throws InvalidTransportRequestException if fromId equals toDestinationId,
      *         mode is not one of the five allowed values, or durationMinutes is not positive
+     * <p>Ownership (security audit G1, ADR "Transports" addendum): the
+     * {@code TRANSPORT} edge belongs to its <em>origin</em> destination, so a
+     * non-admin caller must be that destination's {@code managerId}. The
+     * target only has to exist and be active — linking towards someone else's
+     * destination changes nothing on that node, and is checked <em>after</em>
+     * ownership so a non-owner cannot probe which target ids exist.</p>
+     *
      * @throws DestinationNotFoundException if the origin or the target does not
      *         exist or is soft-deleted
+     * @throws InsufficientRoleException if {@code isAdmin} is false and the
+     *         origin's {@code managerId} is not {@code callerId}
      */
     @Transactional
-    public TransportResponse create(UUID fromId, CreateTransportRequest request) {
+    public TransportResponse create(UUID fromId, CreateTransportRequest request, UUID callerId, boolean isAdmin) {
         UUID toId = request.getToDestinationId();
 
         if (fromId.equals(toId)) {
@@ -67,6 +77,9 @@ public class TransportService {
 
         Destination origin = destinationRepository.findActiveById(fromId)
                 .orElseThrow(() -> new DestinationNotFoundException(fromId));
+        if (!isAdmin && (origin.getManagerId() == null || !origin.getManagerId().equals(callerId))) {
+            throw new InsufficientRoleException("Not allowed to manage another manager's travel");
+        }
         Destination target = destinationRepository.findActiveById(toId)
                 .orElseThrow(() -> new DestinationNotFoundException(toId));
 
