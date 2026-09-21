@@ -10,6 +10,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { RecommendationsComponent } from '../recommendations/recommendations.component';
 import {
   AutocompleteSuggestion,
   Destination,
@@ -39,7 +40,15 @@ const SEARCH_UNAVAILABLE_NOTICE =
  */
 @Component({
   selector: 'app-travel-list',
-  imports: [FormsModule, RouterLink, DecimalPipe, AlertComponent, ButtonComponent, CardComponent],
+  imports: [
+    FormsModule,
+    RouterLink,
+    DecimalPipe,
+    AlertComponent,
+    ButtonComponent,
+    CardComponent,
+    RecommendationsComponent,
+  ],
   templateUrl: './travel-list.component.html',
 })
 export class TravelListComponent implements OnInit {
