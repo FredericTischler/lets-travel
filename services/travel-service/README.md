@@ -109,8 +109,10 @@ managers/admins, and manager statistics/ranking built from it.
 - `GET /managers/{managerId}/stats` — `activeTravels`, `pastTravels`,
   `subscribers`, `feedbackCount`, `averageRating`, `pastRatings` (per past
   destination). Any known role; aggregates only.
-- `GET /managers/ranking` — managers ordered by average rating then number of
-  feedbacks. `ADMIN` only.
+- `GET /managers/ranking` — managers ordered by performance score (damped
+  rating, income, traveler volume), `ADMIN` only — see "Dashboards, ranking and
+  statistics". Also `GET /managers/me/dashboard`, `GET /admin/dashboard` and
+  `GET /travelers/me/stats`, described there.
 - `GET /travelers/me/recommendations` — personalised suggestions with a score
   and reasons, from the caller's participation and feedback history (see
   "Recommendations" below). Any known role, self only (`?travelerId=` is
