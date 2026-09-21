@@ -360,6 +360,222 @@ architecturale, ce qui n'est pas le standard que ce document applique ailleurs
 (voir §4, §7 : les sacrifices sont toujours justifiés par une contrainte
 réelle, jamais par la paresse).
 
+### 5ter. Feedback — décisions prises à l'implémentation (travel-service)
+
+Terminologie : comme pour §3, lire « Travel » comme `Destination` (§2,
+correctif). La relation implémentée est
+`(TravelerRef {userId})-[:GAVE_FEEDBACK {id, rating, comment, createdAt}]->(Destination)`.
+Écart mineur avec le texte de §5 : la relation porte un `id` (UUID de
+substitution) en plus de `rating`/`comment`/`createdAt` — il ne sert qu'à
+savoir, dans un unique `MERGE` Cypher, si la relation vient d'être créée ou
+existait déjà (voir « un feedback par traveler » ci-dessous). Même approche
+d'accès que `SUBSCRIBED` : `Neo4jClient` + Cypher explicite
+(`FeedbackRepository`), `deletedAt IS NULL` filtré côté `Destination` dans
+chaque lecture. Les agrégats de stats/classement (`ManagerStatsRepository`)
+lisent `SUBSCRIBED` et `GAVE_FEEDBACK` sans jamais les écrire, dans leurs
+propres classes — `SubscriptionRepository` n'est pas touché.
+
+#### 5ter.1 Qui peut donner un feedback : « a participé »
+
+##### Décision
+
+Un traveler a **participé** à une destination s'il possède une relation
+`SUBSCRIBED` de statut **`ACTIVE`** sur celle-ci **et** que son `endDate` est
+**strictement dans le passé** (`endDate < aujourd'hui` : le dernier jour du
+séjour, le voyage n'est pas fini). Trois cas d'erreur distincts, dans cet
+ordre : destination absente/soft-deletée → **404** ; pas d'abonnement `ACTIVE`
+(jamais abonné, annulé, désabonné de force, ou `PENDING_PAYMENT` du futur flux
+de paiement §4) → **403** ; abonné `ACTIVE` mais voyage pas terminé → **409**.
+L'auteur est toujours le `sub` du JWT (jamais le corps de la requête) et les
+trois rôles sont acceptés : un manager ou un admin qui a voyagé est un traveler
+comme un autre.
+
+##### Justification
+
+Le sujet dit « feedback on **participated** travels ». Seul `ACTIVE` compte :
+`CANCELLED` n'a pas participé, et `PENDING_PAYMENT` n'a pas payé — lui
+accorder un avis permettrait de noter un voyage qu'on n'a jamais réglé, ce qui
+fausserait à la fois la note du manager et les recommandations (§7, qui lisent
+`GAVE_FEEDBACK`). Le 403 (pas de droit sur cette ressource, quelle que soit la
+date) et le 409 (droit réel, mais l'état temporel l'empêche) suivent la même
+séparation que §3 (« la ressource est valide, c'est son état temporel qui
+rend l'action impossible »). Un `endDate` null est traité comme « pas fini »
+(le champ est obligatoire à la création ; la garde ne fait que fermer la porte).
+
+##### Ce que je sacrifie
+
+La vérification est faite sur l'état de l'abonnement **à l'instant de l'avis**,
+pas sur son historique : un traveler qui s'est désabonné puis réabonné avant la
+fin est `ACTIVE` et peut noter ; un traveler désabonné de force par le manager
+la veille du départ ne le peut plus. Pas non plus de fenêtre de fin (on peut
+noter un voyage terminé depuis un an).
+
+##### Alternative rejetée
+
+Autoriser tout traveler ayant un jour eu une relation `SUBSCRIBED` (quel que
+soit son statut) : rejeté, il permettrait d'avis-bombarder des voyages
+annulés/impayés. Autoriser aussi les voyages en cours : rejeté, une note
+« pendant » le séjour n'est pas un retour d'expérience.
+
+#### 5ter.2 Un feedback par traveler, ni modifiable ni supprimable
+
+##### Décision
+
+**Un seul feedback par couple traveler × destination** : un second `POST` →
+**409**, le premier reste inchangé. Le feedback est **immuable** : ni `PUT` ni
+`DELETE`, y compris pour un admin, dans cette phase. L'unicité est portée par
+un seul `MERGE` Cypher (`MERGE (t)-[f:GAVE_FEEDBACK]->(d) ON CREATE SET …`)
+dont le résultat dit si la relation vient d'être créée ; ce n'est pas un
+`SELECT` puis `INSERT`.
+
+##### Justification
+
+C'est un signal de contrôle qualité : note du manager, classement admin,
+entrée des recommandations. Le laisser réécrire par son auteur (après une
+plainte du manager, par exemple) ou supprimer en retire la valeur d'audit. Un
+seul avis par participation garde aussi la moyenne non manipulable par
+répétition.
+
+##### Ce que je sacrifie
+
+Une faute de frappe ou un changement d'avis n'est pas corrigeable ; pas non plus
+de modération d'un commentaire abusif (un admin ne peut pas le retirer). Comme
+pour `SUBSCRIBED` (§3), Neo4j Community ne peut pas imposer nativement
+l'unicité d'une relation : le `MERGE` unique réduit la fenêtre de course
+concurrente au minimum que l'édition permet, sans la fermer entièrement — écart
+assumé, identique à celui déjà documenté pour l'abonnement.
+
+##### Alternative rejetée
+
+`PUT`/`DELETE` par l'auteur, ou soft-delete de la relation par un admin
+(`deletedAt` sur la relation). Rejeté **pour l'instant**, pas pour toujours :
+la relation porte déjà un `id` propre, donc ajouter plus tard une modération
+admin par `deletedAt` sur la relation (à filtrer dans chaque lecture) est un
+ajout non cassant. Non demandé par le sujet, donc pas construit à l'avance.
+
+#### 5ter.3 Commentaire : texte brut, bornes et XSS
+
+##### Décision
+
+`rating` : entier **1 à 5**, obligatoire — un JSON non entier (`4.5`, `"4"`)
+est **refusé** (400) au lieu d'être tronqué silencieusement par Jackson
+(désérialiseur strict limité à ce champ). `comment` : **optionnel** ; s'il est
+présent, il doit contenir au moins un caractère non blanc et faire **au plus
+1000 caractères** — sinon **400** par Bean Validation, comme les autres DTO. Le
+commentaire est stocké et renvoyé **tel quel (texte brut, jamais du HTML)**,
+seulement débarrassé des blancs de bord : pas de suppression de balises, pas
+d'encodage HTML côté serveur. Les réponses sont servies en `application/json`.
+
+##### Justification
+
+La défense contre le XSS est **à l'affichage**, pas à l'écriture. Angular
+échappe par défaut toute interpolation `{{ comment }}` ; c'est la même
+position que §10 (audit : aucun `[innerHTML]`/`bypassSecurityTrust*` sur du
+contenu utilisateur). Nettoyer à l'écriture serait à la fois insuffisant (le
+même texte, lu par un autre client — un export, un e-mail futur — resterait
+un vecteur) et destructeur (« 5 < 6 » ou « c'était <3 » mutilés, données
+altérées de façon irréversible). Les requêtes Cypher restent paramétrées
+(`$comment`), donc pas d'injection Cypher non plus. La borne de 1000
+caractères limite l'abus de stockage et la mise en page cassée.
+
+##### Ce que je sacrifie
+
+Le backend ne garantit pas seul l'absence de XSS : la sécurité repose sur le
+fait que chaque consommateur échappe. Un test backend prouve que le texte
+hostile est renvoyé inchangé (et non « nettoyé »), la preuve d'échappement
+côté écran relève du dashboard et de `/security-review`. Les balises HTML
+saisies par un traveler apparaîtront donc littéralement à l'écran plutôt que
+d'être masquées.
+
+##### Alternative rejetée
+
+Assainir/refuser le HTML côté serveur (liste blanche, `Jsoup`, rejet de tout
+`<`) : rejeté, ce serait une deuxième ligne de défense qui donne une fausse
+impression de sécurité en dispensant les consommateurs d'échapper, tout en
+altérant des commentaires légitimes.
+
+#### 5ter.4 Visibilité
+
+##### Décision
+
+`GET /destinations/{id}/feedback` : **manager propriétaire de la destination
+ou `ADMIN`** (`requireManagerOrAdmin` puis contrôle de `managerId`, même règle
+que la liste des abonnés) ; 403 pour un autre manager ou un traveler.
+`GET /travelers/me/feedback` : les feedbacks de l'appelant, jamais ceux d'un
+autre. `GET /feedback` : liste globale, **`ADMIN` uniquement** (historique
+détaillé + feedbacks du dashboard admin). Un feedback sur une destination
+soft-deletée disparaît de toutes ces vues (`deletedAt IS NULL` sur la
+`Destination`, la relation n'est pas modifiée).
+
+##### Justification
+
+Le sujet : « visible to Travel Managers and Admins for quality assurance » —
+mais un manager n'a pas à lire les avis sur les voyages d'un concurrent. Un
+traveler ne voit que les siens (profil « feedback given »). Le manager voit
+l'identifiant du traveler (un UUID, pas d'identité : noms et e-mails restent
+dans identity-service), car le contrôle qualité et une éventuelle modération
+en ont besoin.
+
+##### Ce que je sacrifie
+
+Pas d'avis publics sur la fiche d'une destination pour les travelers : seule la
+**note moyenne** d'un manager est publique (5ter.5). Pas de pagination des
+listes (volume de démo), même limite que les autres listes du service.
+
+##### Alternative rejetée
+
+Rendre les avis lisibles par tout rôle (« catalogue public »). Rejeté : le
+sujet parle explicitement de manager/admin pour le contrôle qualité, et des
+commentaires libres ne sont pas de même nature que des dates de voyage.
+
+#### 5ter.5 Statistiques et classement des managers
+
+##### Décision
+
+- `GET /managers/{managerId}/stats` (tout rôle connu) : `activeTravels`
+  (destinations non soft-deletées du manager), `pastTravels` (celles dont
+  `endDate` est passée), `subscribers` (travelers **distincts** avec un
+  abonnement `ACTIVE` sur ces destinations), `feedbackCount`, `averageRating`
+  (moyenne par feedback, arrondie à 2 décimales, `null` — pas 0 — sans
+  feedback) et `pastRatings` (une ligne par destination passée : nombre et
+  moyenne). Agrégats uniquement : jamais un feedback individuel ni un id de
+  traveler. Un id de manager sans destination renvoie des zéros (200), pas un
+  404.
+- `GET /managers/ranking` (`ADMIN`) : managers ayant au moins une destination
+  active, triés par **note moyenne décroissante, puis nombre de feedbacks
+  décroissant** ; sans feedback, en dernier. Score **provisoire**.
+- **Ni revenus ni signalements** : ils vivent dans payment-service et
+  identity-service. Aucun appel inter-service n'est ajouté ici.
+
+##### Justification
+
+Le sujet demande aux travelers une page manager (« statistics, past travel
+ratings ») et à l'admin un classement « taking into account feedbacks, income ».
+travel-service fournit ce qu'il possède ; l'assemblage du score final
+(revenus, signalements) est une composition de trois sources que le dashboard
+(ou une phase ultérieure) est mieux placé pour faire que d'introduire ici un
+couplage travel → payment/identity que rien d'autre ne justifie. La moyenne est
+calculée sur les feedbacks (somme/effectif), pas comme moyenne de moyennes par
+destination, pour ne pas donner à un voyage à un seul avis le même poids qu'un
+voyage à cinquante. « Zéros plutôt que 404 » : l'existence d'un manager relève
+d'identity-service, que travel-service ne peut pas interroger.
+
+##### Ce que je sacrifie
+
+Le classement n'est **pas** le score de performance final du sujet : il ignore
+revenus et signalements, et un manager avec un unique avis à 5 devance un
+manager avec cent avis à 4,9 (aucun lissage bayésien, aucun seuil minimal
+d'avis). Choix délibéré de rester lisible et explicable à l'audit plutôt que
+d'inventer une formule que les revenus, absents ici, viendraient de toute façon
+modifier. `activeTravels` compte tout voyage non supprimé, y compris à venir.
+
+##### Alternative rejetée
+
+Faire calculer le score complet par travel-service en appelant payment-service
+et identity-service. Rejetée : premier couplage synchrone travel → autres
+services hors flux de paiement (§4), pour une donnée d'affichage, avec le
+risque qu'une panne de payment-service casse la page de classement.
+
 ---
 
 ## 6. Recherche Elasticsearch + autocomplete
