@@ -29,10 +29,12 @@ public class StripePaymentResponse {
     private final String paymentIntentId;
     private final String clientSecret;
     private final OffsetDateTime createdAt;
+    private final UUID travelId;
+    private final UUID subscriptionRef;
 
     private StripePaymentResponse(UUID id, UUID userId, BigDecimal amount, String currency, String status,
                                    PaymentProvider provider, String paymentIntentId, String clientSecret,
-                                   OffsetDateTime createdAt) {
+                                   OffsetDateTime createdAt, UUID travelId, UUID subscriptionRef) {
         this.id = id;
         this.userId = userId;
         this.amount = amount;
@@ -42,6 +44,8 @@ public class StripePaymentResponse {
         this.paymentIntentId = paymentIntentId;
         this.clientSecret = clientSecret;
         this.createdAt = createdAt;
+        this.travelId = travelId;
+        this.subscriptionRef = subscriptionRef;
     }
 
     public static StripePaymentResponse from(Payment payment, String clientSecret) {
@@ -54,7 +58,9 @@ public class StripePaymentResponse {
                 payment.getProvider(),
                 payment.getExternalReference(),
                 clientSecret,
-                payment.getCreatedAt());
+                payment.getCreatedAt(),
+                payment.getTravelId(),
+                payment.getSubscriptionRef());
     }
 
     public UUID getId() {
@@ -91,5 +97,13 @@ public class StripePaymentResponse {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getTravelId() {
+        return travelId;
+    }
+
+    public UUID getSubscriptionRef() {
+        return subscriptionRef;
     }
 }

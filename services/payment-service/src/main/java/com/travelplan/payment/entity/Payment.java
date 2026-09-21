@@ -77,6 +77,28 @@ public class Payment {
     @Column(name = "provider", nullable = false)
     private PaymentProvider provider;
 
+    /**
+     * {@code travelId}/{@code subscriptionRef} (V4__link_payment_to_subscription.sql)
+     * optionally tie this payment to the travel subscription it settles
+     * (docs/lets-travel-architecture-decisions.md §4). Plain UUIDs into
+     * travel-service's Neo4j store — no FK, same principle as {@code userId}.
+     * Set once at creation, never changed.
+     */
+    @Column(name = "travel_id", updatable = false, columnDefinition = "uuid")
+    private UUID travelId;
+
+    @Column(name = "subscription_ref", updatable = false, columnDefinition = "uuid")
+    private UUID subscriptionRef;
+
+    /**
+     * Set when travel-service acknowledged this payment's terminal status.
+     * Stays {@code null} on a subscription-linked payment whose confirmation
+     * call failed — the reconciliation seam, see
+     * {@link com.travelplan.payment.service.SubscriptionPaymentNotifier}.
+     */
+    @Column(name = "travel_notified_at", columnDefinition = "TIMESTAMPTZ")
+    private OffsetDateTime travelNotifiedAt;
+
     protected Payment() {
         // required by JPA
     }
@@ -109,6 +131,28 @@ public class Payment {
         this.createdAt = OffsetDateTime.now();
         this.provider = provider;
         this.externalReference = externalReference;
+    }
+
+    /**
+     * Tie this (not yet persisted) payment to a travel subscription. Both
+     * values or neither — enforced at the DTO level, see
+     * {@link com.travelplan.payment.dto.SubscriptionLink}.
+     */
+    public void linkToSubscription(UUID travelId, UUID subscriptionRef) {
+        this.travelId = travelId;
+        this.subscriptionRef = subscriptionRef;
+    }
+
+    public UUID getTravelId() {
+        return travelId;
+    }
+
+    public UUID getSubscriptionRef() {
+        return subscriptionRef;
+    }
+
+    public OffsetDateTime getTravelNotifiedAt() {
+        return travelNotifiedAt;
     }
 
     public UUID getId() {

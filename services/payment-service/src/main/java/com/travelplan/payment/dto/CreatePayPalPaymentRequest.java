@@ -18,7 +18,7 @@ import java.util.UUID;
  * {@link com.travelplan.payment.service.PayPalPaymentService}, never supplied
  * by the client.
  */
-public class CreatePayPalPaymentRequest {
+public class CreatePayPalPaymentRequest extends SubscriptionLink {
 
     @NotNull(message = "must not be null")
     private UUID userId;

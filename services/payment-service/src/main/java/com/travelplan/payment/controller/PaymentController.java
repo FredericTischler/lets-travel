@@ -3,8 +3,10 @@ package com.travelplan.payment.controller;
 import com.travelplan.payment.dto.CreateManualPaymentRequest;
 import com.travelplan.payment.dto.DeleteByUserResponse;
 import com.travelplan.payment.dto.PaymentResponse;
+import com.travelplan.payment.dto.PaymentSummaryResponse;
 import com.travelplan.payment.dto.UpdateStatusRequest;
 import com.travelplan.payment.service.PaymentService;
+import com.travelplan.payment.service.SubscriptionPaymentNotifier;
 import com.travelplan.payment.service.TokenValidationService;
 import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -53,10 +56,13 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final TokenValidationService tokenValidationService;
+    private final SubscriptionPaymentNotifier subscriptionPaymentNotifier;
 
-    public PaymentController(PaymentService paymentService, TokenValidationService tokenValidationService) {
+    public PaymentController(PaymentService paymentService, TokenValidationService tokenValidationService,
+                             SubscriptionPaymentNotifier subscriptionPaymentNotifier) {
         this.paymentService = paymentService;
         this.tokenValidationService = tokenValidationService;
+        this.subscriptionPaymentNotifier = subscriptionPaymentNotifier;
     }
 
     /**
@@ -103,6 +109,45 @@ public class PaymentController {
         Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
         return ResponseEntity.ok(paymentService.findAll(
                 tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims)));
+    }
+
+    /**
+     * Payment summary of one user: count and total per provider over their
+     * {@code COMPLETED} payments, plus the most-used provider — the "preferred
+     * payment methods" of the traveler's personal stats page. Any known role
+     * may read their own; {@code userId} may only differ from the caller's own
+     * id for an {@code ADMIN}.
+     *
+     * @param userId whose summary to return; defaults to the caller
+     * @return 200 with the summary (zero counts and a {@code null} most-used
+     *         provider if the user has no completed payment),
+     *         401 if the Authorization header is missing/invalid/expired,
+     *         403 if a non-admin asks for another user's summary
+     */
+    @GetMapping("/summary")
+    public ResponseEntity<PaymentSummaryResponse> summary(
+            @RequestParam(name = "userId", required = false) UUID userId,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireAnyRole(authorizationHeader);
+        UUID target = userId != null ? userId : tokenValidationService.callerId(claims);
+        tokenValidationService.requireOwnerOrAdmin(claims, target);
+        return ResponseEntity.ok(paymentService.summarize(target));
+    }
+
+    /**
+     * Reconciliation seam of docs/lets-travel-architecture-decisions.md §4:
+     * re-send to travel-service the outcome of every terminal,
+     * subscription-linked payment it has not acknowledged (a confirmation call
+     * that failed). Idempotent on the travel-service side, so safe to call
+     * repeatedly. {@code ADMIN} only — it triggers outbound calls.
+     *
+     * @return 200 with {@code {attempted, notified}}
+     */
+    @PostMapping("/reconcile-subscriptions")
+    public ResponseEntity<SubscriptionPaymentNotifier.ReconciliationResult> reconcileSubscriptions(
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAdminRole(authorizationHeader);
+        return ResponseEntity.ok(subscriptionPaymentNotifier.reconcile());
     }
 
     /**

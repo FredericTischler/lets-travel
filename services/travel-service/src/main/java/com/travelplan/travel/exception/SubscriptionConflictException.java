@@ -32,7 +32,39 @@ public class SubscriptionConflictException extends RuntimeException {
      */
     public static SubscriptionConflictException alreadySubscribed(UUID travelerId, UUID destinationId) {
         return new SubscriptionConflictException(
-                "Traveler " + travelerId + " already has an active subscription for destination " + destinationId);
+                "Traveler " + travelerId + " already has an active or pending subscription for destination "
+                        + destinationId);
+    }
+
+    /**
+     * Every seat is taken: {@code ACTIVE} subscriptions plus still-valid
+     * {@code PENDING_PAYMENT} holds already reach the destination's
+     * {@code capacity} (docs/lets-travel-architecture-decisions.md §4 addendum).
+     */
+    public static SubscriptionConflictException capacityReached(UUID destinationId) {
+        return new SubscriptionConflictException(
+                "Destination " + destinationId + " is full: no seat left (pending payments hold seats too)");
+    }
+
+    /**
+     * A payment-result callback does not match the subscription it names
+     * (other traveler/destination/payment, or an amount/currency below what
+     * the destination cost). The subscription is left untouched.
+     */
+    public static SubscriptionConflictException paymentMismatch(UUID subscriptionRef, String detail) {
+        return new SubscriptionConflictException(
+                "Payment does not match subscription " + subscriptionRef + ": " + detail);
+    }
+
+    /**
+     * A payment was {@code COMPLETED} for a subscription that had meanwhile
+     * been cancelled (by the traveler or a manager): the money was taken but
+     * there is nothing to activate. Surfaced as a 409 (and logged as an error
+     * by the service) so payment-service keeps it flagged for a manual refund.
+     */
+    public static SubscriptionConflictException paidButCancelled(UUID subscriptionRef) {
+        return new SubscriptionConflictException(
+                "Subscription " + subscriptionRef + " was cancelled: a completed payment needs a manual refund");
     }
 
     /**

@@ -19,7 +19,7 @@ import java.util.UUID;
  * always created as PENDING — {@link com.travelplan.payment.service.PaymentService}
  * forces this value and never reads a client-supplied status at creation time.
  */
-public class CreateManualPaymentRequest {
+public class CreateManualPaymentRequest extends SubscriptionLink {
 
     @NotNull(message = "must not be null")
     private UUID userId;

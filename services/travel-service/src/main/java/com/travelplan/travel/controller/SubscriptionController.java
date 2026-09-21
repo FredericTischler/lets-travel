@@ -1,16 +1,20 @@
 package com.travelplan.travel.controller;
 
+import com.travelplan.travel.dto.SubscribeRequest;
 import com.travelplan.travel.dto.SubscriptionResponse;
 import com.travelplan.travel.dto.TravelerSubscriptionResponse;
+import com.travelplan.travel.service.SubscriptionCheckoutService;
 import com.travelplan.travel.service.SubscriptionService;
 import com.travelplan.travel.service.TokenValidationService;
 import io.jsonwebtoken.Claims;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -39,11 +43,14 @@ import java.util.UUID;
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
+    private final SubscriptionCheckoutService subscriptionCheckoutService;
     private final TokenValidationService tokenValidationService;
 
     public SubscriptionController(SubscriptionService subscriptionService,
+                                   SubscriptionCheckoutService subscriptionCheckoutService,
                                    TokenValidationService tokenValidationService) {
         this.subscriptionService = subscriptionService;
+        this.subscriptionCheckoutService = subscriptionCheckoutService;
         this.tokenValidationService = tokenValidationService;
     }
 
@@ -52,19 +59,34 @@ public class SubscriptionController {
      * always the caller's own JWT subject — never client-supplied — same
      * principle Phase 1 established for payment-service ownership.
      *
+     * <p>Free destination: the subscription is {@code ACTIVE} at once and the
+     * body is not needed. Paid destination: the body must name the payment
+     * {@code provider}; the subscription is {@code PENDING_PAYMENT} and the
+     * response carries a {@code payment} object (id, and Stripe's
+     * {@code clientSecret} / PayPal's {@code approveUrl}) the traveler uses to
+     * pay — see docs/lets-travel-architecture-decisions.md §4 addendum. The
+     * caller's own token is forwarded to payment-service, which is what makes
+     * "a traveler can only pay for their own subscription" hold.</p>
+     *
      * @return 201 Created with the new subscription,
+     *         400 if the destination is paid and no provider was given,
      *         401 with a generic message if the Authorization header is missing/invalid/expired,
      *         403 if the token carries no recognized role,
      *         404 if the destination does not exist or is soft-deleted,
-     *         409 if the destination's startDate has already passed, or the
-     *         caller already holds an active subscription for it
+     *         409 if the destination's startDate has already passed, the
+     *         caller already holds an active or pending subscription for it,
+     *         or no seat is left,
+     *         502 if payment-service could not create the payment (nothing is
+     *         left pending — the caller can retry)
      */
     @PostMapping("/destinations/{id}/subscriptions")
     public ResponseEntity<SubscriptionResponse> subscribe(
             @PathVariable UUID id,
+            @Valid @RequestBody(required = false) SubscribeRequest request,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
-        SubscriptionResponse created = subscriptionService.subscribe(id, tokenValidationService.callerId(claims));
+        SubscriptionResponse created = subscriptionCheckoutService.subscribe(
+                id, tokenValidationService.callerId(claims), request, authorizationHeader);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

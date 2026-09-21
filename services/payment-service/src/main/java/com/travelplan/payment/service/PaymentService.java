@@ -3,17 +3,25 @@ package com.travelplan.payment.service;
 import com.travelplan.payment.dto.CreateManualPaymentRequest;
 import com.travelplan.payment.dto.PaymentResponse;
 import com.travelplan.payment.dto.UpdateStatusRequest;
+import com.travelplan.payment.dto.PaymentSummaryResponse;
 import com.travelplan.payment.entity.Payment;
+import com.travelplan.payment.entity.PaymentProvider;
 import com.travelplan.payment.exception.InvalidStatusValueException;
 import com.travelplan.payment.exception.PaymentAlreadyTerminalException;
 import com.travelplan.payment.exception.PaymentNotFoundException;
 import com.travelplan.payment.repository.PaymentRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,9 +50,11 @@ public class PaymentService {
             Payment.STATUS_COMPLETED, Payment.STATUS_FAILED);
 
     private final PaymentRepository paymentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public PaymentService(PaymentRepository paymentRepository) {
+    public PaymentService(PaymentRepository paymentRepository, ApplicationEventPublisher eventPublisher) {
         this.paymentRepository = paymentRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -58,6 +68,9 @@ public class PaymentService {
     @Transactional
     public PaymentResponse create(CreateManualPaymentRequest request) {
         Payment payment = new Payment(request.getUserId(), request.getAmount(), request.getCurrency());
+        if (request.isSubscriptionLinked()) {
+            payment.linkToSubscription(request.getTravelId(), request.getSubscriptionRef());
+        }
         Payment saved = paymentRepository.save(payment);
         return PaymentResponse.from(saved);
     }
@@ -114,7 +127,42 @@ public class PaymentService {
 
         payment.setStatus(request.getStatus());
         // the dirty check within the transaction persists the change automatically
+        // Tells travel-service (only for a subscription-linked payment) once this commits —
+        // see SubscriptionPaymentNotifier.
+        eventPublisher.publishEvent(new PaymentStatusChanged(payment.getId()));
         return PaymentResponse.from(payment);
+    }
+
+    /**
+     * Aggregate of {@code userId}'s {@code COMPLETED} payments: count and total
+     * per provider (the subject's "preferred payment methods" traveler stat),
+     * plus the most-used provider.
+     *
+     * <p>Only {@code COMPLETED} payments count — a {@code PENDING} or
+     * {@code FAILED} attempt is not a method the traveler actually paid with.
+     * Totals are kept per currency (summing EUR and USD would be meaningless).
+     * "Most used" = highest count; a tie is broken by provider name only so
+     * the answer is deterministic (amounts in different currencies are not
+     * comparable, so the total is deliberately not a tie-breaker).</p>
+     */
+    public PaymentSummaryResponse summarize(UUID userId) {
+        Map<PaymentProvider, Long> counts = new EnumMap<>(PaymentProvider.class);
+        Map<PaymentProvider, Map<String, BigDecimal>> totals = new EnumMap<>(PaymentProvider.class);
+        for (Object[] row : paymentRepository.summarizeCompletedByUser(userId)) {
+            PaymentProvider provider = (PaymentProvider) row[0];
+            counts.merge(provider, (Long) row[2], Long::sum);
+            totals.computeIfAbsent(provider, k -> new TreeMap<>()).put((String) row[1], (BigDecimal) row[3]);
+        }
+        List<PaymentSummaryResponse.ProviderSummary> byProvider = counts.entrySet().stream()
+                .map(e -> new PaymentSummaryResponse.ProviderSummary(
+                        e.getKey(), e.getValue(), totals.get(e.getKey())))
+                .sorted(Comparator
+                        .comparingLong(PaymentSummaryResponse.ProviderSummary::count).reversed()
+                        .thenComparing(s -> s.provider().name()))
+                .toList();
+        long totalCount = byProvider.stream().mapToLong(PaymentSummaryResponse.ProviderSummary::count).sum();
+        PaymentProvider mostUsed = byProvider.isEmpty() ? null : byProvider.get(0).provider();
+        return new PaymentSummaryResponse(userId, totalCount, byProvider, mostUsed);
     }
 
     /**

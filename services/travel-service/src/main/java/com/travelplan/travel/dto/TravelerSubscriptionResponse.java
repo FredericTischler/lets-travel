@@ -23,23 +23,37 @@ public class TravelerSubscriptionResponse {
     private final String status;
     private final OffsetDateTime subscribedAt;
     private final OffsetDateTime cancelledAt;
+    private final UUID subscriptionId;
+    private final UUID paymentId;
+    private final OffsetDateTime expiresAt;
 
-    private TravelerSubscriptionResponse(UUID destinationId, String destinationName, String destinationCountry,
-                                          LocalDate destinationStartDate, String status,
-                                          OffsetDateTime subscribedAt, OffsetDateTime cancelledAt) {
-        this.destinationId = destinationId;
-        this.destinationName = destinationName;
-        this.destinationCountry = destinationCountry;
-        this.destinationStartDate = destinationStartDate;
-        this.status = status;
-        this.subscribedAt = subscribedAt;
-        this.cancelledAt = cancelledAt;
+    private TravelerSubscriptionResponse(TravelerSubscriptionView view) {
+        this.destinationId = view.destinationId();
+        this.destinationName = view.destinationName();
+        this.destinationCountry = view.destinationCountry();
+        this.destinationStartDate = view.destinationStartDate();
+        this.status = view.status();
+        this.subscribedAt = view.subscribedAt();
+        this.cancelledAt = view.cancelledAt();
+        this.subscriptionId = view.subscriptionId();
+        this.paymentId = view.paymentId();
+        this.expiresAt = view.expiresAt();
     }
 
     public static TravelerSubscriptionResponse from(TravelerSubscriptionView view) {
-        return new TravelerSubscriptionResponse(
-                view.destinationId(), view.destinationName(), view.destinationCountry(),
-                view.destinationStartDate(), view.status(), view.subscribedAt(), view.cancelledAt());
+        return new TravelerSubscriptionResponse(view);
+    }
+
+    public UUID getSubscriptionId() {
+        return subscriptionId;
+    }
+
+    public UUID getPaymentId() {
+        return paymentId;
+    }
+
+    public OffsetDateTime getExpiresAt() {
+        return expiresAt;
     }
 
     public UUID getDestinationId() {

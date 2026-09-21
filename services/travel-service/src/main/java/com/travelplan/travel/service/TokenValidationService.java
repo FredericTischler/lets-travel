@@ -48,6 +48,13 @@ public class TokenValidationService {
     private static final Set<String> KNOWN_ROLES = Set.of(ROLE_ADMIN, ROLE_TRAVEL_MANAGER, ROLE_TRAVELER);
     private static final Set<String> MANAGER_ROLES = Set.of(ROLE_ADMIN, ROLE_TRAVEL_MANAGER);
 
+    /**
+     * Subject of the service-to-service token payment-service mints (see its
+     * {@code JwtService.generateServiceToken()}); accepted only by
+     * {@link #requireServiceToken}.
+     */
+    private static final String SERVICE_PAYMENT_SUBJECT = "service:payment";
+
     private final JwtService jwtService;
 
     public TokenValidationService(JwtService jwtService) {
@@ -154,6 +161,28 @@ public class TokenValidationService {
         }
         if (resourceManagerId == null || !claims.getSubject().equals(resourceManagerId.toString())) {
             throw new InsufficientRoleException("Not allowed to manage another manager's travel");
+        }
+    }
+
+    /**
+     * Reject the request unless the {@code Authorization} header carries a
+     * Bearer token signed with the shared secret whose subject is exactly
+     * {@code service:payment} — the service-to-service token payment-service
+     * mints to report a subscription payment's outcome
+     * (docs/lets-travel-architecture-decisions.md §4 addendum). Reserved for
+     * {@code POST /internal/subscriptions/{ref}/payment-result}: a user token
+     * (whatever its role, ADMIN included) is refused here, and conversely the
+     * service token carries no role so every user-facing endpoint refuses it —
+     * a traveler can never activate their own subscription by calling this.
+     *
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, or the token fails signature/expiration validation
+     * @throws InsufficientRoleException if the token is valid but is not the payment-service token
+     */
+    public void requireServiceToken(String authorizationHeader) {
+        Claims claims = validateAndParse(authorizationHeader);
+        if (!SERVICE_PAYMENT_SUBJECT.equals(claims.getSubject())) {
+            throw new InsufficientRoleException("Service token required");
         }
     }
 

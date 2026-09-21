@@ -22,6 +22,7 @@ import com.travelplan.payment.exception.PaymentAlreadyTerminalException;
 import com.travelplan.payment.exception.PaymentNotFoundException;
 import com.travelplan.payment.exception.PaymentProviderException;
 import com.travelplan.payment.repository.PaymentRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,10 +71,13 @@ public class PayPalPaymentService {
 
     private final PaymentRepository paymentRepository;
     private final PaypalServerSdkClient paypalServerSdkClient;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public PayPalPaymentService(PaymentRepository paymentRepository, PaypalServerSdkClient paypalServerSdkClient) {
+    public PayPalPaymentService(PaymentRepository paymentRepository, PaypalServerSdkClient paypalServerSdkClient,
+                                ApplicationEventPublisher eventPublisher) {
         this.paymentRepository = paymentRepository;
         this.paypalServerSdkClient = paypalServerSdkClient;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -115,6 +119,9 @@ public class PayPalPaymentService {
 
         Payment payment = new Payment(request.getUserId(), request.getAmount(), request.getCurrency(),
                 PaymentProvider.PAYPAL, order.getId());
+        if (request.isSubscriptionLinked()) {
+            payment.linkToSubscription(request.getTravelId(), request.getSubscriptionRef());
+        }
         Payment saved = paymentRepository.save(payment);
         return PayPalPaymentResponse.from(saved, approveUrl);
     }
@@ -156,6 +163,9 @@ public class PayPalPaymentService {
             // catch block's comment on AuthValidationException.
             payment.setStatus(Payment.STATUS_FAILED);
             paymentRepository.save(payment);
+            // No enclosing transaction here, so the notifier runs right away (see
+            // SubscriptionPaymentNotifier) — the FAILED status is already committed.
+            eventPublisher.publishEvent(new PaymentStatusChanged(payment.getId()));
             throw new PaymentProviderException("PayPal", ex);
         }
 
@@ -163,6 +173,7 @@ public class PayPalPaymentService {
                 ? Payment.STATUS_COMPLETED
                 : Payment.STATUS_FAILED);
         Payment saved = paymentRepository.save(payment);
+        eventPublisher.publishEvent(new PaymentStatusChanged(saved.getId()));
         return PaymentResponse.from(saved);
     }
 

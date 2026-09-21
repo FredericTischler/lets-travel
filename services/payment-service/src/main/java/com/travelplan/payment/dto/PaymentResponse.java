@@ -23,9 +23,12 @@ public class PaymentResponse {
     private final String externalReference;
     private final OffsetDateTime createdAt;
     private final PaymentProvider provider;
+    private final UUID travelId;
+    private final UUID subscriptionRef;
 
     private PaymentResponse(UUID id, UUID userId, BigDecimal amount, String currency, String status,
-                             String externalReference, OffsetDateTime createdAt, PaymentProvider provider) {
+                             String externalReference, OffsetDateTime createdAt, PaymentProvider provider,
+                             UUID travelId, UUID subscriptionRef) {
         this.id = id;
         this.userId = userId;
         this.amount = amount;
@@ -34,6 +37,8 @@ public class PaymentResponse {
         this.externalReference = externalReference;
         this.createdAt = createdAt;
         this.provider = provider;
+        this.travelId = travelId;
+        this.subscriptionRef = subscriptionRef;
     }
 
     public static PaymentResponse from(Payment payment) {
@@ -45,7 +50,9 @@ public class PaymentResponse {
                 payment.getStatus(),
                 payment.getExternalReference(),
                 payment.getCreatedAt(),
-                payment.getProvider());
+                payment.getProvider(),
+                payment.getTravelId(),
+                payment.getSubscriptionRef());
     }
 
     public UUID getId() {
@@ -78,5 +85,13 @@ public class PaymentResponse {
 
     public PaymentProvider getProvider() {
         return provider;
+    }
+
+    public UUID getTravelId() {
+        return travelId;
+    }
+
+    public UUID getSubscriptionRef() {
+        return subscriptionRef;
     }
 }

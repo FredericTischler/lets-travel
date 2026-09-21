@@ -238,6 +238,12 @@ class SubscriptionIntegrationTest {
         assertThat(row).containsEntry("status", "ACTIVE");
     }
 
+    /**
+     * Creates a FREE destination (price 0): since Phase 4 a priced destination
+     * starts a subscription as PENDING_PAYMENT, and paying is covered by
+     * {@link SubscriptionPaymentIntegrationTest}. Everything in this class is
+     * about the direct-ACTIVE subscribe/cancel/list behaviour of a free one.
+     */
     private UUID createDestination(UUID managerId, LocalDate startDate, LocalDate endDate) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", managerId));
@@ -245,7 +251,7 @@ class SubscriptionIntegrationTest {
         Map<String, Object> body = Map.of(
                 "name", "Testville", "country", "Testland",
                 "startDate", startDate.toString(), "endDate", endDate.toString(),
-                "managerId", managerId.toString(), "price", 100.00, "capacity", 10);
+                "managerId", managerId.toString(), "price", 0, "capacity", 10);
         ResponseEntity<Map> response = restTemplate.exchange(
                 "/destinations", HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);

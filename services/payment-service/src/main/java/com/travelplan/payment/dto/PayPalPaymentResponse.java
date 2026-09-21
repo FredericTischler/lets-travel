@@ -28,10 +28,12 @@ public class PayPalPaymentResponse {
     private final String orderId;
     private final String approveUrl;
     private final OffsetDateTime createdAt;
+    private final UUID travelId;
+    private final UUID subscriptionRef;
 
     private PayPalPaymentResponse(UUID id, UUID userId, BigDecimal amount, String currency, String status,
                                    PaymentProvider provider, String orderId, String approveUrl,
-                                   OffsetDateTime createdAt) {
+                                   OffsetDateTime createdAt, UUID travelId, UUID subscriptionRef) {
         this.id = id;
         this.userId = userId;
         this.amount = amount;
@@ -41,6 +43,8 @@ public class PayPalPaymentResponse {
         this.orderId = orderId;
         this.approveUrl = approveUrl;
         this.createdAt = createdAt;
+        this.travelId = travelId;
+        this.subscriptionRef = subscriptionRef;
     }
 
     public static PayPalPaymentResponse from(Payment payment, String approveUrl) {
@@ -53,7 +57,9 @@ public class PayPalPaymentResponse {
                 payment.getProvider(),
                 payment.getExternalReference(),
                 approveUrl,
-                payment.getCreatedAt());
+                payment.getCreatedAt(),
+                payment.getTravelId(),
+                payment.getSubscriptionRef());
     }
 
     public UUID getId() {
@@ -90,5 +96,13 @@ public class PayPalPaymentResponse {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getTravelId() {
+        return travelId;
+    }
+
+    public UUID getSubscriptionRef() {
+        return subscriptionRef;
     }
 }

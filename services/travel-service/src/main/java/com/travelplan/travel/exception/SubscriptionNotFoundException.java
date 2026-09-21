@@ -17,4 +17,9 @@ public class SubscriptionNotFoundException extends RuntimeException {
     public SubscriptionNotFoundException(UUID travelerId, UUID destinationId) {
         super("No active subscription found for traveler " + travelerId + " on destination " + destinationId);
     }
+
+    /** No subscription at all carries this id (payment-result callback for an unknown reference). */
+    public SubscriptionNotFoundException(UUID subscriptionRef) {
+        super("No subscription found with id " + subscriptionRef);
+    }
 }

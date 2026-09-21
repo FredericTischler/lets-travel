@@ -18,7 +18,7 @@ import java.util.UUID;
  * {@link com.travelplan.payment.service.StripePaymentService}, never supplied
  * by the client.
  */
-public class CreateStripePaymentRequest {
+public class CreateStripePaymentRequest extends SubscriptionLink {
 
     @NotNull(message = "must not be null")
     private UUID userId;

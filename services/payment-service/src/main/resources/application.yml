@@ -65,6 +65,14 @@ paypal:
   client-id: ${PAYPAL_CLIENT_ID}
   client-secret: ${PAYPAL_CLIENT_SECRET}
 
+travel-service:
+  # Base URL of travel-service, called (best-effort) to report the outcome of a
+  # subscription-linked payment — see TravelServiceClient and
+  # docs/lets-travel-architecture-decisions.md §4. Env var ONLY, no default (same
+  # `${VAR}` fail-fast idiom as jwt.signing-key above: an unresolved placeholder
+  # aborts startup, no silent default for a service URL).
+  url: ${TRAVEL_SERVICE_URL}
+
 cors:
   # Browser origins allowed to call this API (see CorsConfig). Not a secret —
   # a sensible default is fine here, unlike JWT_SIGNING_KEY/DB_* above.
