@@ -1,0 +1,20 @@
+{
+  "/api/identity": {
+    "target": "https://identity.localhost",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/api/identity": "" }
+  },
+  "/api/payment": {
+    "target": "https://payment.localhost",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/api/payment": "" }
+  },
+  "/api/travel": {
+    "target": "https://travel.localhost",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/api/travel": "" }
+  }
+}
