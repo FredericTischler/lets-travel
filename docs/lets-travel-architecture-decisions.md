@@ -948,6 +948,93 @@ une fois chaque phase codée, pas en amont.
 
 ---
 
+## 8bis. Dashboards Admin / Travel Manager / Traveler — où vit l'agrégation cross-service
+
+### Constat
+
+Les chiffres demandés par le sujet sont répartis sur trois services : revenus
+(`COMPLETED` liés par `travelId`) dans payment-service, destinations / managers /
+abonnements / feedback dans travel-service, signalements dans identity-service.
+§5ter.5 avait laissé le classement « provisoire » faute de revenus et avait
+rejeté que travel-service appelle payment-service « pour une donnée
+d'affichage ». Ce raisonnement ne tient plus : le sujet exige explicitement
+les revenus dans le tableau de bord et dans le score de performance.
+
+### Décision
+
+- **L'agrégation est composée par travel-service**, qui possède le graphe
+  (managers, voyages, abonnés, avis). payment-service expose seulement
+  `GET /payments/income` : lignes `(travelId, mois de complétion UTC, devise,
+  total, nombre)` des paiements `COMPLETED` non supprimés liés à un voyage,
+  réservé à `ADMIN` ou au token de service `service:travel` (miroir de
+  `service:payment` dans l'autre sens, sans rôle, accepté sur cette seule route,
+  refusé partout ailleurs). payment-service ne connaît pas les managers : il ne
+  filtre ni ne fenêtre, travel-service regroupe par manager et par fenêtre.
+- **Dégradation, pas échec** : si payment-service est injoignable ou répond
+  non-2xx, les champs monétaires valent `null`, `partial: true`, le reste du
+  tableau de bord est servi et le classement est calculé sans revenus
+  (poids renormalisés). Timeouts 3 s / 5 s, pas de retry, pas de cache.
+- **Stats du traveler** : `preferredPaymentProvider` vient de
+  `GET /payments/summary` avec le token de l'appelant retransmis (même
+  principe que la Décision B de §4 : payment-service refait le contrôle
+  d'ownership).
+- **Signalements : aucun changement dans identity-service.** Le front lit
+  `GET /reports/count/{userId}` (déjà ouvert à tout rôle) pour la page manager
+  et les stats traveler ; le nombre de signalements n'entre pas dans le score.
+- **`payments.completed_at`** (Flyway `V5`) : un revenu « par mois » doit être
+  daté de l'encaissement, pas de la création (un virement `MANUAL` créé le 30 et
+  confirmé le 2 sinon tomberait dans le mauvais mois). Posé par
+  `Payment.setStatus`, donc par les trois chemins de complétion.
+- **Score de performance** (`PerformanceScore`, 0..100) :
+  `100 * (0,5 * note + 0,3 * revenus + 0,2 * voyageurs) / somme des poids
+  disponibles`. `note` = moyenne **amortie** `(somme + 5 * 3,0) / (nombre + 5)`
+  ramenée de 1..5 à 0..1 ; `revenus` = revenus en devise de référence / ceux du
+  meilleur manager ; `voyageurs` = travelers `ACTIVE` distincts / ceux du
+  meilleur. Poids et prior sont des constantes nommées.
+  **Le défaut de la première version** (§5ter.5) est corrigé : un unique avis à 5
+  valait 5,0 et battait cent avis à 4,9 ; il vaut désormais 3,33 contre 4,81.
+  Un manager sans avis est neutre (0,5), pas dernier.
+- **Devise** : montants gardés par devise ISO, jamais sommés ; les scalaires et
+  le score utilisent la devise de référence (`DASHBOARD_REFERENCE_CURRENCY`,
+  défaut `EUR`).
+- Seuls les voyages **actifs** sont sommés, pour que le détail par voyage
+  égale le total du manager.
+- `GET /managers/ranking` reste rétro-compatible : les cinq champs d'origine
+  gardent leur sens, des champs sont ajoutés (`dampedRating`, `subscribers`,
+  `income`, `incomeAmount`, `score`, `partial`). Son **ordre** change, c'est
+  voulu.
+
+### Justification
+
+Le graphe est la seule source qui sait « quels voyages appartiennent à quel
+manager » ; faire composer par payment-service exigerait de lui recopier cette
+donnée, faire composer par le front multiplierait les appels et dupliquerait
+la formule. Le couplage travel → payment existe déjà (§4) ; le token de
+service scopé à une route réutilise un mécanisme éprouvé, sans lib partagée ni
+broker.
+
+### Ce que je sacrifie
+
+L'agrégat de revenus est renvoyé en entier à chaque appel (non paginé, non
+mis en cache : acceptable au volume de démo, pas à l'échelle). Pas de
+conversion de devises ni de remboursements (un paiement `COMPLETED` reste un
+revenu). Le revenu d'un voyage supprimé (soft-delete) disparaît des chiffres de
+son manager. Les complétions antérieures à `V5` sont datées de leur création
+(approximation). Le score est relatif (normalisé sur le meilleur manager) : il
+n'est pas comparable d'un jour à l'autre. Les signalements ne pénalisent pas
+le score. Un token de service de plus à signer (même secret HS256 partagé).
+
+### Alternative rejetée
+
+(1) Que payment-service expose des revenus « par manager » : il faudrait qu'il
+connaisse la relation manager → voyage. (2) Que le front appelle
+payment-service : un manager n'a pas le droit de lire les paiements d'autrui, et
+la formule serait dupliquée côté Angular. (3) Un batch de comptes de
+signalements dans identity-service : coût de couplage supplémentaire pour une
+donnée qui ne sert qu'à l'affichage.
+
+---
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |

@@ -165,6 +165,24 @@ public class TokenValidationService {
     }
 
     /**
+     * Reject unless {@code claims} carries the {@code ADMIN} role or its
+     * subject is exactly {@code targetUserId} — the "self only, admin may look
+     * at anyone" rule of the personal-statistics endpoints, for a resource
+     * whose owner is any user (not specifically a manager, unlike
+     * {@link #requireOwnerOrAdmin}).
+     *
+     * @throws InsufficientRoleException if the caller is neither that user nor an admin
+     */
+    public void requireSelfOrAdmin(Claims claims, UUID targetUserId) {
+        if (isAdmin(claims)) {
+            return;
+        }
+        if (!claims.getSubject().equals(targetUserId.toString())) {
+            throw new InsufficientRoleException("Not allowed to read another user's statistics");
+        }
+    }
+
+    /**
      * Reject the request unless the {@code Authorization} header carries a
      * Bearer token signed with the shared secret whose subject is exactly
      * {@code service:payment} — the service-to-service token payment-service

@@ -98,4 +98,21 @@ public final class TestJwtTokens {
                 .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }
+
+    /**
+     * The service-to-service token travel-service mints to read
+     * {@code GET /payments/income} (subject {@code "service:travel"}, no role
+     * claim). Same signing key / 15 min validity / HS256 pattern as
+     * {@link #serviceToken()}.
+     */
+    public static String travelServiceToken() {
+        SecretKey key = Keys.hmacShaKeyFor(SIGNING_KEY.getBytes(StandardCharsets.UTF_8));
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject("service:travel")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(Duration.ofMinutes(15))))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
 }

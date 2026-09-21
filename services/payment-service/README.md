@@ -61,6 +61,21 @@ travel-service moves the subscription to `ACTIVE` / `CANCELLED`.
   endpoint is idempotent). Nothing calls it automatically yet.
 - Payments without `subscriptionRef` are untouched by all of this.
 
+## Income aggregate for the dashboards
+
+`GET /payments/income` (ADMIN, or the `service:travel` token travel-service
+mints for exactly this call; a manager/traveler token or the `service:identity`
+token gets 403) returns `{"rows": [{travelId, month, currency, total, count}]}`:
+`COMPLETED`, non-deleted, travel-linked payments grouped by travel, calendar
+month of **completion** (UTC, `YYYY-MM`) and currency, never summed across
+currencies. payment-service does not know managers, so it neither filters nor
+windows: travel-service groups the rows by manager and window. Migration `V5`
+adds `payments.completed_at`, stamped by `Payment.setStatus` on the transition
+to `COMPLETED` (so admin PATCH, Stripe webhook and PayPal capture all set it);
+rows already `COMPLETED` before `V5` are backfilled with `created_at`, an
+approximation. The `service:travel` token is refused by every other route
+(401), like `service:identity`.
+
 ## Status lifecycle
 
 Three statuses: `PENDING`, `COMPLETED`, `FAILED`.
@@ -113,6 +128,9 @@ Schema is owned by Flyway (`src/main/resources/db/migration/`); Hibernate
   could not activate (it was cancelled while the payment was in flight)
   stays `COMPLETED` here and is logged as an error in travel-service, to be
   refunded by hand.
+- `GET /payments/income` returns every (travel, month, currency) row in one
+  response, unpaginated and uncached; pre-`V5` completions are bucketed on
+  `created_at`.
 - `GET /payments/summary` counts only `COMPLETED` payments and does not
   convert currencies (totals are per currency).
 - Not exercised by the test suite: the real Stripe/PayPal round trips (the 3

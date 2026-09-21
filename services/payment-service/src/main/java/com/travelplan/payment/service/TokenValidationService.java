@@ -49,6 +49,14 @@ public class TokenValidationService {
      */
     private static final String SERVICE_IDENTITY_SUBJECT = "service:identity";
 
+    /**
+     * Subject of the token travel-service mints to read the income aggregate
+     * (see travel-service's {@code JwtService.generateServiceToken()}). Accepted
+     * only by {@link #requireAdminOrTravelServiceToken}; like
+     * {@code service:identity} it is refused by {@link #requireAnyRole}.
+     */
+    private static final String SERVICE_TRAVEL_SUBJECT = "service:travel";
+
     private final JwtService jwtService;
 
     public TokenValidationService(JwtService jwtService) {
@@ -70,7 +78,8 @@ public class TokenValidationService {
      */
     public Claims requireAnyRole(String authorizationHeader) {
         Claims claims = validateAndParse(authorizationHeader);
-        if (SERVICE_IDENTITY_SUBJECT.equals(claims.getSubject())) {
+        if (SERVICE_IDENTITY_SUBJECT.equals(claims.getSubject())
+                || SERVICE_TRAVEL_SUBJECT.equals(claims.getSubject())) {
             throw new InvalidTokenException();
         }
         String role = claims.get(CLAIM_ROLE, String.class);
@@ -149,6 +158,26 @@ public class TokenValidationService {
     public void requireUserOrServiceToken(String authorizationHeader) {
         Claims claims = validateAndParse(authorizationHeader);
         if (!SERVICE_IDENTITY_SUBJECT.equals(claims.getSubject()) && !isAdmin(claims)) {
+            throw new InsufficientRoleException();
+        }
+    }
+
+    /**
+     * Accept a valid {@code ADMIN} user token or the {@code service:travel}
+     * service token — nothing else. Reserved for {@code GET /payments/income}.
+     * A {@code TRAVEL_MANAGER}/{@code TRAVELER} token is a 403 (income of a
+     * whole platform is not theirs to read directly; their own slice comes
+     * through travel-service), and the {@code service:identity} token is a 403
+     * too: each service token is scoped to its single endpoint.
+     *
+     * @throws InvalidTokenException if the header is absent, not a {@code Bearer}
+     *         value, or the token fails signature/expiration validation
+     * @throws InsufficientRoleException if the token is valid but is neither an
+     *         admin's nor the {@code service:travel} token
+     */
+    public void requireAdminOrTravelServiceToken(String authorizationHeader) {
+        Claims claims = validateAndParse(authorizationHeader);
+        if (!SERVICE_TRAVEL_SUBJECT.equals(claims.getSubject()) && !isAdmin(claims)) {
             throw new InsufficientRoleException();
         }
     }

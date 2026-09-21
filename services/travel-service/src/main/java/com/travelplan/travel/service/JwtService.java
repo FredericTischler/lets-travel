@@ -10,15 +10,21 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Date;
 
 /**
  * Validates JWTs issued by identity-service.
  *
- * <p><b>Verify-only, never issues tokens:</b> travel-service is not an
- * identity provider — it never has a login endpoint and never mints a token.
- * It only needs to confirm that a token presented by a caller was really
- * signed by identity-service and has not expired, hence a single
- * {@link #validate(String)} method and no {@code generateToken}.</p>
+ * <p><b>Verify-only for user tokens:</b> travel-service is not an
+ * identity provider — it never has a login endpoint and never mints a user
+ * token. It only needs to confirm that a token presented by a caller was really
+ * signed by identity-service and has not expired, hence {@link #validate(String)}
+ * and no {@code generateToken}. The sole exception is
+ * {@link #generateServiceToken()}, the service-to-service token used to read
+ * payment-service's income aggregate for the dashboards (same exception as
+ * payment-service's own {@code JwtService}).</p>
  *
  * <p><b>Shared HS256 secret:</b> identity-service signs with HS256 (symmetric),
  * so verifying here requires holding the exact same signing secret — see
@@ -36,6 +42,11 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class JwtService {
 
+    /** Subject of the token minted by {@link #generateServiceToken()}; payment-service matches on it. */
+    public static final String SERVICE_TRAVEL_SUBJECT = "service:travel";
+
+    private static final Duration SERVICE_TOKEN_VALIDITY = Duration.ofMinutes(15);
+
     @Value("${jwt.signing-key}")
     private String signingKeySecret;
 
@@ -51,6 +62,25 @@ public class JwtService {
     void buildSigningKey() {
         byte[] keyBytes = signingKeySecret.getBytes(StandardCharsets.UTF_8);
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    /**
+     * Issue a short-lived (15 min) service-to-service token identifying this
+     * service to payment-service, for the sole purpose of reading the income
+     * aggregate {@code GET /payments/income} (see {@link PaymentStatsClient}).
+     * Subject = {@link #SERVICE_TRAVEL_SUBJECT}, no role, no user identity —
+     * so every user-facing endpoint (here and in payment-service) refuses it,
+     * and payment-service accepts it on that one route only. Signed with the same
+     * shared HS256 secret, mirroring {@code service:payment} in the other direction.
+     */
+    public String generateServiceToken() {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(SERVICE_TRAVEL_SUBJECT)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(SERVICE_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
     }
 
     /**
