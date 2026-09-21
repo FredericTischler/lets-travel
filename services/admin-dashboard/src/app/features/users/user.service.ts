@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { Role } from '../../core/auth/roles';
 
 /**
  * Shape of the identity-service GET/POST/PATCH /users response items.
@@ -29,8 +30,13 @@ export class UserService {
     return this.http.get<User[]>(`${environment.identityApiUrl}/users`);
   }
 
-  create(email: string, password: string): Observable<User> {
-    return this.http.post<User>(`${environment.identityApiUrl}/users`, { email, password });
+  /**
+   * Creates an account with an explicit role. The role is always sent: omitted, the
+   * backend would now default to TRAVELER (least privilege). Creating an ADMIN needs
+   * the admin token, which the auth interceptor attaches.
+   */
+  create(email: string, password: string, role: Role): Observable<User> {
+    return this.http.post<User>(`${environment.identityApiUrl}/users`, { email, password, role });
   }
 
   update(id: string, email: string): Observable<User> {
