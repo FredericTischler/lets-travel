@@ -85,6 +85,13 @@ services:
       STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:?set via env/Vault}"
       PAYPAL_CLIENT_ID: "${PAYPAL_CLIENT_ID:?set via env/Vault}"
       PAYPAL_CLIENT_SECRET: "${PAYPAL_CLIENT_SECRET:?set via env/Vault}"
+      # --- URL de travel-service (rapport du resultat d'un paiement d'abonnement) ---
+      # Meme idiome que PAYMENT_SERVICE_URL cote identity-service : NOM DE SERVICE
+      # Compose (DNS interne Docker, round-robin sur les replicas), jamais localhost.
+      # Appel best-effort (docs/lets-travel-architecture-decisions.md §4) : pas de
+      # depends_on vers travel-service, un travel indisponible ne doit pas empecher
+      # payment de demarrer ; le rattrapage passe par /payments/reconcile-subscriptions.
+      TRAVEL_SERVICE_URL: "http://travel-service:8080"
     networks:
       - data-net
       - backend-net

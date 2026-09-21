@@ -10,15 +10,20 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Date;
 
 /**
  * Validates JWTs issued by identity-service.
  *
- * <p><b>Verify-only, never issues tokens:</b> payment-service is not an
- * identity provider — it never has a login endpoint and never mints a token.
- * It only needs to confirm that a token presented by a caller was really
- * signed by identity-service and has not expired, hence a single
- * {@link #validate(String)} method and no {@code generateToken}.</p>
+ * <p><b>Verify-only for user tokens:</b> payment-service is not an
+ * identity provider — it never has a login endpoint and never mints a user
+ * token. It only needs to confirm that a token presented by a caller was
+ * really signed by identity-service and has not expired, hence
+ * {@link #validate(String)} and no {@code generateToken}. The sole exception
+ * is {@link #generateServiceToken()}, the service-to-service token used to
+ * report a subscription payment's outcome to travel-service.</p>
  *
  * <p><b>Shared HS256 secret:</b> identity-service signs with HS256 (symmetric),
  * so verifying here requires holding the exact same signing secret — see
@@ -36,6 +41,11 @@ import java.nio.charset.StandardCharsets;
 @Service
 public class JwtService {
 
+    /** Subject of the token minted by {@link #generateServiceToken()}; travel-service matches on it. */
+    public static final String SERVICE_PAYMENT_SUBJECT = "service:payment";
+
+    private static final Duration SERVICE_TOKEN_VALIDITY = Duration.ofMinutes(15);
+
     @Value("${jwt.signing-key}")
     private String signingKeySecret;
 
@@ -51,6 +61,26 @@ public class JwtService {
     void buildSigningKey() {
         byte[] keyBytes = signingKeySecret.getBytes(StandardCharsets.UTF_8);
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    /**
+     * Issue a short-lived (15 min) service-to-service token identifying this
+     * service to travel-service, for the sole purpose of reporting a
+     * subscription payment's outcome (see {@link TravelServiceClient}).
+     * Subject = {@link #SERVICE_PAYMENT_SUBJECT}, no role, no user identity —
+     * not a user's token. This is the one exception to "verify-only": it is
+     * signed with the same shared HS256 secret identity-service uses, exactly
+     * like identity-service's own {@code service:identity} token (which it
+     * mirrors), and travel-service accepts it on a single internal endpoint.
+     */
+    public String generateServiceToken() {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(SERVICE_PAYMENT_SUBJECT)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(SERVICE_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
     }
 
     /**

@@ -94,6 +94,14 @@ services:
       # (identity, payment, travel) echouent IDENTIQUEMENT au parsing d'une
       # seule invocation `docker compose`, jamais en divergeant silencieusement.
       JWT_SIGNING_KEY: "${JWT_SIGNING_KEY:?set via env/Vault}"
+      # --- URL de payment-service (creation du paiement d'un abonnement payant) ---
+      # NOM DE SERVICE Compose (DNS interne Docker, round-robin sur les replicas),
+      # jamais localhost : meme idiome que PAYMENT_SERVICE_URL cote identity-service.
+      # Pas de depends_on vers payment-service : seul l'abonnement a une destination
+      # PAYANTE en depend (502 sinon, rien n'est laisse en attente), le reste de
+      # travel-service doit demarrer et servir sans lui
+      # (docs/lets-travel-architecture-decisions.md §4).
+      PAYMENT_SERVICE_URL: "http://payment-service:8080"
       # --- Connexion Elasticsearch (docs/lets-travel-architecture-decisions.md §6) ---
       # Toujours defini ici, CONTRAIREMENT a NEO4J_* ci-dessus : Elasticsearch
       # est une infra OPTIONNELLE/additive derriere son propre profil Compose

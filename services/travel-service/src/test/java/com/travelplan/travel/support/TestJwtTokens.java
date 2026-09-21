@@ -87,6 +87,28 @@ public final class TestJwtTokens {
     }
 
     /**
+     * The service-to-service token payment-service mints to report a
+     * subscription payment's outcome (subject {@code service:payment}, no
+     * role claim) — the only credential
+     * {@code POST /internal/subscriptions/{ref}/payment-result} accepts.
+     */
+    public static String paymentServiceToken() {
+        return tokenWithSubject("service:payment");
+    }
+
+    /** A valid, role-less token with an arbitrary subject (e.g. a service identity). */
+    public static String tokenWithSubject(String subject) {
+        SecretKey key = Keys.hmacShaKeyFor(SIGNING_KEY.getBytes(StandardCharsets.UTF_8));
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(subject)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(Duration.ofMinutes(15))))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /**
      * A freshly-signed, currently-valid token with no {@code role} claim at
      * all — exercises {@code TokenValidationService}'s least-privilege
      * rejection (403) of an otherwise-valid token that simply never claims

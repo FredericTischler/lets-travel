@@ -285,9 +285,157 @@ Faire porter le statut de paiement uniquement par polling côté dashboard
 (Stripe webhook), ce qui casserait le cutoff de 3 jours (impossible de savoir
 si l'abonnement est réellement actif).
 
----
+### Correctif — implémentation réelle (relu avant de coder cette section)
 
-## 5. Feedback & signalements
+Comme pour §3, lire « Travel » comme « `Destination` » (correctif de §2).
+Ce que le code de §3 faisait avant cette phase : `subscribe` créait la relation
+directement `ACTIVE`, sans lien avec payment-service, et **sans aucun contrôle
+de `capacity`** (le champ existait, rien ne le lisait). Les décisions ci-dessous
+ne sont pas anticipées par le texte initial.
+
+#### Décision A — sens du retour : payment-service pousse, travel-service ne tire pas
+
+Après toute transition d'un `Payment` lié à un abonnement vers `COMPLETED` ou
+`FAILED` — par `PATCH /payments/{id}/status` (admin, cas `MANUAL`), par le
+webhook Stripe ou par la capture PayPal, les trois chemins existants —
+payment-service appelle
+`POST {TRAVEL_SERVICE_URL}/internal/subscriptions/{subscriptionRef}/payment-result`
+(`travelId`, `userId`, `paymentId`, `status`, `amount`, `currency`) avec un
+**token de service** `service:payment` (même mécanisme que `service:identity` :
+HS256, 15 min, sujet reconnu sur cet unique endpoint, sans claim `role`, donc
+refusé partout ailleurs — et symétriquement aucun token utilisateur, `ADMIN`
+compris, n'est accepté sur cet endpoint). L'appel part **après commit**
+(`@TransactionalEventListener(AFTER_COMMIT)`) : notifier avant commit ferait
+agir travel-service sur un statut qui pourrait encore être annulé. Timeouts
+courts (3 s connexion / 5 s lecture), `X-Request-Id` propagé, échec loggé et
+avalé — le pattern de `PaymentServiceClient` côté identity, dans l'autre sens.
+Cas `COMPLETED` → `PENDING_PAYMENT` devient `ACTIVE` ; cas `FAILED` →
+`CANCELLED`. Le endpoint est **idempotent** (rejouer un résultat déjà appliqué
+répond 2xx sans rien changer), ce qui rend sûres les livraisons multiples
+(Stripe rejoue ses webhooks, la réconciliation renvoie).
+
+**Justification.** payment-service est le seul à *savoir* quand un paiement
+change d'état (le webhook Stripe arrive chez lui, pas chez travel-service) ; le
+faire pousser garde la latence à zéro et évite un job de polling entre deux
+services qui, par choix Phase 0, n'ont ni broker ni scheduler.
+
+**Ce que je sacrifie.** Un appel HTTP synchrone dans le thread qui traite le
+webhook/PATCH (jusqu'à 8 s dans le pire cas) ; pas d'`@Async`, pas de file. Et
+payment-service connaît maintenant travel-service (`TRAVEL_SERVICE_URL`, env
+var fail-fast) : le couplage identity → payment existait déjà, celui-ci le
+rend bidirectionnel entre payment et travel.
+
+**Alternative rejetée.** Travel-service qui *tire* (interroge payment-service
+pour chaque `PENDING_PAYMENT`). Rejetée : il faudrait un scheduler + un
+endpoint de lecture par abonnement, pour une fonctionnalité que le push couvre
+sans état supplémentaire.
+
+#### Décision B — création du paiement avec le token du traveler, pas un token de service
+
+Le texte initial disait « token de service » pour l'appel travel → payment. Je
+le corrige : travel-service **transmet le `Authorization` du traveler** à
+`POST /payments`, `/payments/stripe` ou `/payments/paypal` (selon le
+`provider` qu'il choisit dans le body de `POST /destinations/{id}/subscriptions` :
+`MANUAL`/`STRIPE`/`PAYPAL`) avec `userId` = son propre id. C'est
+`requireOwnerOrAdmin` de payment-service, déjà en place, qui garantit alors
+« un traveler ne paie que pour son propre abonnement » : rien n'est
+réimplémenté, et travel-service ne peut pas être détourné pour créer un
+paiement au nom d'un autre. Le sens inverse (Décision A) n'a pas d'utilisateur
+dans la boucle (webhook Stripe), donc là un token de service est le bon outil.
+`Payment` gagne `travelId`, `subscriptionRef` (Flyway `V4`, sans FK,
+tous deux ou aucun — sinon 400) et `travel_notified_at` (voir Décision E) ;
+`subscriptionRef` est l'`id` (UUID, nouveau) porté par la relation `SUBSCRIBED`.
+
+**Ce que je sacrifie.** Un token de 15 min transmis tel quel ; s'il expire
+entre le login et le clic, le 401 de payment-service remonte en 502. **Alternative
+rejetée** : token de service + `userId` du body ; rejetée car elle déplacerait
+le contrôle d'ownership de payment-service (où il est testé) vers un appelant.
+
+#### Décision C — le paiement est recoupé avec l'abonnement, jamais cru sur parole
+
+`subscriptionRef` est fourni par le client à payment-service (les trois
+endpoints publics) : rien n'empêche un traveler de créer lui-même un paiement
+Stripe de 0,50 € portant l'id de son abonnement de 100 € en attente, de le payer
+réellement, et d'activer l'abonnement. Donc travel-service mémorise à la
+création le prix et la devise dus, et n'active que si le résultat `COMPLETED`
+concorde : même `userId` que l'abonné, même `travelId`, même `paymentId` que
+celui enregistré (si connu), `amount` ≥ prix, même devise. Sinon 409, l'abonnement
+reste `PENDING_PAYMENT`. **Sacrifié** : pas de remboursement automatique du
+paiement « hors sujet » (il reste `COMPLETED` dans payment-service, sans effet).
+
+#### Décision D — capacité, expiration, gratuité
+
+- **Gratuit** (`price` null ou 0) : inchangé, `ACTIVE` immédiat, aucun appel à
+  payment-service ; le body est facultatif. Devise d'un abonnement payant :
+  `EUR` par défaut (`Destination` porte un prix, pas de devise), surchargeable
+  dans le body.
+- **`PENDING_PAYMENT` compte dans la capacité.** Sinon deux travelers
+  paieraient en parallèle la dernière place, et le second serait remboursé à la
+  main. `capacity` n'était pas contrôlée du tout jusqu'ici : elle l'est
+  désormais, gratuit comme payant (409 quand `ACTIVE` + réservations en attente
+  valides ≥ `capacity`), dans **une seule** instruction Cypher (compte + création),
+  sans verrou. Course résiduelle assumée : deux requêtes strictement simultanées
+  peuvent voir la dernière place ensemble (isolation read-committed de Neo4j
+  Community).
+- **Expiration d'un `PENDING_PAYMENT` jamais payé** : `expiresAt` posé à la
+  création — 60 min pour Stripe/PayPal (checkout interactif), 72 h pour `MANUAL`
+  (un admin confirme hors ligne : virement, espèces) ; configurables
+  (`SUBSCRIPTION_PENDING_TTL_MINUTES`, `SUBSCRIPTION_PENDING_TTL_MANUAL_MINUTES`).
+  L'expiration est **dérivée à la lecture** (statut affiché `EXPIRED`), jamais
+  écrite : pas de job de nettoyage, pas de scheduler. Un `EXPIRED` ne compte
+  plus dans la capacité et ne bloque plus un nouvel abonnement du même traveler.
+- **Paiement `COMPLETED` arrivé après l'expiration** : l'argent est pris, il
+  gagne — l'abonnement passe `ACTIVE` (warning loggué : la destination peut
+  dépasser sa capacité du nombre de ces retardataires). **`COMPLETED` arrivé pour
+  un abonnement `CANCELLED`** (le traveler ou le manager a annulé pendant que le
+  paiement était en vol) : rien à activer, 409 + log `ERROR` « remboursement
+  manuel requis » ; payment-service garde le paiement non acquitté.
+- **Annuler un `PENDING_PAYMENT`** est toujours permis, y compris à moins de 3
+  jours du départ : le cutoff protège une réservation *confirmée*, pas une
+  intention non payée. Un `ACTIVE` reste soumis au cutoff.
+- **Échec de la création du paiement** (payment-service injoignable/5xx/4xx) :
+  la relation `PENDING_PAYMENT` juste créée est aussitôt annulée (compensation),
+  502 au traveler qui peut réessayer — jamais de réservation orpheline qui
+  bloquerait une place.
+
+**Ce que je sacrifie.** Un `FAILED` produit un `CANCELLED` (comme demandé) donc
+gonfle le compteur « annulations » des stats du traveler ; distinguer
+« annulé par le traveler » de « annulé car paiement échoué » demanderait une
+raison d'annulation, non ajoutée ici. **Alternative rejetée** : ne pas compter
+les `PENDING_PAYMENT` dans la capacité (surbooking systématique sous charge), ou
+un job de balayage qui écrit `EXPIRED` (un scheduler de plus pour un statut qu'on
+peut calculer).
+
+#### Décision E — la fenêtre d'échec, et la couture de réconciliation
+
+Fenêtre : paiement `COMPLETED` (commité) mais appel vers travel-service en
+échec. Pas de transaction distribuée. La colonne `payments.travel_notified_at`
+(payment-service) reste `NULL` tant que travel-service n'a pas répondu 2xx ; un paiement terminal
+avec `subscription_ref` et `travel_notified_at IS NULL` *est* exactement « une
+confirmation à renvoyer ». `POST /payments/reconcile-subscriptions` (`ADMIN`)
+renvoie tous ceux-là (idempotent côté travel-service, donc rejouable sans
+risque) et répond `{attempted, notified}`. **Sacrifié** : rien ne l'appelle
+automatiquement — un scheduler (ou un `cron` Ansible) pourra le faire plus tard ;
+d'ici là c'est une action d'admin, comme le reste de la réconciliation du repo.
+
+#### Détail d'implémentation — le flux `subscribe` vit hors transaction
+
+`SubscriptionCheckoutService.subscribe` n'a aucun `@Transactional`, même pas
+`NOT_SUPPORTED` : `Neo4jClient` ne s'exécute en autocommit que si aucune
+*synchronisation* de transaction Spring n'est active ; une méthode
+`@Transactional` (fût-elle `NOT_SUPPORTED`) en démarre une, à laquelle
+`Neo4jClient` rattache une transaction que l'exception annule — y compris la
+compensation. Trouvé par un test (un appel de paiement en échec ne laissait aucune
+trace de la tentative annulée). Le reste de la logique (annulation, listes,
+résultat de paiement) reste dans `SubscriptionService`.
+
+#### Stats traveler — « méthodes de paiement préférées » (sujet)
+
+`GET /payments/summary` (`?userId=` réservé à `ADMIN`, sinon l'appelant) : par
+provider, nombre et total des paiements **`COMPLETED`** (un paiement `PENDING`
+ou `FAILED` n'est pas un moyen avec lequel le traveler a réellement payé), totaux
+**par devise** (jamais sommés entre devises), et `mostUsedProvider` (plus grand
+nombre ; égalité départagée par nom de provider, pour rester déterministe).
 
 ### Décision
 

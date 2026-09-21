@@ -55,6 +55,23 @@ jwt:
   # PlaceholderResolutionException at startup.
   signing-key: ${JWT_SIGNING_KEY}
 
+payment-service:
+  # Base URL of payment-service, called to create the payment of a paid
+  # subscription — see PaymentServiceClient and
+  # docs/lets-travel-architecture-decisions.md §4. Env var ONLY, no default (same
+  # `${VAR}` fail-fast idiom as jwt.signing-key above: an unresolved placeholder
+  # aborts startup, no silent default for a service URL).
+  url: ${PAYMENT_SERVICE_URL}
+
+subscription:
+  # How long an unpaid PENDING_PAYMENT subscription keeps its seat before it is
+  # read as EXPIRED and stops counting toward capacity (ADR §4 addendum). Not
+  # secrets/URLs, so plain defaults are fine (unlike the values above). Stripe
+  # and PayPal are interactive checkouts: 60 minutes. MANUAL payments are
+  # confirmed by an administrator out of band (bank transfer, cash): 72 hours.
+  pending-ttl-minutes: ${SUBSCRIPTION_PENDING_TTL_MINUTES:60}
+  pending-ttl-manual-minutes: ${SUBSCRIPTION_PENDING_TTL_MANUAL_MINUTES:4320}
+
 cors:
   # Browser origins allowed to call this API (see CorsConfig). Not a secret —
   # a sensible default is fine here, unlike JWT_SIGNING_KEY/NEO4J_* above.

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -52,11 +53,14 @@ class PayPalPaymentServiceTest {
     @Mock
     private OrdersController ordersController;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private PayPalPaymentService payPalPaymentService;
 
     @BeforeEach
     void setUp() {
-        payPalPaymentService = new PayPalPaymentService(paymentRepository, paypalServerSdkClient);
+        payPalPaymentService = new PayPalPaymentService(paymentRepository, paypalServerSdkClient, eventPublisher);
     }
 
     private Payment pendingPayment(String orderId) {

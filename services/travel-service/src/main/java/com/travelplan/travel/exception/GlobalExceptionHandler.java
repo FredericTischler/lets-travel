@@ -58,6 +58,17 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidSubscriptionRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidSubscriptionRequest(
+            InvalidSubscriptionRequestException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(PaymentUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handlePaymentUnavailable(PaymentUnavailableException ex) {
+        return buildResponse(HttpStatus.BAD_GATEWAY, ex.getMessage());
+    }
+
     @ExceptionHandler(SearchUnavailableException.class)
     public ResponseEntity<Map<String, Object>> handleSearchUnavailable(SearchUnavailableException ex) {
         return buildResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());

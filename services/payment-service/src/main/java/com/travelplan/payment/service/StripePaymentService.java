@@ -18,6 +18,7 @@ import com.travelplan.payment.repository.PaymentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,11 +69,14 @@ public class StripePaymentService {
             Set.of(Payment.STATUS_COMPLETED, Payment.STATUS_FAILED);
 
     private final PaymentRepository paymentRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final String webhookSecret;
 
     public StripePaymentService(PaymentRepository paymentRepository,
+                                 ApplicationEventPublisher eventPublisher,
                                  @Value("${stripe.webhook-secret}") String webhookSecret) {
         this.paymentRepository = paymentRepository;
+        this.eventPublisher = eventPublisher;
         this.webhookSecret = webhookSecret;
     }
 
@@ -99,6 +103,9 @@ public class StripePaymentService {
 
         Payment payment = new Payment(request.getUserId(), request.getAmount(), request.getCurrency(),
                 PaymentProvider.STRIPE, paymentIntent.getId());
+        if (request.isSubscriptionLinked()) {
+            payment.linkToSubscription(request.getTravelId(), request.getSubscriptionRef());
+        }
         Payment saved = paymentRepository.save(payment);
         return StripePaymentResponse.from(saved, paymentIntent.getClientSecret());
     }
@@ -160,6 +167,9 @@ public class StripePaymentService {
                 ? Payment.STATUS_COMPLETED
                 : Payment.STATUS_FAILED);
         // the dirty check within the transaction persists the change automatically
+        // Tells travel-service (only for a subscription-linked payment) once this commits —
+        // see SubscriptionPaymentNotifier.
+        eventPublisher.publishEvent(new PaymentStatusChanged(payment.getId()));
     }
 
     /**

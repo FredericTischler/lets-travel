@@ -18,6 +18,49 @@ lifecycle:
 - `DELETE /payments/{id}` — soft-delete an active payment (404 if absent or
   already soft-deleted).
 
+- `POST /payments/stripe`, `POST /payments/paypal`, `POST /payments/paypal/{orderId}/capture`,
+  `POST /webhooks/stripe` — provider-backed payments (Stripe PaymentIntent +
+  signed webhook, PayPal order + explicit capture).
+- `GET /payments/summary[?userId=]` — the caller's payment summary (count and
+  total per provider over `COMPLETED` payments, totals per currency, most-used
+  provider). Any role, own payments only; `userId` of someone else is `ADMIN`
+  only (403 otherwise). It is the payment half of the traveler's "preferred
+  payment methods" stat.
+- `POST /payments/reconcile-subscriptions` — `ADMIN` only, re-sends to
+  travel-service every terminal subscription-linked payment it has not
+  acknowledged (see "Paying for a subscription"). Returns
+  `{attempted, notified}`.
+
+## Paying for a subscription
+
+(docs/lets-travel-architecture-decisions.md §4 and its addendum.) The three
+create endpoints (`POST /payments`, `/payments/stripe`, `/payments/paypal`)
+accept an optional pair `travelId` (the Destination id) + `subscriptionRef` (id
+of the `SUBSCRIBED` relation in travel-service) — both or neither, else 400.
+Stored on `payments` (migration `V4`, no FK: both point into travel-service's
+Neo4j). Ownership is the existing rule: `userId` must be the caller (403
+otherwise; `ADMIN` may act for anyone). travel-service is the normal caller: it
+forwards the traveler's own token.
+
+When such a payment reaches `COMPLETED` or `FAILED` (admin PATCH, Stripe
+webhook, PayPal capture), and once that change is committed,
+`SubscriptionPaymentNotifier` calls travel-service
+`POST /internal/subscriptions/{subscriptionRef}/payment-result` with a
+`service:payment` service token (`JwtService.generateServiceToken()`, same
+shared HS256 secret), 3 s/5 s timeouts, `X-Request-Id` propagated.
+travel-service moves the subscription to `ACTIVE` / `CANCELLED`.
+
+- **Best-effort, no distributed transaction.** A failed call (travel-service down,
+  timeout, non-2xx) is logged and swallowed: the payment status change is
+  never rolled back or failed because of it, and a Stripe webhook still
+  answers 200.
+- **Reconciliation seam.** `payments.travel_notified_at` is set when travel-service
+  answered 2xx; a terminal payment with a `subscription_ref` and a `NULL`
+  `travel_notified_at` is a confirmation still to send.
+  `POST /payments/reconcile-subscriptions` re-sends them (the travel-service
+  endpoint is idempotent). Nothing calls it automatically yet.
+- Payments without `subscriptionRef` are untouched by all of this.
+
 ## Status lifecycle
 
 Three statuses: `PENDING`, `COMPLETED`, `FAILED`.
@@ -43,16 +86,35 @@ indistinguishable from a non-existent one to API callers.
 
 All connection values are externalized via environment variables in
 `application.yml` (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`,
-`DB_PASSWORD`, `SERVER_PORT`). The service fails fast at startup if any of
-them is absent.
+`DB_PASSWORD`, `JWT_SIGNING_KEY`, the Stripe/PayPal credentials,
+`TRAVEL_SERVICE_URL`, `SERVER_PORT`). The service fails fast at startup if any
+of them is absent — including `TRAVEL_SERVICE_URL`, the base URL of
+travel-service used for the subscription payment callback. (The test suite
+supplies a test-only default in `src/test/resources/application.properties`;
+production has none.)
 
 Schema is owned by Flyway (`src/main/resources/db/migration/`); Hibernate
 `ddl-auto` is set to `validate` only.
 
 ## Not yet implemented
 
-- No integration with an external payment provider (e.g. Stripe, PayPal).
-  All payments today are created manually via `POST /payments`; there is no
-  external reference reconciliation flow, even though the entity has an
-  `external_reference` column reserved for that purpose.
-- No `/internal/*` cross-service endpoints.
+- (The two lines this section used to carry — "no Stripe/PayPal" and "no
+  `/internal/*` endpoints" — were stale before this phase: Stripe and PayPal
+  are wired, and `DELETE /payments/by-user/{userId}` already accepts identity's
+  service token.)
+- No automatic reconciliation: `POST /payments/reconcile-subscriptions` exists
+  but nothing schedules it; a subscription-linked payment whose confirmation
+  call failed stays un-notified until an admin triggers it.
+- The travel-service callback runs synchronously in the request thread that
+  changed the status (up to ~8 s if travel-service hangs); no `@Async`, no queue.
+- No PayPal webhook (capture is client-driven), no de-duplication of Stripe
+  event ids; unchanged by this phase.
+- No refund flow. A payment that completed for a subscription travel-service
+  could not activate (it was cancelled while the payment was in flight)
+  stays `COMPLETED` here and is logged as an error in travel-service, to be
+  refunded by hand.
+- `GET /payments/summary` counts only `COMPLETED` payments and does not
+  convert currencies (totals are per currency).
+- Not exercised by the test suite: the real Stripe/PayPal round trips (the 3
+  skipped tests need sandbox credentials); the callback is tested against a
+  stubbed travel-service, not a running one.
