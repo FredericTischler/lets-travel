@@ -96,4 +96,29 @@ describe('PaymentService', () => {
 
     expect(completed).toBe(true);
   });
+
+  it('get() performs a GET /payments/{id}', () => {
+    let result: Payment | undefined;
+
+    service.get('pay-1').subscribe((payment) => (result = payment));
+
+    const req = httpMock.expectOne(`${baseUrl}/pay-1`);
+    expect(req.request.method).toBe('GET');
+    req.flush({ ...samplePayment, provider: 'PAYPAL', externalReference: 'ORDER-1' });
+
+    expect(result?.provider).toBe('PAYPAL');
+  });
+
+  it('capturePayPal() POSTs /payments/paypal/{orderId}/capture with the order id encoded', () => {
+    let result: Payment | undefined;
+
+    service.capturePayPal('ORDER/1').subscribe((payment) => (result = payment));
+
+    const req = httpMock.expectOne(`${baseUrl}/paypal/ORDER%2F1/capture`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBeNull();
+    req.flush({ ...samplePayment, status: 'COMPLETED' });
+
+    expect(result?.status).toBe('COMPLETED');
+  });
 });

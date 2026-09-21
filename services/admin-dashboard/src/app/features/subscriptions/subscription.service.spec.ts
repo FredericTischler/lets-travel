@@ -38,6 +38,29 @@ describe('SubscriptionService', () => {
     expect(result).toEqual(subscription);
   });
 
+  it('subscribe() sends the provider for a paid travel and returns the payment to complete', () => {
+    let result: Subscription | undefined;
+    service.subscribe('dest-1', { provider: 'PAYPAL' }).subscribe((s) => (result = s));
+
+    const req = httpMock.expectOne(destinationUrl);
+    expect(req.request.body).toEqual({ provider: 'PAYPAL' });
+    req.flush({
+      ...subscription,
+      status: 'PENDING_PAYMENT',
+      expiresAt: '2026-09-21T11:00:00Z',
+      payment: {
+        paymentId: 'pay-1',
+        provider: 'PAYPAL',
+        status: 'PENDING',
+        clientSecret: null,
+        approveUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=O1',
+      },
+    });
+
+    expect(result?.status).toBe('PENDING_PAYMENT');
+    expect(result?.payment?.approveUrl).toContain('token=O1');
+  });
+
   it('unsubscribe() DELETEs /destinations/{id}/subscriptions', () => {
     let completed = false;
     service.unsubscribe('dest-1').subscribe(() => (completed = true));
