@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { createTravelViaApi } from './support/travel-api';
+import { catalogueLink, createTravelViaApi } from './support/travel-api';
 import { createTestUser, loginAsTestUser } from './support/test-user';
 
 /**
@@ -16,16 +16,16 @@ import { createTestUser, loginAsTestUser } from './support/test-user';
 test.describe('Subscription flow', () => {
   test('a traveler subscribes and unsubscribes from a travel', async ({ page, request }) => {
     const manager = await createTestUser(request, 'TRAVEL_MANAGER');
-    const travel = await createTravelViaApi(request, manager, { startInDays: 60 });
+    const travel = await createTravelViaApi(request, manager, { startInDays: 60, price: 0 });
     const traveler = await createTestUser(request, 'TRAVELER');
     await loginAsTestUser(page, traveler);
 
     // Browse -> detail.
     await expect(page.getByRole('heading', { name: 'Voyages', exact: true })).toBeVisible();
-    await page.getByRole('link', { name: travel.name }).click();
+    await catalogueLink(page, travel.name).click();
     await expect(page).toHaveURL(/\/travels\/[0-9a-f-]+$/);
     await expect(page.getByRole('heading', { name: travel.name })).toBeVisible();
-    await expect(page.getByText('499.00 €')).toBeVisible();
+    await expect(page.getByText('0.00 €')).toBeVisible();
 
     // Subscribe.
     await page.getByRole('button', { name: "S'inscrire" }).click();
@@ -54,11 +54,11 @@ test.describe('Subscription flow', () => {
     request,
   }) => {
     const manager = await createTestUser(request, 'TRAVEL_MANAGER');
-    const travel = await createTravelViaApi(request, manager, { startInDays: 1 });
+    const travel = await createTravelViaApi(request, manager, { startInDays: 1, price: 0 });
     const traveler = await createTestUser(request, 'TRAVELER');
     await loginAsTestUser(page, traveler);
 
-    await page.getByRole('link', { name: travel.name }).click();
+    await catalogueLink(page, travel.name).click();
     await page.getByRole('button', { name: "S'inscrire" }).click();
     await expect(page.getByRole('button', { name: 'Se désinscrire' })).toBeVisible();
     await expect(page.getByText("Le délai d'annulation (3 jours avant le départ) est dépassé")).toBeVisible();
@@ -77,14 +77,14 @@ test.describe('Subscription flow', () => {
     request,
   }) => {
     const manager = await createTestUser(request, 'TRAVEL_MANAGER');
-    const travel = await createTravelViaApi(request, manager, { startInDays: 60 });
+    const travel = await createTravelViaApi(request, manager, { startInDays: 60, price: 0 });
     const traveler = await createTestUser(request, 'TRAVELER');
 
     // Traveler subscribes in their own browser context.
     const travelerContext = await browser.newContext({ ignoreHTTPSErrors: true });
     const travelerPage = await travelerContext.newPage();
     await loginAsTestUser(travelerPage, traveler);
-    await travelerPage.getByRole('link', { name: travel.name }).click();
+    await catalogueLink(travelerPage, travel.name).click();
     await travelerPage.getByRole('button', { name: "S'inscrire" }).click();
     await expect(travelerPage.getByRole('button', { name: 'Se désinscrire' })).toBeVisible();
 

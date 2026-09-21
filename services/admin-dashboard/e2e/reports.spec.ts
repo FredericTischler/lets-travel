@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { createTravelViaApi } from './support/travel-api';
+import { catalogueLink, createTravelViaApi } from './support/travel-api';
 import { createTestUser, loginAsTestUser } from './support/test-user';
 
 /**
@@ -21,7 +21,7 @@ test.describe('Reports', () => {
     const travelerContext = await browser.newContext({ ignoreHTTPSErrors: true });
     const travelerPage = await travelerContext.newPage();
     await loginAsTestUser(travelerPage, traveler);
-    await travelerPage.getByRole('link', { name: travel.name }).click();
+    await catalogueLink(travelerPage, travel.name).click();
     await expect(travelerPage.getByTestId('report-count')).toContainText('0');
 
     await travelerPage.getByRole('button', { name: "Signaler l'organisateur" }).click();
@@ -63,7 +63,7 @@ test.describe('Reports', () => {
     await loginAsTestUser(page, manager);
 
     await page.getByRole('link', { name: 'Voyages', exact: true }).click();
-    await page.getByRole('link', { name: travel.name }).click();
+    await catalogueLink(page, travel.name).click();
 
     await expect(page.getByRole('button', { name: "Signaler l'organisateur" })).toHaveCount(0);
   });
