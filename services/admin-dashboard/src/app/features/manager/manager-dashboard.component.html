@@ -1,0 +1,96 @@
+<div class="flex flex-col gap-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+      Tableau de bord organisateur
+    </h1>
+    <div class="flex items-center gap-2 text-sm">
+      <label for="months" class="text-slate-700 dark:text-slate-200">Période des revenus</label>
+      <select
+        id="months"
+        name="months"
+        [ngModel]="months()"
+        (ngModelChange)="setMonths($event)"
+        class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+      >
+        @for (choice of monthChoices; track choice) {
+          <option [ngValue]="choice">{{ choice }} derniers mois</option>
+        }
+      </select>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+  } @else if (error()) {
+    <app-alert variant="error">{{ error() }}</app-alert>
+  } @else if (data(); as d) {
+    @if (d.partial) {
+      <p
+        role="status"
+        class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+        data-testid="income-unavailable"
+      >
+        Données de revenus indisponibles pour le moment (service de paiement injoignable) : les
+        autres statistiques restent exactes.
+      </p>
+    }
+
+    <div class="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="kpis">
+      <app-stat-tile
+        label="Revenus (total)"
+        [value]="d.income ? money(d.income.totals) : 'Indisponible'"
+        [hint]="d.income ? d.months + ' derniers mois : ' + money(d.income.windowTotals) : null"
+        data-testid="kpi-income"
+      />
+      <app-stat-tile
+        label="Voyages organisés"
+        [value]="'' + d.trips.organized"
+        [hint]="d.trips.past + ' terminés · ' + d.trips.ongoing + ' en cours · ' + d.trips.upcoming + ' à venir'"
+        data-testid="kpi-trips"
+      />
+      <app-stat-tile label="Voyageurs" [value]="'' + d.travelers" hint="Inscrits actifs distincts" data-testid="kpi-travelers" />
+      <app-stat-tile
+        label="Note moyenne"
+        [value]="rating(d.rating.average)"
+        [hint]="d.rating.feedbackCount + ' avis'"
+        data-testid="kpi-rating"
+      />
+    </div>
+
+    <app-card [title]="'Revenus par mois (' + (d.income?.referenceCurrency ?? 'EUR') + ')'">
+      @if (d.income) {
+        <app-bar-chart
+          [title]="'Revenus par mois sur les ' + d.months + ' derniers mois'"
+          [data]="chartPoints()"
+          [format]="chartFormat()"
+          valueLabel="Revenus"
+          emptyMessage="Aucun revenu encaissé sur la période."
+        />
+      } @else {
+        <p class="text-sm text-slate-500 dark:text-slate-400">Graphique indisponible : données de revenus indisponibles.</p>
+      }
+    </app-card>
+
+    <app-card title="Mes voyages">
+      <app-travel-rows-table
+        [rows]="d.travels"
+        caption="Voyages organisés"
+        emptyMessage="Vous n'organisez aucun voyage pour le moment."
+        feedbackLink="/manager/travels"
+      />
+    </app-card>
+
+    <app-card title="Derniers avis">
+      <app-feedback-list
+        [items]="d.recentFeedback"
+        [showAuthor]="true"
+        emptyMessage="Aucun avis reçu pour l'instant."
+      />
+      <p class="mt-3 text-sm">
+        <a routerLink="/manager/travels" class="text-indigo-600 hover:underline dark:text-indigo-400"
+          >Gérer mes voyages</a
+        >
+      </p>
+    </app-card>
+  }
+</div>
