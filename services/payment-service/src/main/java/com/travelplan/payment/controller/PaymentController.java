@@ -3,6 +3,7 @@ package com.travelplan.payment.controller;
 import com.travelplan.payment.dto.CreateManualPaymentRequest;
 import com.travelplan.payment.dto.DeleteByUserResponse;
 import com.travelplan.payment.dto.PaymentResponse;
+import com.travelplan.payment.dto.PaymentIncomeResponse;
 import com.travelplan.payment.dto.PaymentSummaryResponse;
 import com.travelplan.payment.dto.UpdateStatusRequest;
 import com.travelplan.payment.service.PaymentService;
@@ -132,6 +133,24 @@ public class PaymentController {
         UUID target = userId != null ? userId : tokenValidationService.callerId(claims);
         tokenValidationService.requireOwnerOrAdmin(claims, target);
         return ResponseEntity.ok(paymentService.summarize(target));
+    }
+
+    /**
+     * Income aggregate behind the manager/admin dashboards: every
+     * {@code COMPLETED}, travel-linked payment grouped by travel, month and
+     * currency. Restricted to an {@code ADMIN} or the {@code service:travel}
+     * service token travel-service mints for exactly this call (it composes the
+     * rows with its own graph; a manager never reads payment-service directly).
+     *
+     * @return 200 with {@code {rows: [{travelId, month, currency, total, count}]}},
+     *         401 if the Authorization header is missing/invalid/expired,
+     *         403 for any other caller
+     */
+    @GetMapping("/income")
+    public ResponseEntity<PaymentIncomeResponse> income(
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAdminOrTravelServiceToken(authorizationHeader);
+        return ResponseEntity.ok(paymentService.incomeByTravel());
     }
 
     /**

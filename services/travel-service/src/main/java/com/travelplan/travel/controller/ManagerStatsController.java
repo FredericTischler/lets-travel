@@ -2,6 +2,7 @@ package com.travelplan.travel.controller;
 
 import com.travelplan.travel.dto.ManagerRankingEntry;
 import com.travelplan.travel.dto.ManagerStatsResponse;
+import com.travelplan.travel.service.DashboardService;
 import com.travelplan.travel.service.ManagerStatsService;
 import com.travelplan.travel.service.TokenValidationService;
 import org.springframework.http.ResponseEntity;
@@ -25,11 +26,14 @@ public class ManagerStatsController {
 
     private final ManagerStatsService managerStatsService;
     private final TokenValidationService tokenValidationService;
+    private final DashboardService dashboardService;
 
     public ManagerStatsController(ManagerStatsService managerStatsService,
-                                   TokenValidationService tokenValidationService) {
+                                   TokenValidationService tokenValidationService,
+                                   DashboardService dashboardService) {
         this.managerStatsService = managerStatsService;
         this.tokenValidationService = tokenValidationService;
+        this.dashboardService = dashboardService;
     }
 
     /**
@@ -53,9 +57,12 @@ public class ManagerStatsController {
     }
 
     /**
-     * Managers ordered by average rating then number of feedbacks — a
-     * provisional score, income and other metrics are added later.
-     * {@code ADMIN} only.
+     * Managers ordered by performance score: a weighted sum of a damped rating,
+     * income (payment-service) and traveler volume — see
+     * {@link com.travelplan.travel.service.PerformanceScore}. If payment-service
+     * is unreachable the score is computed without income and each entry has
+     * {@code partial: true}. Report counts are not included (identity-service's,
+     * added by the front). {@code ADMIN} only.
      *
      * @return 200 with the ranking (empty if no manager owns an active destination),
      *         401 with a generic message if the Authorization header is missing/invalid/expired,
@@ -65,6 +72,6 @@ public class ManagerStatsController {
     public ResponseEntity<List<ManagerRankingEntry>> ranking(
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         tokenValidationService.requireAdmin(authorizationHeader);
-        return ResponseEntity.ok(managerStatsService.ranking());
+        return ResponseEntity.ok(dashboardService.ranking());
     }
 }

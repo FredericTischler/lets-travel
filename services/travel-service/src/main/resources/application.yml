@@ -63,6 +63,13 @@ payment-service:
   # aborts startup, no silent default for a service URL).
   url: ${PAYMENT_SERVICE_URL}
 
+dashboard:
+  # Currency of the scalar income amounts and of the income component of the
+  # manager performance score (PerformanceScore). Incomes in other currencies
+  # are reported per currency but not converted, so not scored. Not a secret or a
+  # URL, so a plain default is fine (ADR "Dashboards" addendum).
+  reference-currency: ${DASHBOARD_REFERENCE_CURRENCY:EUR}
+
 subscription:
   # How long an unpaid PENDING_PAYMENT subscription keeps its seat before it is
   # read as EXPIRED and stops counting toward capacity (ADR §4 addendum). Not

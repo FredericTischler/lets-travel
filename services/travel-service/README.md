@@ -109,8 +109,10 @@ managers/admins, and manager statistics/ranking built from it.
 - `GET /managers/{managerId}/stats` — `activeTravels`, `pastTravels`,
   `subscribers`, `feedbackCount`, `averageRating`, `pastRatings` (per past
   destination). Any known role; aggregates only.
-- `GET /managers/ranking` — managers ordered by average rating then number of
-  feedbacks. `ADMIN` only.
+- `GET /managers/ranking` — managers ordered by performance score (damped
+  rating, income, traveler volume), `ADMIN` only — see "Dashboards, ranking and
+  statistics". Also `GET /managers/me/dashboard`, `GET /admin/dashboard` and
+  `GET /travelers/me/stats`, described there.
 - `GET /travelers/me/recommendations` — personalised suggestions with a score
   and reasons, from the caller's participation and feedback history (see
   "Recommendations" below). Any known role, self only (`?travelerId=` is
@@ -218,12 +220,10 @@ all feedbacks (not a mean of per-destination means), rounded to 2 decimals and
 `null` when there is no feedback. A manager id owning no active destination
 yields zeros with a 200, not a 404 (manager identity lives in identity-service).
 
-Income (payment-service) and report counts (identity-service) are **not**
-included and travel-service does not call those services: the dashboard (or a
-later phase) combines the three sources into the final performance score. The
-ranking is therefore **provisional**: average rating descending, then number of
-feedbacks descending, managers without feedback last. It has no smoothing —
-one 5-star review outranks a hundred 4.9-star ones.
+`GET /managers/{id}/stats` still carries neither income nor report counts.
+The ranking, however, is no longer the provisional "average rating, then
+count" version (which let one 5-star review outrank a hundred 4.9-star ones):
+it is now a performance score, see "Dashboards, ranking and statistics" below.
 
 ## Recommendations (docs/lets-travel-architecture-decisions.md §7)
 
@@ -331,6 +331,45 @@ per-service account. This is a known, documented limitation of the edition,
 not an oversight — see the Javadoc on `Neo4jConnectionConfig` for the full
 rationale.
 
+## Dashboards, ranking and statistics (ADR "Dashboards" addendum)
+
+Money lives in payment-service, so these endpoints compose travel-service's
+graph with payment-service, **read-only and best-effort**
+(`PaymentStatsClient`, 3 s / 5 s timeouts, `X-Request-Id` propagated). If
+payment-service cannot answer, the money fields are `null` and `partial` is
+`true`; everything else is still served. Nothing is stored here.
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /managers/me/dashboard?managerId=&months=6` | `TRAVEL_MANAGER` (own), `ADMIN` (any via `managerId`) | trips, travelers, rating, income (total / per month / per travel), recent feedback. A manager passing another id: 403 |
+| `GET /admin/dashboard?months=6` | `ADMIN` | totals, income per month, top managers (score / rating / income), top travels (income / rating), past-travel history, recent feedback |
+| `GET /managers/ranking` | `ADMIN` | every manager with an active travel, by performance score (original fields kept, new ones added) |
+| `GET /travelers/me/stats?travelerId=` | any role (self), `ADMIN` (any) | past participations, upcoming, cancellations, feedbacks given, preferred payment provider |
+
+`months` is clamped to 1..24. Income comes from payment-service's
+`GET /payments/income` with a `service:travel` service token
+(`JwtService.generateServiceToken()`, accepted there on that single route); the
+traveler's payment summary comes from `GET /payments/summary` with the caller's
+own token forwarded. Only **active** (non-deleted) travels are summed, so a
+manager's per-travel figures add up to their total. Amounts are per ISO
+currency (`{"EUR": 190.0}`); the scalar `*Amount` fields are the
+`dashboard.reference-currency` share (env `DASHBOARD_REFERENCE_CURRENCY`,
+default `EUR`), with no conversion.
+
+**Performance score** (`PerformanceScore`, 0..100):
+`100 * (0.5 * ratingScore + 0.3 * incomeScore + 0.2 * travelersScore)`.
+`ratingScore` is the *damped* mean rating `(sum + 5*3.0) / (count + 5)`
+rescaled from 1..5 to 0..1 (prior weight 5 at the neutral 3.0): one 5-star
+review gives 3.33, a hundred 4.9 give 4.81, no feedback gives 3.0 (neutral).
+`incomeScore` = reference-currency income / best manager's; `travelersScore` =
+distinct `ACTIVE` travelers / best manager's. Without income (payment-service
+down) the two remaining weights are renormalised and each entry is `partial`.
+Order: score, then feedback count, then manager id.
+
+**Report counts** are identity-service's: the front reads
+`GET /reports/count/{userId}` (any role) for a manager or a traveler; they are
+**not** part of the score and travel-service does not call identity-service.
+
 ## Configuration
 
 All connection values are externalized via environment variables in
@@ -376,8 +415,11 @@ secrets/URLs, so they do have defaults.
   described in this README yet.)
 - Feedback is immutable: no edit, no delete, no admin moderation of an abusive
   comment (see "Feedback" above). No pagination on the feedback lists.
-- Manager statistics are partial by design: no income (payment-service) and no
-  report count (identity-service), and the manager ranking is a provisional
-  score (rating, then number of feedbacks) — see "Manager statistics" above.
-  Assembling the final performance score is left to the dashboard / a later
-  phase; travel-service makes no inter-service call for it.
+- Dashboards/ranking (see "Dashboards, ranking and statistics"): the score has
+  no report-count penalty (identity-service's, added by the front for display
+  only); income is not converted between currencies (only the reference
+  currency is scored); refunds are not modelled (a `COMPLETED` payment counts
+  as income); income of a soft-deleted travel disappears from its manager's
+  figures; the income aggregate is fetched whole from payment-service on every
+  dashboard call (no cache, fine at demo volume); "cancellations" include
+  payment failures; no pagination of the history list.

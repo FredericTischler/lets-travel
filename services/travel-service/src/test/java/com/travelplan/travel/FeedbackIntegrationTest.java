@@ -524,7 +524,15 @@ class FeedbackIntegrationTest {
         postFeedback(steadyDest, participant(steadyDest, "ACTIVE"), Map.of("rating", 3));
         UUID thinDest = createPastDestination(thin);
         postFeedback(thinDest, participant(thinDest, "ACTIVE"), Map.of("rating", 4));
-        createPastDestination(unrated);
+        UUID unratedDest = createPastDestination(unrated);
+        // Since the "Dashboards" ADR addendum the ranking is a performance score (damped rating +
+        // income + traveler volume, see DashboardRankingIntegrationTest). Give the four managers the
+        // same number of ACTIVE travelers (2) so this test keeps isolating the rating component;
+        // payment-service is unreachable here (partial ranking), so income is out of the score.
+        seedSubscription(UUID.randomUUID(), bestDest, "ACTIVE");
+        seedSubscription(UUID.randomUUID(), thinDest, "ACTIVE");
+        seedSubscription(UUID.randomUUID(), unratedDest, "ACTIVE");
+        seedSubscription(UUID.randomUUID(), unratedDest, "ACTIVE");
 
         ResponseEntity<List> response = restTemplate.exchange(
                 "/managers/ranking", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), List.class);

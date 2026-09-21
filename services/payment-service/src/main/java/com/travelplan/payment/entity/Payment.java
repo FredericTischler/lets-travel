@@ -99,6 +99,15 @@ public class Payment {
     @Column(name = "travel_notified_at", columnDefinition = "TIMESTAMPTZ")
     private OffsetDateTime travelNotifiedAt;
 
+    /**
+     * The instant this payment became {@code COMPLETED} (V5__add_completed_at.sql):
+     * what income "per month" is bucketed on. Stamped by {@link #setStatus} —
+     * the single place every completion path (admin PATCH, Stripe webhook, PayPal
+     * capture) goes through — and {@code null} for a payment that is not COMPLETED.
+     */
+    @Column(name = "completed_at", columnDefinition = "TIMESTAMPTZ")
+    private OffsetDateTime completedAt;
+
     protected Payment() {
         // required by JPA
     }
@@ -177,6 +186,13 @@ public class Payment {
 
     public void setStatus(String status) {
         this.status = status;
+        if (STATUS_COMPLETED.equals(status) && completedAt == null) {
+            this.completedAt = OffsetDateTime.now();
+        }
+    }
+
+    public OffsetDateTime getCompletedAt() {
+        return completedAt;
     }
 
     public String getExternalReference() {

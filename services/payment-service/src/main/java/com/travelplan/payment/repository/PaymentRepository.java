@@ -92,4 +92,24 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             GROUP BY p.provider, p.currency
             """)
     List<Object[]> summarizeCompletedByUser(@Param("userId") UUID userId);
+
+    /**
+     * Income of {@code COMPLETED}, travel-linked, active payments, grouped by
+     * travel, calendar month (UTC, {@code YYYY-MM}, on {@code completed_at}) and
+     * currency — the raw rows behind {@code GET /payments/income}. Each row is
+     * {@code [UUID travelId, String month, String currency, BigDecimal total, Long count]}.
+     * Native because the month bucketing ({@code to_char ... AT TIME ZONE 'UTC'})
+     * has no portable JPQL form; backed by {@code idx_payments_income} (V5).
+     * {@code COALESCE(completed_at, created_at)} only guards a row that a manual
+     * SQL fix left without a completion instant.
+     */
+    @Query(value = """
+            SELECT p.travel_id, to_char(COALESCE(p.completed_at, p.created_at) AT TIME ZONE 'UTC', 'YYYY-MM') AS month,
+                   p.currency, SUM(p.amount), COUNT(*)
+            FROM payments p
+            WHERE p.status = 'COMPLETED' AND p.travel_id IS NOT NULL AND p.deleted_at IS NULL
+            GROUP BY p.travel_id, month, p.currency
+            ORDER BY month, p.travel_id, p.currency
+            """, nativeQuery = true)
+    List<Object[]> incomeByTravelMonthAndCurrency();
 }

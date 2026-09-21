@@ -88,6 +88,18 @@ public class FeedbackRepository {
             WHERE d.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
+    /**
+     * The newest feedbacks on active destinations — all of them, or only those
+     * of {@code $managerId}'s destinations when given. Backs the "recent
+     * feedback" of the manager and admin dashboards.
+     */
+    private static final String FIND_RECENT_QUERY = """
+            MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
+            WHERE d.deletedAt IS NULL AND ($managerId IS NULL OR d.managerId = $managerId)
+            """ + RETURN_CLAUSE + """
+            LIMIT $limit
+            """;
+
     private final Neo4jClient neo4jClient;
 
     public FeedbackRepository(Neo4jClient neo4jClient) {
@@ -167,6 +179,24 @@ public class FeedbackRepository {
     /** Every feedback on every active destination, newest first (admin history). */
     public List<FeedbackView> findAll() {
         return neo4jClient.query(FIND_ALL_QUERY)
+                .fetchAs(FeedbackView.class)
+                .mappedBy((typeSystem, record) -> toView(record))
+                .all()
+                .stream()
+                .toList();
+    }
+
+    /**
+     * The {@code limit} newest feedbacks on active destinations: every
+     * manager's when {@code managerId} is {@code null}, otherwise only on that
+     * manager's destinations.
+     */
+    public List<FeedbackView> findRecent(UUID managerId, int limit) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("managerId", managerId == null ? null : managerId.toString());
+        params.put("limit", limit);
+        return neo4jClient.query(FIND_RECENT_QUERY)
+                .bindAll(params)
                 .fetchAs(FeedbackView.class)
                 .mappedBy((typeSystem, record) -> toView(record))
                 .all()

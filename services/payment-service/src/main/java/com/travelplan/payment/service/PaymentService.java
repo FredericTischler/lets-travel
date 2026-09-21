@@ -3,6 +3,7 @@ package com.travelplan.payment.service;
 import com.travelplan.payment.dto.CreateManualPaymentRequest;
 import com.travelplan.payment.dto.PaymentResponse;
 import com.travelplan.payment.dto.UpdateStatusRequest;
+import com.travelplan.payment.dto.PaymentIncomeResponse;
 import com.travelplan.payment.dto.PaymentSummaryResponse;
 import com.travelplan.payment.entity.Payment;
 import com.travelplan.payment.entity.PaymentProvider;
@@ -163,6 +164,23 @@ public class PaymentService {
         long totalCount = byProvider.stream().mapToLong(PaymentSummaryResponse.ProviderSummary::count).sum();
         PaymentProvider mostUsed = byProvider.isEmpty() ? null : byProvider.get(0).provider();
         return new PaymentSummaryResponse(userId, totalCount, byProvider, mostUsed);
+    }
+
+    /**
+     * Income of every {@code COMPLETED}, travel-linked, active payment, one row
+     * per (travel, calendar month, currency) — the payment half of the manager
+     * and admin dashboards (docs/lets-travel-architecture-decisions.md,
+     * "Dashboards" addendum). Deliberately <b>not</b> filtered by manager or
+     * window: payment-service does not know who manages a travel, so travel-service
+     * (which does) groups and windows these rows itself. Currencies are never
+     * summed together.
+     */
+    public PaymentIncomeResponse incomeByTravel() {
+        List<PaymentIncomeResponse.Row> rows = paymentRepository.incomeByTravelMonthAndCurrency().stream()
+                .map(r -> new PaymentIncomeResponse.Row(
+                        (UUID) r[0], (String) r[1], (String) r[2], (BigDecimal) r[3], ((Number) r[4]).longValue()))
+                .toList();
+        return new PaymentIncomeResponse(rows);
     }
 
     /**
