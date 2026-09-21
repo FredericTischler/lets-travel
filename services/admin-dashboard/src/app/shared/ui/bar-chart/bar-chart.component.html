@@ -1,0 +1,135 @@
+<figure class="flex flex-col gap-3" role="group" [attr.aria-label]="title()">
+  @if (!hasData()) {
+    <p class="text-sm text-slate-500 dark:text-slate-400" data-testid="chart-empty">
+      {{ emptyMessage() }}
+    </p>
+  } @else {
+    <div class="flex gap-2">
+      <!-- Y axis: three round ticks, one step off the surface. -->
+      <div
+        class="flex h-44 flex-col justify-between text-right text-xs text-slate-600 dark:text-slate-300"
+        aria-hidden="true"
+      >
+        @for (tick of ticks(); track $index) {
+          <span class="leading-none">{{ format()(tick) }}</span>
+        }
+      </div>
+
+      <div class="relative min-w-0 flex-1">
+        <div class="relative h-44">
+          <!-- Hairline solid gridlines; the last one is the baseline. -->
+          <div
+            class="absolute inset-x-0 top-0 border-t"
+            style="border-color: var(--viz-grid)"
+            aria-hidden="true"
+          ></div>
+          <div
+            class="absolute inset-x-0 top-1/2 border-t"
+            style="border-color: var(--viz-grid)"
+            aria-hidden="true"
+          ></div>
+          <div
+            class="absolute inset-x-0 bottom-0 border-t"
+            style="border-color: var(--viz-axis)"
+            aria-hidden="true"
+          ></div>
+
+          <ul class="absolute inset-0 m-0 flex list-none items-end p-0" data-testid="chart-columns">
+            @for (point of data(); track $index) {
+              <li
+                class="group relative flex h-full min-w-0 flex-1 cursor-default items-end justify-center outline-none"
+                tabindex="0"
+                [attr.aria-label]="pointLabel(point)"
+                data-testid="chart-column"
+                (pointerenter)="active.set($index)"
+                (pointerleave)="active.set(null)"
+                (focus)="active.set($index)"
+                (blur)="active.set(null)"
+              >
+                @if ($index === peakIndex()) {
+                  <span
+                    class="pointer-events-none absolute z-[1] whitespace-nowrap text-xs font-medium text-slate-900 dark:text-slate-100"
+                    [style.bottom]="'calc(' + heightPercent(point.value) + '% + 4px)'"
+                    aria-hidden="true"
+                    >{{ format()(point.value) }}</span
+                  >
+                }
+                <span
+                  class="block w-full max-w-6 rounded-t transition-[filter] group-hover:brightness-110 group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-slate-900 dark:group-focus-visible:outline-slate-100"
+                  style="background-color: var(--viz-series-1)"
+                  [style.height.%]="heightPercent(point.value)"
+                  aria-hidden="true"
+                ></span>
+              </li>
+            }
+          </ul>
+
+          @if (active() !== null && data()[active()!]; as point) {
+            <div
+              role="tooltip"
+              data-testid="chart-tooltip"
+              class="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs shadow-md dark:border-slate-600 dark:bg-slate-800"
+              [style.left.%]="tooltipLeft(active()!)"
+            >
+              <div class="font-semibold text-slate-900 dark:text-slate-100">
+                {{ format()(point.value) }}
+              </div>
+              <div class="text-slate-600 dark:text-slate-300">{{ point.label }}</div>
+              @if (point.detail) {
+                <div class="text-slate-600 dark:text-slate-300">{{ point.detail }}</div>
+              }
+            </div>
+          }
+        </div>
+
+        <ul class="m-0 flex list-none p-0 pt-1" aria-hidden="true">
+          @for (point of data(); track $index) {
+            <li
+              class="min-w-0 flex-1 truncate text-center text-[10px] text-slate-600 sm:text-xs dark:text-slate-300"
+            >
+              @if (showLabel($index)) {
+                {{ point.label }}
+              }
+            </li>
+          }
+        </ul>
+      </div>
+    </div>
+  }
+
+  <details class="text-sm">
+    <summary
+      class="cursor-pointer text-indigo-600 hover:underline dark:text-indigo-400"
+      data-testid="chart-table-toggle"
+    >
+      Voir les données en tableau
+    </summary>
+    <div class="table-shell mt-2">
+      <table class="table-base">
+        <caption class="sr-only">
+          {{ title() }}
+        </caption>
+        <thead>
+          <tr class="table-head-row">
+            <th class="table-head-cell" scope="col">Période</th>
+            <th class="table-head-cell" scope="col">{{ valueLabel() }}</th>
+            <th class="table-head-cell" scope="col">Détail</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (point of data(); track $index) {
+            <tr class="table-row">
+              <td class="table-cell">{{ point.label }}</td>
+              <td class="table-cell tabular-nums">{{ format()(point.value) }}</td>
+              <td class="table-cell">{{ point.detail || '—' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td class="table-empty-cell" colspan="3">{{ emptyMessage() }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </details>
+</figure>
