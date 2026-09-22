@@ -5,16 +5,24 @@ import java.util.UUID;
 
 /**
  * API response for one TRANSPORT hop: the relationship's own properties
- * (mode, durationMinutes, optional departureTime/arrivalTime) plus the
+ * (id, mode, durationMinutes, optional departureTime/arrivalTime) plus the
  * reachable target destination's public fields — never the raw
  * {@code Destination} entity, never {@code deletedAt}.
  *
- * Used both as the response of {@code POST /destinations/{fromId}/transports}
- * (the single created hop) and as each element of the list returned by
+ * Used as the response of {@code POST}/{@code PATCH}
+ * {@code /destinations/{fromId}/transports[/{transportId}]} (a single hop)
+ * and as each element of the list returned by
  * {@code GET /destinations/{id}/transports}.
+ *
+ * {@code id} (docs/lets-travel-architecture-decisions.md §11 addendum) is
+ * the relationship's own application-assigned identifier, added after the
+ * initial increment 2 shape — purely additive, needed so a single
+ * {@code TRANSPORT} relationship can later be targeted for
+ * {@code PATCH}/{@code DELETE}.
  */
 public class TransportResponse {
 
+    private final UUID id;
     private final String mode;
     private final int durationMinutes;
     private final OffsetDateTime departureTime;
@@ -23,9 +31,10 @@ public class TransportResponse {
     private final String destinationName;
     private final String destinationCountry;
 
-    public TransportResponse(String mode, int durationMinutes, OffsetDateTime departureTime,
+    public TransportResponse(UUID id, String mode, int durationMinutes, OffsetDateTime departureTime,
                               OffsetDateTime arrivalTime, UUID destinationId,
                               String destinationName, String destinationCountry) {
+        this.id = id;
         this.mode = mode;
         this.durationMinutes = durationMinutes;
         this.departureTime = departureTime;
@@ -33,6 +42,10 @@ public class TransportResponse {
         this.destinationId = destinationId;
         this.destinationName = destinationName;
         this.destinationCountry = destinationCountry;
+    }
+
+    public UUID getId() {
+        return id;
     }
 
     public String getMode() {

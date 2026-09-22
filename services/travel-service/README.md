@@ -130,12 +130,19 @@ internal (opaque) element id.
 - **No anti-duplicate protection**: creating the same `A->B` trip twice is
   not blocked. This is an accepted, documented gap for this increment, not
   an oversight — see the Javadoc on `TransportRepository`.
-- **Single hop only**: no pathfinding, no multi-hop/recursive traversal, no
-  second node type. `GET /destinations/{id}/transports` returns exactly the
-  destinations one `TRANSPORT` edge away.
-- **No update/delete on transports**: once created, a `TRANSPORT`
-  relationship cannot be modified or removed through the API in this
-  increment.
+- **Single hop only for `GET /destinations/{id}/transports`**: it still
+  returns exactly the destinations one `TRANSPORT` edge away. Multi-hop
+  itineraries are a separate endpoint,
+  `GET /destinations/{fromId}/routes/{toId}?maxHops=N` (default 4, max 6),
+  shortest path in number of hops via `Neo4jClient`
+  (docs/lets-travel-architecture-decisions.md §11, bonus) — `reachable: false`
+  (200, not 404) when no path connects the two within `maxHops`.
+- **Update/delete on transports** (§11 addendum): `PATCH`/`DELETE
+  /destinations/{fromId}/transports/{transportId}` exist — same ownership rule
+  as `create` (the origin's `managerId`, or `ADMIN`). `DELETE` physically
+  removes the relationship rather than soft-deleting it: a `TRANSPORT`
+  relationship has no lifecycle independent of its two nodes and nothing
+  references it afterwards, unlike a payment or a review.
 - **Bypasses the standard Spring Data Neo4j aggregate save/load flow**: the
   `Destination` entity does declare `@Relationship(type = "TRANSPORT", ...)`
   (documenting the domain model), but both creation and traversal are
@@ -394,10 +401,8 @@ secrets/URLs, so they do have defaults.
   of `Destination`; no dedicated `Travel` node either — see
   docs/lets-travel-architecture-decisions.md §2 for why `Destination` itself
   covers that role instead.
-- No pathfinding / multi-hop traversal — only the one-hop `TRANSPORT` query
-  above.
-- No update/delete on `TRANSPORT` relationships, no anti-duplicate
-  protection (see above).
+- No anti-duplicate protection on `TRANSPORT` relationships (see above) —
+  pathfinding and update/delete are implemented (§11, bonus).
 - The only `/internal/*` endpoint is the payment-result callback above; no
   other cross-service endpoint.
 - Subscription payment (docs/lets-travel-architecture-decisions.md §4) is

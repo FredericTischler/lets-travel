@@ -34,4 +34,15 @@ public class InvalidTransportRequestException extends RuntimeException {
         return new InvalidTransportRequestException(
                 "durationMinutes must be a positive integer, got: " + requestedDurationMinutes);
     }
+
+    /**
+     * {@code maxHops} on {@code GET /destinations/{fromId}/routes/{toId}}
+     * (docs/lets-travel-architecture-decisions.md §11) is outside the
+     * allowed [1, 6] range — 6 is a deliberate ceiling to avoid an unbounded
+     * combinatorial traversal, not an arbitrary one.
+     */
+    public static InvalidTransportRequestException invalidMaxHops(int requestedMaxHops) {
+        return new InvalidTransportRequestException(
+                "maxHops must be an integer between 1 and 6 (inclusive), got: " + requestedMaxHops);
+    }
 }
