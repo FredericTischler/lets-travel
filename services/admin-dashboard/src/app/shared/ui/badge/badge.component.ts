@@ -15,13 +15,14 @@ export class BadgeComponent {
   readonly tone = input<BadgeTone>('neutral');
 
   protected readonly classes = computed(() => {
-    const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium';
+    const base =
+      'inline-flex items-center border px-2 py-0.5 font-mono text-[11px] font-medium tracking-wide uppercase';
     const tones: Record<BadgeTone, string> = {
-      neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
-      info: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
-      success: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
-      warning: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-      danger: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+      neutral: 'border-line-strong text-ink-dim',
+      info: 'border-amber text-amber',
+      success: 'border-teal text-teal',
+      warning: 'border-amber text-amber',
+      danger: 'border-red text-red',
     };
     return `${base} ${tones[this.tone()]}`;
   });

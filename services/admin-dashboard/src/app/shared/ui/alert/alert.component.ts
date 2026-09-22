@@ -20,12 +20,10 @@ export class AlertComponent {
   readonly variant = input<AlertVariant>('error');
 
   protected readonly classes = computed(() => {
-    const base = 'rounded-md border px-3 py-2 text-sm';
+    const base = 'border-l-4 bg-surface-2 px-3 py-2 text-sm text-ink';
     const variants: Record<AlertVariant, string> = {
-      error:
-        'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300',
-      success:
-        'border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300',
+      error: 'border-l-red',
+      success: 'border-l-teal',
     };
     return `${base} ${variants[this.variant()]}`;
   });

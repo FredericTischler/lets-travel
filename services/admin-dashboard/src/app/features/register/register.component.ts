@@ -7,8 +7,6 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ROLES, ROLE_LABELS, Role, SIGN_UP_ROLES, homeRouteFor } from '../../core/auth/roles';
 import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
-import { ButtonComponent } from '../../shared/ui/button/button.component';
-import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 
 /** Minimum password length enforced by identity-service (`@Size(min = 8)`). */
@@ -26,12 +24,14 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 @Component({
   selector: 'app-register',
-  imports: [FormsModule, RouterLink, AlertComponent, ButtonComponent, CardComponent, InputComponent],
+  imports: [FormsModule, RouterLink, AlertComponent, InputComponent],
   templateUrl: './register.component.html',
 })
 export class RegisterComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+
+  protected readonly currentYear = new Date().getFullYear();
 
   protected readonly roles: readonly { value: Role; label: string; hint: string }[] =
     SIGN_UP_ROLES.map((value) => ({

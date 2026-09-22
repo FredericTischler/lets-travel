@@ -10,11 +10,11 @@ import { Component, computed, input } from '@angular/core';
   selector: 'app-rating',
   template: `
     @if (value() === null) {
-      <span class="text-slate-500 dark:text-slate-400">—</span>
+      <span class="text-ink-dim">—</span>
     } @else {
-      <span class="inline-flex items-center gap-1 whitespace-nowrap">
-        <span class="text-amber-600 dark:text-amber-400" aria-hidden="true">{{ stars() }}</span>
-        <span class="text-slate-700 dark:text-slate-200" data-testid="rating-text">{{ text() }}</span>
+      <span class="inline-flex items-center gap-1 whitespace-nowrap font-mono">
+        <span class="text-amber" aria-hidden="true">{{ stars() }}</span>
+        <span class="text-ink" data-testid="rating-text">{{ text() }}</span>
       </span>
     }
   `,

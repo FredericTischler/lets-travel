@@ -1,5 +1,5 @@
-<div class="flex flex-col gap-1">
-  <label [for]="fieldId()" class="text-sm font-medium text-slate-700 dark:text-slate-200">{{
+<div class="flex flex-col gap-1.5">
+  <label [for]="fieldId()" class="font-mono text-xs tracking-wide text-ink-dim uppercase">{{
     label()
   }}</label>
   <input
@@ -11,12 +11,11 @@
     [value]="displayValue"
     (input)="handleInput($any($event.target).value)"
     (blur)="handleBlur()"
-    class="rounded-md border px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800 dark:text-slate-100"
-    [class.border-red-500]="error()"
-    [class.border-slate-300]="!error()"
-    [class.dark:border-slate-600]="!error()"
+    class="border-0 border-b-2 bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+    [class.border-red]="error()"
+    [class.border-line-strong]="!error()"
   />
   @if (error()) {
-    <p class="text-sm text-red-600 dark:text-red-400">{{ error() }}</p>
+    <p class="text-sm text-red">{{ error() }}</p>
   }
 </div>

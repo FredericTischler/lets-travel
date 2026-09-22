@@ -1,13 +1,13 @@
 <figure class="flex flex-col gap-3" role="group" [attr.aria-label]="title()">
   @if (!hasData()) {
-    <p class="text-sm text-slate-500 dark:text-slate-400" data-testid="chart-empty">
+    <p class="text-sm text-ink-dim" data-testid="chart-empty">
       {{ emptyMessage() }}
     </p>
   } @else {
     <div class="flex gap-2">
       <!-- Y axis: three round ticks, one step off the surface. -->
       <div
-        class="flex h-44 flex-col justify-between text-right text-xs text-slate-600 dark:text-slate-300"
+        class="flex h-44 flex-col justify-between text-right text-xs text-ink-dim"
         aria-hidden="true"
       >
         @for (tick of ticks(); track $index) {
@@ -48,14 +48,14 @@
               >
                 @if ($index === peakIndex()) {
                   <span
-                    class="pointer-events-none absolute z-[1] whitespace-nowrap text-xs font-medium text-slate-900 dark:text-slate-100"
+                    class="pointer-events-none absolute z-[1] whitespace-nowrap text-xs font-medium text-ink"
                     [style.bottom]="'calc(' + heightPercent(point.value) + '% + 4px)'"
                     aria-hidden="true"
                     >{{ format()(point.value) }}</span
                   >
                 }
                 <span
-                  class="block w-full max-w-6 rounded-t transition-[filter] group-hover:brightness-110 group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-slate-900 dark:group-focus-visible:outline-slate-100"
+                  class="block w-full max-w-6 transition-[filter] group-hover:brightness-110 group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-ink"
                   style="background-color: var(--viz-series-1)"
                   [style.height.%]="heightPercent(point.value)"
                   aria-hidden="true"
@@ -68,15 +68,15 @@
             <div
               role="tooltip"
               data-testid="chart-tooltip"
-              class="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs shadow-md dark:border-slate-600 dark:bg-slate-800"
+              class="pointer-events-none absolute top-0 z-10 -translate-x-1/2 border border-line bg-surface px-2 py-1 text-xs font-mono"
               [style.left.%]="tooltipLeft(active()!)"
             >
-              <div class="font-semibold text-slate-900 dark:text-slate-100">
+              <div class="font-semibold text-ink">
                 {{ format()(point.value) }}
               </div>
-              <div class="text-slate-600 dark:text-slate-300">{{ point.label }}</div>
+              <div class="text-ink-dim">{{ point.label }}</div>
               @if (point.detail) {
-                <div class="text-slate-600 dark:text-slate-300">{{ point.detail }}</div>
+                <div class="text-ink-dim">{{ point.detail }}</div>
               }
             </div>
           }
@@ -85,7 +85,7 @@
         <ul class="m-0 flex list-none p-0 pt-1" aria-hidden="true">
           @for (point of data(); track $index) {
             <li
-              class="min-w-0 flex-1 truncate text-center text-[10px] text-slate-600 sm:text-xs dark:text-slate-300"
+              class="min-w-0 flex-1 truncate text-center font-mono text-[10px] text-ink-dim sm:text-xs"
             >
               @if (showLabel($index)) {
                 {{ point.label }}
@@ -99,7 +99,7 @@
 
   <details class="text-sm">
     <summary
-      class="cursor-pointer text-indigo-600 hover:underline dark:text-indigo-400"
+      class="cursor-pointer text-amber hover:underline"
       data-testid="chart-table-toggle"
     >
       Voir les données en tableau
