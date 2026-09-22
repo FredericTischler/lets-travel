@@ -8,6 +8,7 @@ import { formatMoneyMap, formatNumber, formatRating } from '../../shared/format'
 import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
+import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { DASHBOARD_MONTH_CHOICES } from '../manager/manager-dashboard.component';
@@ -35,6 +36,11 @@ import { User, UserService } from '../users/user.service';
  * `partial: true` (payment-service unreachable) shows an explicit "données de
  * revenus indisponibles" notice instead of zeros; scores are then computed
  * without income, which the notice says.
+ *
+ * The full ranking (`GET /managers/ranking`, unlike the dashboard's top-5
+ * lists) is not paginated by the backend, so it is paginated client-side:
+ * the whole list is fetched in one call as before, only `RANKING_PAGE_SIZE`
+ * rows are rendered at a time.
  */
 @Component({
   selector: 'app-admin-dashboard',
@@ -44,6 +50,7 @@ import { User, UserService } from '../users/user.service';
     RouterLink,
     AlertComponent,
     BarChartComponent,
+    ButtonComponent,
     CardComponent,
     StatTileComponent,
     FeedbackListComponent,
@@ -56,8 +63,11 @@ export class AdminDashboardComponent implements OnInit {
   private readonly reportService = inject(ReportService);
   private readonly userService = inject(UserService);
 
+  protected readonly RANKING_PAGE_SIZE = 10;
+
   protected readonly data = signal<AdminDashboard | null>(null);
   protected readonly ranking = signal<RankingEntry[] | null>(null);
+  protected readonly rankingPage = signal(1);
   protected readonly reportCounts = signal<Record<string, number | null>>({});
   protected readonly emailsById = signal<Record<string, string>>({});
   protected readonly loading = signal(true);
@@ -70,6 +80,30 @@ export class AdminDashboardComponent implements OnInit {
   protected readonly money = formatMoneyMap;
   protected readonly rating = formatRating;
   protected readonly num = formatNumber;
+
+  protected readonly rankingTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.ranking()?.length ?? 0) / this.RANKING_PAGE_SIZE)),
+  );
+  /** The raw `rankingPage` signal clamped to what the current ranking length allows. */
+  protected readonly rankingCurrentPage = computed(() =>
+    Math.min(this.rankingPage(), this.rankingTotalPages()),
+  );
+  protected readonly pagedRanking = computed(() => {
+    const ranking = this.ranking();
+    if (!ranking) {
+      return null;
+    }
+    const start = (this.rankingCurrentPage() - 1) * this.RANKING_PAGE_SIZE;
+    return ranking.slice(start, start + this.RANKING_PAGE_SIZE);
+  });
+
+  protected previousRankingPage(): void {
+    this.rankingPage.set(Math.max(1, this.rankingCurrentPage() - 1));
+  }
+
+  protected nextRankingPage(): void {
+    this.rankingPage.set(Math.min(this.rankingTotalPages(), this.rankingCurrentPage() + 1));
+  }
 
   ngOnInit(): void {
     this.load();
@@ -111,6 +145,7 @@ export class AdminDashboardComponent implements OnInit {
       .pipe(catchError(() => of<RankingEntry[] | null>(null)))
       .subscribe((ranking) => {
         this.ranking.set(ranking);
+        this.rankingPage.set(1);
         if (ranking && ranking.length > 0) {
           forkJoin(
             Object.fromEntries(

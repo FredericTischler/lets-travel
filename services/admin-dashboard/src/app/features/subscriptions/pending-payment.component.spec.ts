@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { environment } from '../../../environments/environment';
 import { Payment } from '../payments/payment.service';
+import { StripeService } from '../payments/stripe.service';
 import { PendingPaymentComponent, captureErrorMessage } from './pending-payment.component';
 import { PendingPaymentStore } from './pending-payment.store';
 import { PaymentCheckout } from './subscription.service';
@@ -113,6 +114,41 @@ describe('PendingPaymentComponent', () => {
     expect(text()).toContain('pi_123');
     expect(text()).not.toContain('pi_secret_123');
     expect(localStorage.getItem('admin-dashboard.pending-payments') ?? '').not.toContain('pi_secret_123');
+  });
+
+  describe('with environment.stripePublishableKey configured', () => {
+    /** Never resolves: these tests only check which panel is shown, not the full Stripe.js flow (see stripe-card-form.component.spec.ts). */
+    const neverResolves = { isConfigured: () => true, getStripe: () => new Promise<null>(() => undefined) };
+
+    async function setupConfigured(
+      inputs: { checkout?: PaymentCheckout | null; paymentId?: string | null } = {},
+      loaded: Payment | null = payment({ provider: 'STRIPE' }),
+    ): Promise<void> {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [PendingPaymentComponent, HttpClientTestingModule],
+        providers: [{ provide: StripeService, useValue: neverResolves }],
+      }).compileComponents();
+      httpMock = TestBed.inject(HttpTestingController);
+      store = TestBed.inject(PendingPaymentStore);
+      setup(inputs, loaded);
+    }
+
+    it('shows the Stripe Elements card form instead of the "not integrated" explanation', async () => {
+      await setupConfigured({
+        checkout: checkout({ provider: 'STRIPE', approveUrl: null, clientSecret: 'pi_secret_123' }),
+      });
+
+      expect(fixture.nativeElement.querySelector('[data-testid="stripe-card-form"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="stripe-explanation"]')).toBeNull();
+    });
+
+    it('explains the card form is unavailable when no fresh client secret is known (e.g. after a reload)', async () => {
+      await setupConfigured({ checkout: null });
+
+      expect(fixture.nativeElement.querySelector('[data-testid="stripe-secret-missing"]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-testid="stripe-card-form"]')).toBeNull();
+    });
   });
 
   it('remembers the PayPal approval URL of a fresh checkout for the way back', () => {

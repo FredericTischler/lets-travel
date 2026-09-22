@@ -15,6 +15,8 @@ import {
   PaymentProvider,
   PaymentService,
 } from '../payments/payment.service';
+import { StripeCardFormComponent } from '../payments/stripe-card-form.component';
+import { StripeService } from '../payments/stripe.service';
 import { PaymentCheckout } from './subscription.service';
 import { PendingPaymentStore } from './pending-payment.store';
 import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payment-rules';
@@ -29,10 +31,15 @@ import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payme
  *   (`POST /payments/paypal/{orderId}/capture`) — automatically on return
  *   (see PaypalReturnComponent) or with the "J'ai approuvé" button here.
  * - **STRIPE**: the backend creates the PaymentIntent and confirms the
- *   subscription through the Stripe webhook, but this front does **not**
- *   integrate Stripe.js (no publishable key, no card form): the panel shows
- *   the payment reference and status and says so honestly. Not testable
- *   without a real Stripe account.
+ *   subscription through the Stripe webhook. Whether this front can take a
+ *   card here depends on `environment.stripePublishableKey`: empty (the
+ *   default — no real Stripe key exists in this project) means the panel
+ *   shows the payment reference and status and says honestly that it cannot
+ *   be paid from here; configured means a Stripe Elements card form
+ *   (`StripeCardFormComponent`) is shown instead, using the `clientSecret`
+ *   from `checkout()` (never stored, only held in memory for this component's
+ *   lifetime — see its own doc comment). Not exercised against a real Stripe
+ *   account either way.
  *
  * `checkout` is only known right after the subscribe call; later the provider
  * is read back from GET /payments/{id}. Cancelling is the parent's job
@@ -40,11 +47,12 @@ import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payme
  */
 @Component({
   selector: 'app-pending-payment',
-  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent],
+  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, StripeCardFormComponent],
   templateUrl: './pending-payment.component.html',
 })
 export class PendingPaymentComponent implements OnInit {
   private readonly paymentService = inject(PaymentService);
+  private readonly stripeService = inject(StripeService);
   private readonly store = inject(PendingPaymentStore);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -97,6 +105,11 @@ export class PendingPaymentComponent implements OnInit {
   protected readonly reference = computed(
     () => this.payment()?.externalReference ?? this.paymentId() ?? null,
   );
+
+  /** Gates the Stripe Elements card form: unset by default (see StripeService). */
+  protected readonly stripeConfigured = this.stripeService.isConfigured();
+  /** Only known right after a fresh subscribe call — never stored (see class doc). */
+  protected readonly clientSecret = computed(() => this.checkout()?.clientSecret ?? null);
 
   constructor() {
     interval(1000)
@@ -174,6 +187,12 @@ export class PendingPaymentComponent implements OnInit {
         this.error.set(captureErrorMessage(err));
       },
     });
+  }
+
+  /** Stripe accepted the card: not settled yet (the webhook still has to reach the backend). */
+  protected onStripePaid(): void {
+    this.info.set('Paiement transmis à Stripe : confirmation en cours (cela peut prendre quelques instants).');
+    this.refresh(true);
   }
 
   private finish(): void {

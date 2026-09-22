@@ -70,4 +70,79 @@ describe('FeedbackListComponent', () => {
 
     expect(el.querySelector('[data-testid="feedback-empty"]')!.textContent).toContain('Rien du tout.');
   });
+
+  describe('pagination (client-side — the backend does not paginate this list)', () => {
+    function items(count: number): Feedback[] {
+      return Array.from({ length: count }, (_, i) => feedback({ id: `f${i}`, comment: `avis ${i}` }));
+    }
+
+    function comments(el: HTMLElement): string[] {
+      return Array.from(el.querySelectorAll('[data-testid="feedback-comment"]')).map(
+        (c) => c.textContent?.trim() ?? '',
+      );
+    }
+
+    function button(el: HTMLElement, label: string): HTMLButtonElement {
+      return Array.from(el.querySelectorAll('button') as NodeListOf<HTMLButtonElement>).find(
+        (b) => b.textContent?.trim() === label,
+      )!;
+    }
+
+    it('shows no pagination controls when everything fits on one page', () => {
+      const el = render(items(3), { pageSize: 10 });
+
+      expect(comments(el)).toHaveLength(3);
+      expect(el.querySelector('[data-testid="feedback-pagination"]')).toBeNull();
+    });
+
+    it('shows only pageSize items per page, with Précédent disabled on the first page', () => {
+      const el = render(items(25), { pageSize: 10 });
+
+      expect(comments(el)).toEqual(Array.from({ length: 10 }, (_, i) => `avis ${i}`));
+      expect(el.querySelector('[data-testid="feedback-page-info"]')!.textContent).toContain('Page 1 sur 3');
+      expect(button(el, 'Précédent').disabled).toBe(true);
+      expect(button(el, 'Suivant').disabled).toBe(false);
+    });
+
+    it('moves through pages with Suivant/Précédent', () => {
+      const fixture = TestBed.createComponent(FeedbackListComponent);
+      fixture.componentRef.setInput('items', items(25));
+      fixture.componentRef.setInput('pageSize', 10);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      button(el, 'Suivant').click();
+      fixture.detectChanges();
+      expect(comments(el)).toEqual(Array.from({ length: 10 }, (_, i) => `avis ${i + 10}`));
+      expect(el.querySelector('[data-testid="feedback-page-info"]')!.textContent).toContain('Page 2 sur 3');
+
+      button(el, 'Suivant').click();
+      fixture.detectChanges();
+      expect(comments(el)).toEqual(['avis 20', 'avis 21', 'avis 22', 'avis 23', 'avis 24']);
+      expect(button(el, 'Suivant').disabled).toBe(true);
+
+      button(el, 'Précédent').click();
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="feedback-page-info"]')!.textContent).toContain('Page 2 sur 3');
+    });
+
+    it('clamps back to the last valid page when a filter shrinks the list', () => {
+      const fixture = TestBed.createComponent(FeedbackListComponent);
+      fixture.componentRef.setInput('items', items(25));
+      fixture.componentRef.setInput('pageSize', 10);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+
+      button(el, 'Suivant').click();
+      button(el, 'Suivant').click();
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="feedback-page-info"]')!.textContent).toContain('Page 3 sur 3');
+
+      fixture.componentRef.setInput('items', items(5));
+      fixture.detectChanges();
+
+      expect(comments(el)).toHaveLength(5);
+      expect(el.querySelector('[data-testid="feedback-pagination"]')).toBeNull();
+    });
+  });
 });

@@ -6,4 +6,7 @@ export const environment = {
   identityApiUrl: '/api/identity',
   paymentApiUrl: '/api/payment',
   travelApiUrl: '/api/travel',
+  // Stripe.js publishable key (pk_...). Empty by default — no real Stripe key exists in
+  // this project (placeholder, not a secret): the card form is only shown when this is set.
+  stripePublishableKey: '',
 };

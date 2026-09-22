@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { Component, input } from '@angular/core';
+import { Component, computed, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
 import { Feedback } from './feedback.service';
 
@@ -13,13 +14,21 @@ import { Feedback } from './feedback.service';
  * only (Angular escapes it) inside `whitespace-pre-line`, so line breaks show
  * but a `<script>` or `<b>` shows literally. There is deliberately no
  * `[innerHTML]` anywhere in this component.
+ *
+ * The backend does not paginate `GET /feedback` (or any other avis list): the
+ * full list is always fetched in one call, but only `pageSize` items are
+ * rendered at a time (client-side pagination) — Précédent/Suivant plus a
+ * page indicator, hidden entirely when everything fits on one page. `items()`
+ * changing (a fresh load, or a filter like AdminFeedbackComponent's rating
+ * select) is reflected without extra wiring: the current page is clamped to
+ * whatever the new item count allows.
  */
 @Component({
   selector: 'app-feedback-list',
-  imports: [DatePipe, RouterLink, RatingComponent],
+  imports: [DatePipe, RouterLink, RatingComponent, ButtonComponent],
   template: `
     <ul class="flex flex-col gap-3" data-testid="feedback-list">
-      @for (item of items(); track item.id) {
+      @for (item of pageItems(); track item.id) {
         <li
           class="flex flex-col gap-1 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700"
           data-testid="feedback-item"
@@ -61,6 +70,24 @@ import { Feedback } from './feedback.service';
         </li>
       }
     </ul>
+
+    @if (totalPages() > 1) {
+      <div class="mt-3 flex items-center justify-between gap-3 text-sm" data-testid="feedback-pagination">
+        <app-button variant="secondary" [disabled]="currentPage() === 1" (clicked)="previousPage()">
+          Précédent
+        </app-button>
+        <span class="text-slate-600 dark:text-slate-300" data-testid="feedback-page-info">
+          Page {{ currentPage() }} sur {{ totalPages() }}
+        </span>
+        <app-button
+          variant="secondary"
+          [disabled]="currentPage() === totalPages()"
+          (clicked)="nextPage()"
+        >
+          Suivant
+        </app-button>
+      </div>
+    }
   `,
 })
 export class FeedbackListComponent {
@@ -72,4 +99,24 @@ export class FeedbackListComponent {
   readonly showAuthor = input(false);
   /** Base route of the travel link (`/travels` for everyone). */
   readonly travelLink = input('/travels');
+  /** Items per page (client-side pagination — the backend does not paginate this list). */
+  readonly pageSize = input(10);
+
+  private readonly page = signal(1);
+
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.items().length / this.pageSize())));
+  /** The raw `page` signal clamped to what the current item count allows. */
+  protected readonly currentPage = computed(() => Math.min(this.page(), this.totalPages()));
+  protected readonly pageItems = computed(() => {
+    const start = (this.currentPage() - 1) * this.pageSize();
+    return this.items().slice(start, start + this.pageSize());
+  });
+
+  protected previousPage(): void {
+    this.page.set(Math.max(1, this.currentPage() - 1));
+  }
+
+  protected nextPage(): void {
+    this.page.set(Math.min(this.totalPages(), this.currentPage() + 1));
+  }
 }

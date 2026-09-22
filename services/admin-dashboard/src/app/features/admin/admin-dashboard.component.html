@@ -185,7 +185,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (entry of ranking(); track entry.managerId) {
+              @for (entry of pagedRanking(); track entry.managerId) {
                 <tr class="table-row" data-testid="ranking-row">
                   <td class="table-cell tabular-nums">{{ entry.rank }}</td>
                   <td class="table-cell break-all">
@@ -224,6 +224,28 @@
             </tbody>
           </table>
         </div>
+
+        @if (rankingTotalPages() > 1) {
+          <div class="mt-3 flex items-center justify-between gap-3 text-sm" data-testid="ranking-pagination">
+            <app-button
+              variant="secondary"
+              [disabled]="rankingCurrentPage() === 1"
+              (clicked)="previousRankingPage()"
+            >
+              Précédent
+            </app-button>
+            <span class="text-slate-600 dark:text-slate-300" data-testid="ranking-page-info">
+              Page {{ rankingCurrentPage() }} sur {{ rankingTotalPages() }}
+            </span>
+            <app-button
+              variant="secondary"
+              [disabled]="rankingCurrentPage() === rankingTotalPages()"
+              (clicked)="nextRankingPage()"
+            >
+              Suivant
+            </app-button>
+          </div>
+        }
       }
     </app-card>
 
