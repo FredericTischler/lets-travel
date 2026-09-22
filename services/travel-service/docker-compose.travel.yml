@@ -171,6 +171,17 @@ services:
       - "traefik.http.routers.travel.tls=true"
       # Port INTERNE du conteneur (EXPOSE 8080). Traefik y route via backend-net.
       - "traefik.http.services.travel.loadbalancer.server.port=8080"
+      # --- Headers de securite HTTP (audit securite G7) -----------------------
+      # Middleware defini ICI, sur ce service, et attache au router ci-dessous
+      # (pas de config partagee entre services : coherent avec la duplication
+      # volontaire deja actee pour JwtService, cf. CLAUDE.md). Pas de CSP tant
+      # que admin-dashboard n'a pas de routage Traefik stabilise (ADR §11).
+      - "traefik.http.middlewares.travel-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.travel-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.travel-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.travel-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.travel-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.routers.travel.middlewares=travel-headers"
 
 networks:
   # Reseaux cloisonnes crees et possedes par Ansible (role compose-assembly,
