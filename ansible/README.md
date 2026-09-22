@@ -89,16 +89,18 @@ Les trois derniers restent derrière un flag (`false` par défaut) : un `include
 résolu **quel que soit** le `--profile`, donc inclure en dur un fragment absent du
 disque casserait aussi le rendu de `core` et de `full`.
 
-Les trois services applicatifs ont au contraire un fragment **statique versionné dans
-le dépôt** (co-localisé avec leur `Dockerfile` et leurs sources, puisqu'ils buildent
-depuis les sources) : il est donc inclus par **chemin absolu**, variable d'une machine
-à l'autre, et pilotable par flag :
+Les quatre services applicatifs (3 backends Spring Boot + le front admin-dashboard)
+ont au contraire un fragment **statique versionné dans le dépôt** (co-localisé avec
+leur `Dockerfile` et leurs sources, puisqu'ils buildent depuis les sources) : il est
+donc inclus par **chemin absolu**, variable d'une machine à l'autre, et pilotable
+par flag :
 
 | Flag | Défaut | Variable de chemin (vide par défaut) |
 |---|---|---|
 | `assembly_identity_enabled` | `true` | `assembly_identity_fragment` |
 | `assembly_payment_enabled` | `false` | `assembly_payment_fragment` |
 | `assembly_travel_enabled` | `false` | `assembly_travel_fragment` |
+| `assembly_admin_enabled` | `false` | `assembly_admin_fragment` |
 
 Et les trois fragments rendus par un rôle, à chemin **relatif** (rien à fournir) :
 
@@ -111,7 +113,7 @@ Et les trois fragments rendus par un rôle, à chemin **relatif** (rien à fourn
 Les `include:` Compose sont résolus **quel que soit le `--profile`** : un chemin
 invalide casserait aussi le rendu `core`. D'où le couple flag + chemin explicite
 plutôt qu'un include en dur. `identity` est à `true` (raccordement identity ↔ Traefik
-prouvé bout-en-bout) ; `payment` et `travel` restent à `false` tant que leur
+prouvé bout-en-bout) ; `payment`, `travel` et `admin` restent à `false` tant que leur
 intégration n'a pas été rejouée — activés, leur `include:` **et** leur bloc de profil
 sont émis, sinon le rendu est strictement inchangé.
 

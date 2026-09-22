@@ -1,0 +1,92 @@
+# Fragment de service Compose pour admin-dashboard.
+#
+# MEME PARTICULARITE que identity/payment/travel : ce fragment est STATIQUE et
+# vit dans le depot, co-localise avec le Dockerfile + les sources ; admin-dashboard
+# BUILD depuis les sources, son contexte de build doit donc rester a cote. Le
+# docker-compose.yml top-level l'inclut par CHEMIN ABSOLU (voir role compose-assembly).
+#
+# CABLAGE RESEAU : contrairement aux 3 backends, admin-dashboard n'a NI base de
+# donnees NI secret cote serveur (front statique servi par Nginx) : SEUL
+# backend-net est necessaire, pour etre DECOUVERT et route par Traefik. Pas de
+# data-net (aucune DB a joindre). Aucun port publie vers l'hote : seul Traefik
+# expose (443, terminaison TLS) — meme regle que les 3 backends.
+#
+# TERMINAISON TLS AU BORD : Traefik termine le TLS ; ce conteneur reste en HTTP
+# simple sur backend-net (reseau Docker de confiance), coherent avec le reste.
+services:
+  admin-dashboard:
+    build:
+      # Contexte = repertoire de CE fragment (le depot services/admin-dashboard/),
+      # ou se trouvent Dockerfile + package.json + src/. Resolu par Compose
+      # relativement au fichier inclus, PAS au docker-compose.yml top-level.
+      context: .
+      dockerfile: Dockerfile
+    image: "lets-travel/admin-dashboard:0.1.0"
+    # PAS de `container_name` : meme raison que les 3 backends (sujet §1,
+    # multiples replicas pour load-balancing/failover — un container_name fixe
+    # rendrait ca structurellement impossible). On adresse par NOM DE SERVICE
+    # Compose (`admin-dashboard`), resolu par le DNS interne Docker.
+    restart: unless-stopped
+    # --- Replicas / load-balancing (sujet §1) -------------------------------
+    # Meme mecanisme que les 3 backends : `docker compose up` seul donne 2
+    # instances, ADMIN_REPLICAS=1 pour redescendre sur un poste contraint en RAM.
+    deploy:
+      replicas: ${ADMIN_REPLICAS:-2}
+    # Nginx statique : bien plus leger qu'une JVM Spring Boot, 64m suffit
+    # largement (pas de heap applicatif, juste le serveur + les fichiers).
+    mem_limit: "64m"
+    # AUCUNE variable d'environnement : front statique, aucun secret cote
+    # serveur (les URLs d'API sont bakees dans le bundle au build, voir
+    # src/environments/environment.ts — coherent avec le choix deja acte de
+    # ne pas introduire de configuration runtime pour ce front).
+    networks:
+      - backend-net
+    # Healthcheck applicatif : `/` sert index.html des que Nginx est pret, pas
+    # de dependance a une base (contrairement aux 3 backends) donc pas de
+    # `depends_on` ni de `condition: service_healthy` a attendre ici.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    # --- Routage Traefik par LABELS (idiome provider docker Traefik 3.x) -----
+    # Meme mecanisme que les 3 backends : providers.docker deja active cote
+    # role traefik (exposedByDefault=false, network=backend-net), le routage
+    # se declare donc ICI, par labels sur le service.
+    labels:
+      # Requis : exposedByDefault=false => rien n'est route sans opt-in explicite.
+      - "traefik.enable=true"
+      # Conteneur mono-reseau (backend-net uniquement, pas de data-net a
+      # joindre) : la valeur globale providers.docker.network=backend-net
+      # suffirait, mais on la FORCE quand meme ici, belt-and-suspenders,
+      # coherent avec les 3 backends.
+      - "traefik.docker.network=backend-net"
+      # Router : Host simple. `admin.localhost` -> testable via l'en-tete Host
+      # sans dependance DNS, meme idiome que identity/payment/travel.localhost.
+      - "traefik.http.routers.admin.rule=Host(`admin.localhost`)"
+      # Entrypoint HTTPS `websecure` (:443) = seul point d'entree public du projet.
+      - "traefik.http.routers.admin.entrypoints=websecure"
+      # TLS termine au bord par Traefik ; backend en HTTP simple derriere.
+      - "traefik.http.routers.admin.tls=true"
+      # Port INTERNE du conteneur (EXPOSE 80, Nginx — PAS 8080 comme les
+      # backends Spring Boot). Traefik y route via backend-net.
+      - "traefik.http.services.admin.loadbalancer.server.port=80"
+      # --- Headers de securite HTTP (audit securite G7) -----------------------
+      # Meme middleware, meme raisonnement que identity/payment/travel-headers :
+      # defini ICI, sur ce service, attache au router ci-dessous (pas de config
+      # partagee entre services). Pas de CSP ici non plus : reproduit a
+      # l'identique le middleware des 3 backends (voir CLAUDE.md, pas de
+      # mecanisme de securite different introduit pour ce service).
+      - "traefik.http.middlewares.admin-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.admin-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.admin-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.admin-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.admin-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.routers.admin.middlewares=admin-headers"
+
+networks:
+  # Reseau cloisonne cree et possede par Ansible (role compose-assembly,
+  # community.docker.docker_network) ; declare externe ici (Compose ne le gere pas).
+  backend-net:
+    external: true

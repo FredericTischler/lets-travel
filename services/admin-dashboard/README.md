@@ -367,8 +367,6 @@ message explicite s'ils manquent.
 - **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
   depuis l'écran organisateur), création et liste sortante seulement — le backend n'expose
   ni mise à jour ni suppression.
-- **Pas de conteneurisation** de ce front (aucun `Dockerfile`, fragment Compose ni route
-  Traefik) : il ne tourne que via `ng serve` sur `http://localhost:4200`.
 - Pas de refresh token (voir Authentification) ; pas de vérification de signature du JWT
   côté front (voulu).
 - Accessibilité : rôles/labels ARIA soignés (graphiques focalisables au clavier avec table

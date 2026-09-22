@@ -53,15 +53,17 @@ flag par fragment optionnel, plutôt qu'un include en dur.
 | `assembly_identity_enabled` | `true` | `assembly_identity_fragment` | **absolu**, à fournir en `-e` |
 | `assembly_payment_enabled` | `false` | `assembly_payment_fragment` | **absolu**, à fournir en `-e` |
 | `assembly_travel_enabled` | `false` | `assembly_travel_fragment` | **absolu**, à fournir en `-e` |
+| `assembly_admin_enabled` | `false` | `assembly_admin_fragment` | **absolu**, à fournir en `-e` |
 | `assembly_jenkins_enabled` | `false` | `jenkins/compose.jenkins.yml` | relatif |
 | `assembly_sonarqube_enabled` | `false` | `sonarqube/compose.sonarqube.yml` | relatif |
 | `assembly_observability_enabled` | `false` | `observability/compose.observability.yml` | relatif |
 
-**Deux natures de chemin, deux raisons.** Les trois services applicatifs
-*buildent depuis les sources* : leur fragment reste co-localisé avec le
-`Dockerfile` et `src/`, donc référencé par chemin **absolu**, variable d'une
-machine à l'autre. Tous les autres sont rendus par un rôle Ansible sous
-`assembly_compose_dir` : chemin **relatif**, rien à fournir.
+**Deux natures de chemin, deux raisons.** Les quatre services applicatifs (3
+backends Spring Boot + le front admin-dashboard) *buildent depuis les
+sources* : leur fragment reste co-localisé avec le `Dockerfile` et `src/`,
+donc référencé par chemin **absolu**, variable d'une machine à l'autre. Tous
+les autres sont rendus par un rôle Ansible sous `assembly_compose_dir` :
+chemin **relatif**, rien à fournir.
 
 `jenkins`, `sonarqube` et `observability` sont à `false` par défaut pour la même
 raison mécanique (fragment potentiellement absent du disque), doublée d'une
@@ -80,6 +82,8 @@ ansible-playbook ansible/roles/compose-assembly/test-local.yml -K \
   -e assembly_payment_fragment=/abs/.../services/payment-service/docker-compose.payment.yml \
   -e assembly_travel_enabled=true \
   -e assembly_travel_fragment=/abs/.../services/travel-service/docker-compose.travel.yml \
+  -e assembly_admin_enabled=true \
+  -e assembly_admin_fragment=/abs/.../services/admin-dashboard/docker-compose.admin-dashboard.yml \
   -e assembly_jenkins_enabled=true \
   -e assembly_sonarqube_enabled=true \
   -e assembly_observability_enabled=true
