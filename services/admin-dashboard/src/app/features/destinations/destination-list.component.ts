@@ -10,7 +10,13 @@ import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { DestinationFormComponent } from './destination-form.component';
 import { Destination, DestinationCreateInput, DestinationService } from './destination.service';
-import { TRANSPORT_MODES, Transport, TransportMode, TransportService } from './transport.service';
+import {
+  TRANSPORT_MODES,
+  Transport,
+  TransportMode,
+  TransportService,
+  TransportUpdateInput,
+} from './transport.service';
 
 /**
  * Admin destinations screen: every destination whatever its manager (GET
@@ -21,10 +27,12 @@ import { TRANSPORT_MODES, Transport, TransportMode, TransportService } from './t
  * the list from the server instead of mutating the local signal.
  *
  * Also hosts the outgoing-transports sub-view for a single destination at a
- * time (toggle per row, GET /destinations/{id}/transports) plus a form to
- * create a new one-hop transport from that destination (POST
- * /destinations/{fromId}/transports). No PATCH/DELETE on Transport exists
- * server-side, so none is simulated here.
+ * time (toggle per row, GET /destinations/{id}/transports) plus forms to
+ * create (POST), edit (PATCH) and delete (DELETE) a one-hop transport from
+ * that destination. The edit form reuses the same three fields as creation
+ * (mode/duration, plus the optional departure/arrival times the create form
+ * doesn't expose) and replaces the create form inline for the row being
+ * edited, one at a time — same one-at-a-time pattern as destination edit.
  */
 @Component({
   selector: 'app-destination-list',
@@ -79,6 +87,20 @@ export class DestinationListComponent implements OnInit {
   protected createTransportDuration: number | null = null;
   protected readonly creatingTransport = signal(false);
   protected readonly createTransportError = signal<string | null>(null);
+
+  // Edit-transport state: the transport being edited, or null. Scoped to the
+  // currently expanded destination (collapsing it also clears this).
+  protected readonly editingTransport = signal<Transport | null>(null);
+  protected editTransportMode: TransportMode | '' = '';
+  protected editTransportDuration: number | null = null;
+  protected editTransportDepartureTime = '';
+  protected editTransportArrivalTime = '';
+  protected readonly savingTransport = signal(false);
+  protected readonly editTransportError = signal<string | null>(null);
+
+  // Delete-transport state.
+  protected readonly deletingTransportId = signal<string | null>(null);
+  protected readonly deleteTransportError = signal<string | null>(null);
 
   ngOnInit(): void {
     this.loadDestinations();
@@ -174,6 +196,7 @@ export class DestinationListComponent implements OnInit {
 
     this.expandedDestinationId.set(destination.id);
     this.resetCreateTransportForm();
+    this.cancelEditTransport();
     this.loadTransports(destination.id);
   }
 
@@ -232,5 +255,78 @@ export class DestinationListComponent implements OnInit {
     this.createTransportMode = '';
     this.createTransportDuration = null;
     this.createTransportError.set(null);
+  }
+
+  // --- Edit / delete a transport ----------------------------------------------
+
+  startEditTransport(transport: Transport): void {
+    this.editTransportError.set(null);
+    this.editingTransport.set(transport);
+    this.editTransportMode = transport.mode;
+    this.editTransportDuration = transport.durationMinutes;
+    // Not carried by the list/create response (see Transport), so the edit
+    // form starts empty: leaving both blank keeps the existing schedule
+    // untouched (undefined fields aren't sent, see saveEditTransport).
+    this.editTransportDepartureTime = '';
+    this.editTransportArrivalTime = '';
+  }
+
+  cancelEditTransport(): void {
+    this.editTransportError.set(null);
+    this.editingTransport.set(null);
+  }
+
+  saveEditTransport(fromId: string): void {
+    const editing = this.editingTransport();
+    if (!editing || !this.editTransportMode || this.editTransportDuration === null) {
+      return;
+    }
+
+    const input: TransportUpdateInput = {
+      mode: this.editTransportMode,
+      durationMinutes: this.editTransportDuration,
+      departureTime: this.editTransportDepartureTime || undefined,
+      arrivalTime: this.editTransportArrivalTime || undefined,
+    };
+
+    this.savingTransport.set(true);
+    this.editTransportError.set(null);
+
+    this.transportService.update(fromId, editing.id, input).subscribe({
+      next: () => {
+        this.savingTransport.set(false);
+        this.editingTransport.set(null);
+        this.loadTransports(fromId);
+      },
+      error: (err: unknown) => {
+        this.savingTransport.set(false);
+        this.editTransportError.set(extractErrorMessage(err, 'Impossible de modifier ce trajet.'));
+      },
+    });
+  }
+
+  deleteTransport(fromId: string, transport: Transport): void {
+    if (
+      !confirm(`Supprimer le trajet vers ${transport.destinationName} (${transport.mode}) ?`)
+    ) {
+      return;
+    }
+
+    this.deletingTransportId.set(transport.id);
+    this.deleteTransportError.set(null);
+
+    this.transportService.delete(fromId, transport.id).subscribe({
+      next: () => {
+        this.deletingTransportId.set(null);
+        if (this.editingTransport()?.id === transport.id) {
+          this.cancelEditTransport();
+        }
+        this.loadTransports(fromId);
+      },
+      error: (err: unknown) => {
+        this.deletingTransportId.set(null);
+        this.deleteTransportError.set(extractErrorMessage(err, 'Impossible de supprimer ce trajet.'));
+      },
+    });
   }
 }

@@ -93,6 +93,12 @@
                           }}</app-alert>
                         }
 
+                        @if (deleteTransportError()) {
+                          <app-alert variant="error" class="mb-2 block">{{
+                            deleteTransportError()
+                          }}</app-alert>
+                        }
+
                         @if (transportsLoading()) {
                           <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
                         } @else {
@@ -104,22 +110,126 @@
                                   <th class="table-head-cell">Durée (min)</th>
                                   <th class="table-head-cell">Destination</th>
                                   <th class="table-head-cell">Pays</th>
+                                  <th class="table-head-cell">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                @for (
-                                  transport of transports();
-                                  track transport.destinationId + transport.mode
-                                ) {
+                                @for (transport of transports(); track transport.id) {
                                   <tr class="table-row">
                                     <td class="table-cell">{{ transport.mode }}</td>
                                     <td class="table-cell">{{ transport.durationMinutes }}</td>
                                     <td class="table-cell">{{ transport.destinationName }}</td>
                                     <td class="table-cell">{{ transport.destinationCountry }}</td>
+                                    <td class="table-cell">
+                                      <div class="flex flex-wrap gap-2">
+                                        <app-button
+                                          variant="secondary"
+                                          (clicked)="startEditTransport(transport)"
+                                          >Modifier</app-button
+                                        >
+                                        <app-button
+                                          variant="danger"
+                                          [disabled]="deletingTransportId() === transport.id"
+                                          (clicked)="deleteTransport(destination.id, transport)"
+                                        >
+                                          {{
+                                            deletingTransportId() === transport.id
+                                              ? 'Suppression…'
+                                              : 'Supprimer'
+                                          }}
+                                        </app-button>
+                                      </div>
+                                    </td>
                                   </tr>
+                                  @if (editingTransport()?.id === transport.id) {
+                                    <tr class="table-row">
+                                      <td class="table-cell bg-slate-50 dark:bg-slate-900/40" colspan="5">
+                                        <form
+                                          class="flex flex-wrap items-end gap-4"
+                                          (ngSubmit)="saveEditTransport(destination.id)"
+                                        >
+                                          <div class="flex flex-col gap-1">
+                                            <label
+                                              for="editTransportMode"
+                                              class="text-sm font-medium text-slate-700 dark:text-slate-200"
+                                              >Mode</label
+                                            >
+                                            <select
+                                              id="editTransportMode"
+                                              name="editTransportMode"
+                                              [(ngModel)]="editTransportMode"
+                                              required
+                                              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                            >
+                                              @for (mode of transportModes; track mode) {
+                                                <option [value]="mode">{{ mode }}</option>
+                                              }
+                                            </select>
+                                          </div>
+
+                                          <app-input
+                                            fieldId="editTransportDuration"
+                                            name="editTransportDuration"
+                                            label="Durée (min)"
+                                            type="number"
+                                            [(ngModel)]="editTransportDuration"
+                                            [required]="true"
+                                            autocomplete="off"
+                                          />
+
+                                          <div class="flex flex-col gap-1">
+                                            <label
+                                              for="editTransportDepartureTime"
+                                              class="text-sm font-medium text-slate-700 dark:text-slate-200"
+                                              >Départ (optionnel)</label
+                                            >
+                                            <input
+                                              id="editTransportDepartureTime"
+                                              name="editTransportDepartureTime"
+                                              type="datetime-local"
+                                              [(ngModel)]="editTransportDepartureTime"
+                                              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                            />
+                                          </div>
+
+                                          <div class="flex flex-col gap-1">
+                                            <label
+                                              for="editTransportArrivalTime"
+                                              class="text-sm font-medium text-slate-700 dark:text-slate-200"
+                                              >Arrivée (optionnel)</label
+                                            >
+                                            <input
+                                              id="editTransportArrivalTime"
+                                              name="editTransportArrivalTime"
+                                              type="datetime-local"
+                                              [(ngModel)]="editTransportArrivalTime"
+                                              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                            />
+                                          </div>
+
+                                          <app-button type="submit" [disabled]="savingTransport()">
+                                            {{ savingTransport() ? 'Enregistrement…' : 'Enregistrer' }}
+                                          </app-button>
+                                          <app-button
+                                            type="button"
+                                            variant="secondary"
+                                            [disabled]="savingTransport()"
+                                            (clicked)="cancelEditTransport()"
+                                            >Annuler</app-button
+                                          >
+                                        </form>
+
+                                        @if (editTransportError()) {
+                                          <app-alert variant="error" class="mt-2 block">{{
+                                            editTransportError()
+                                          }}</app-alert>
+                                        }
+                                      </td>
+                                    </tr>
+                                  }
                                 } @empty {
                                   <tr>
-                                    <td class="table-empty-cell" colspan="4">
+                                    <td class="table-empty-cell" colspan="5">
                                       Aucun trajet sortant.
                                     </td>
                                   </tr>

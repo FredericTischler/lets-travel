@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { DestinationListComponent } from './destination-list.component';
 import { Destination, DestinationCreateInput } from './destination.service';
+import { Transport } from './transport.service';
 
 describe('DestinationListComponent (admin)', () => {
   let fixture: ComponentFixture<DestinationListComponent>;
@@ -143,5 +144,71 @@ describe('DestinationListComponent (admin)', () => {
     httpMock.expectOne(`${url}/dest-1/transports`).flush([]);
 
     expect(component['expandedDestinationId']()).toBe('dest-1');
+  });
+
+  describe('transport edit/delete', () => {
+    const transport: Transport = {
+      id: 'transport-1',
+      mode: 'TRAIN',
+      durationMinutes: 180,
+      destinationId: 'dest-2',
+      destinationName: 'Porto',
+      destinationCountry: 'Portugal',
+    };
+
+    function expand() {
+      load();
+      component['toggleTransports'](lisbon);
+      httpMock.expectOne(`${url}/dest-1/transports`).flush([transport]);
+      fixture.detectChanges();
+    }
+
+    it('PATCHes the edited transport, then reloads the list', () => {
+      expand();
+      component['startEditTransport'](transport);
+      component['editTransportMode'] = 'PLANE';
+      component['editTransportDuration'] = 90;
+
+      component['saveEditTransport']('dest-1');
+
+      const patch = httpMock.expectOne(`${url}/dest-1/transports/transport-1`);
+      expect(patch.request.method).toBe('PATCH');
+      expect(patch.request.body).toEqual({
+        mode: 'PLANE',
+        durationMinutes: 90,
+        departureTime: undefined,
+        arrivalTime: undefined,
+      });
+      patch.flush({ ...transport, mode: 'PLANE', durationMinutes: 90 });
+      httpMock.expectOne(`${url}/dest-1/transports`).flush([{ ...transport, mode: 'PLANE', durationMinutes: 90 }]);
+
+      expect(component['editingTransport']()).toBeNull();
+      expect(component['savingTransport']()).toBe(false);
+    });
+
+    it('shows the backend message when a transport edit is refused', () => {
+      expand();
+      component['startEditTransport'](transport);
+
+      component['saveEditTransport']('dest-1');
+      httpMock
+        .expectOne(`${url}/dest-1/transports/transport-1`)
+        .flush({ error: 'durationMinutes must be positive' }, { status: 400, statusText: 'Bad Request' });
+
+      expect(component['editTransportError']()).toBe('durationMinutes must be positive');
+    });
+
+    it('deletes a transport after confirmation, then reloads', () => {
+      expand();
+
+      component['deleteTransport']('dest-1', transport);
+
+      const del = httpMock.expectOne(`${url}/dest-1/transports/transport-1`);
+      expect(del.request.method).toBe('DELETE');
+      del.flush(null);
+      httpMock.expectOne(`${url}/dest-1/transports`).flush([]);
+
+      expect(component['deletingTransportId']()).toBeNull();
+    });
   });
 });

@@ -4,7 +4,12 @@ describe('navItemsFor()', () => {
   const labels = (role: string | null) => navItemsFor(role).map((item) => item.label);
 
   it('gives a TRAVELER only the traveler entries', () => {
-    expect(labels('TRAVELER')).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+    expect(labels('TRAVELER')).toEqual([
+      'Voyages',
+      'Mes abonnements',
+      'Mes statistiques',
+      'Itinéraires',
+    ]);
   });
 
   it('gives a TRAVEL_MANAGER the manager entries on top of the traveler ones', () => {
@@ -12,6 +17,7 @@ describe('navItemsFor()', () => {
       'Voyages',
       'Mes abonnements',
       'Mes statistiques',
+      'Itinéraires',
       'Tableau de bord organisateur',
       'Mes voyages organisés',
     ]);

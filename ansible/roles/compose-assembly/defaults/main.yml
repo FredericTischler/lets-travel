@@ -68,6 +68,23 @@ assembly_payment_fragment: ""
 assembly_travel_enabled: false
 assembly_travel_fragment: ""
 
+# --- Fragment admin-dashboard (statique, dans le dépôt — pas un rôle Ansible) ---
+# Même particularité qu'identity/payment/travel : admin-dashboard BUILD depuis
+# les sources (Node -> `ng build` -> Nginx), son fragment reste co-localisé
+# avec Dockerfile + src/ et est référencé par CHEMIN ABSOLU vers le checkout
+# du dépôt (variable d'une machine à l'autre).
+#
+# DÉFAUT = false (comme payment/travel) : le raccordement admin-dashboard <->
+# Traefik n'est PAS considéré comme prouvé bout-en-bout par défaut. Tant que
+# l'opérateur ne l'a pas rejoué sur SA machine, le rendu par défaut reste
+# STRICTEMENT inchangé — l'include et le bloc de service admin ne sont émis
+# QUE si ce flag est explicitement activé.
+# À activer + localiser selon la machine :
+#   -e assembly_admin_enabled=true
+#   -e assembly_admin_fragment=/chemin/absolu/vers/le/depot/services/admin-dashboard/docker-compose.admin-dashboard.yml
+assembly_admin_enabled: false
+assembly_admin_fragment: ""
+
 # --- Fragment jenkins (RENDU par le rôle Ansible `jenkins`) ------------------
 # Contrairement à identity/payment/travel (fragments statiques du dépôt, chemin
 # ABSOLU variable par machine), jenkins est un rôle Ansible qui REND son propre

@@ -1,0 +1,13 @@
+# Contexte de build Docker (services/admin-dashboard/, cf. Dockerfile) : exclut
+# tout ce qui n'est pas nécessaire à `npm ci && npm run build`, pour un contexte
+# d'envoi rapide et une image de build sans résidus de la machine hôte.
+node_modules
+dist
+.angular
+coverage
+test-results
+playwright-report
+blob-report
+.git
+*.md
+e2e
