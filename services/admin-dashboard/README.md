@@ -58,7 +58,8 @@ aussi sur les écrans voyageur.
 | `/admin/reports` | File de modération des signalements (filtre par statut, `OPEN` → `REVIEWED`/`DISMISSED`/`ACTIONED`) | ADMIN | `GET /reports`, `PATCH /reports/{id}/status`, `GET /users` (emails, best-effort) |
 | `/users` | Utilisateurs (liste avec rôle, **création avec sélecteur de rôle ADMIN / TRAVEL_MANAGER / TRAVELER**, modification de l'email, suppression) | ADMIN | `/users` |
 | `/payments` | Paiements manuels (liste, création, transition de statut — c'est ici qu'un admin **confirme un paiement MANUAL**, suppression) | ADMIN | `/payments` |
-| `/destinations` | Toutes les destinations (tous organisateurs) : créer (l'admin saisit l'id de l'organisateur), modifier, supprimer, trajets `TRANSPORT`, lien vers les abonnés | ADMIN | `/destinations`, `/destinations/{id}/transports` |
+| `/destinations` | Toutes les destinations (tous organisateurs) : créer (l'admin saisit l'id de l'organisateur), modifier, supprimer, trajets `TRANSPORT` (création, **modification, suppression**), lien vers les abonnés | ADMIN | `/destinations`, `/destinations/{id}/transports`, `PATCH`/`DELETE /destinations/{fromId}/transports/{id}` |
+| `/destinations/routes` | **Itinéraire multi-destinations** (bonus) : origine, cible, nombre de sauts max — liste ordonnée des trajets ou « aucun itinéraire trouvé » | TRAVELER (les 3 rôles) | `GET /destinations/{fromId}/routes/{toId}?maxHops=` |
 
 Page d'accueil par rôle (`/`, URL inconnue, après login) : ADMIN → `/users`,
 TRAVEL_MANAGER → `/manager/travels`, TRAVELER → `/travels`.
@@ -255,13 +256,21 @@ Pattern d'un écran : `features/<nom>/*.component.ts|html` + `*.service.ts` (HTT
 
 ## Authentification (état réel)
 
-- `AuthService` conserve le JWT dans `localStorage` (clé `admin-dashboard.jwt`) et
-  l'expose via un signal ; il en décode les claims `sub`, `role` et `email`.
+- `AuthService` conserve le JWT (`admin-dashboard.jwt`) et le refresh token
+  (`admin-dashboard.refreshToken`) dans `localStorage`, expose le JWT via un signal ;
+  il en décode les claims `sub`, `role` et `email`.
 - `authInterceptor` ajoute `Authorization: Bearer <token>` à toute requête dont l'URL
-  commence par l'une des 3 URLs d'API, et **sur 401** : purge le token et redirige
-  vers `/login`.
-- **Pas de refresh token, pas de renouvellement silencieux** : le JWT backend dure
-  15 min, à l'expiration l'utilisateur retombe sur `/login`.
+  commence par l'une des 3 URLs d'API. **Sur 401** : tente un renouvellement silencieux
+  (`POST /auth/refresh`, une seule fois — jamais de 2e tentative sur un 401 du refresh
+  lui-même, ce qui coupe toute boucle) et rejoue la requête d'origine si ça réussit ;
+  sinon (pas de refresh token stocké, ou le refresh échoue) purge tout et redirige vers
+  `/login`. `logout()` purge toujours le stockage local en premier (jamais bloqué par le
+  réseau), puis révoque le refresh token côté serveur en best-effort
+  (`POST /auth/logout`).
+- Le JWT d'accès dure toujours 15 min ; le refresh token 7 jours (rotation à chaque
+  usage — voir `docs/lets-travel-architecture-decisions.md` §11 addendum "Refresh
+  token" pour ce que ce mécanisme ne couvre pas, notamment un JWT déjà émis qui reste
+  valide jusqu'à expiration même après un `logout`).
 - `AuthService.decodeJwtPayload()` ne fait **aucune vérification de signature** — il ne
   sert qu'à lire des claims d'un token que le backend re-vérifie à chaque requête (le rôle
   lu ici ne décide que de ce qui est *affiché*).
@@ -364,17 +373,24 @@ message explicite s'ils manquent.
   `CANCELLED` côté backend et gonfle le compteur d'annulations (limite documentée en ADR §4).
 - **Avis modifiables ou modérables** : un avis est unique et immuable (décision backend).
 - **Profil voyageur** vu par un organisateur : l'API n'expose que l'id du voyageur.
-- **Pagination** des listes d'avis / du classement (le backend ne pagine pas).
+- **Pagination côté client seulement** des listes d'avis / du classement manager (le
+  backend ne pagine pas — la liste complète est toujours récupérée en un appel, le
+  découpage en pages n'existe que dans l'affichage).
 - **Page d'accueil par rôle** inchangée (`/users` pour l'admin, `/manager/travels` pour
   l'organisateur) : les dashboards sont dans la navigation, pas la page d'atterrissage.
-- **PWA** et **i18n** (bonus du sujet) : non faits. Les libellés sont en français,
-  codés en dur dans les templates, sans infrastructure de traduction ; les **raisons des
-  suggestions** viennent du backend en **anglais**.
-- **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
-  depuis l'écran organisateur), création et liste sortante seulement — le backend n'expose
-  ni mise à jour ni suppression.
-- Pas de refresh token (voir Authentification) ; pas de vérification de signature du JWT
-  côté front (voulu).
+- **PWA** : faite (`ng add @angular/pwa`, service worker + manifest par défaut).
+- **i18n en scaffolding seulement** (bonus du sujet) : `@angular/localize` câblé, nav et
+  écran de login traduits en anglais (`ng build --configuration production,en`), mais le
+  reste des libellés reste en dur en français — choix assumé (ADR §11), pas une
+  traduction complète. Les **raisons des suggestions** viennent toujours du backend en
+  **anglais**.
+- **Trajets `TRANSPORT`** : le backend expose maintenant `PATCH`/`DELETE` en plus de
+  `POST`/`GET`, câblés depuis l'écran admin `/destinations` (toujours pas depuis l'écran
+  organisateur). Une page `/destinations/routes` (bonus, itinéraire multi-destinations)
+  est accessible aux 3 rôles.
+- Refresh token câblé (voir Authentification) : renouvellement silencieux une fois sur un
+  401, sinon retour à `/login`. Pas de vérification de signature du JWT côté front
+  (voulu).
 - Accessibilité : rôles/labels ARIA soignés (graphiques focalisables au clavier avec table
   équivalente, étoiles décoratives + texte), mais **aucun audit** (lecteur d'écran, contrastes
   mesurés) n'a été mené.
