@@ -1,5 +1,5 @@
 <div class="flex flex-col gap-6">
-  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Utilisateurs</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">Utilisateurs</h1>
 
   <app-card title="Créer un utilisateur">
     <form class="flex flex-col gap-4 sm:flex-row sm:items-end" (ngSubmit)="createUser()">
@@ -26,14 +26,14 @@
       />
 
       <div class="flex flex-col gap-1">
-        <label for="createRole" class="text-sm font-medium text-slate-700 dark:text-slate-200"
+        <label for="createRole" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
           >Rôle</label
         >
         <select
           id="createRole"
           name="createRole"
           [(ngModel)]="createRole"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
         >
           @for (option of roleOptions; track option.value) {
             <option [ngValue]="option.value">{{ option.label }} ({{ option.value }})</option>
@@ -57,7 +57,7 @@
     }
 
     @if (loading()) {
-      <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+      <p class="text-sm text-ink-dim">Chargement…</p>
     } @else if (error()) {
       <app-alert variant="error">{{ error() }}</app-alert>
     } @else {

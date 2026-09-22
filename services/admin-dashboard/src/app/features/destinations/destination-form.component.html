@@ -20,7 +20,7 @@
       />
 
       <div class="flex flex-col gap-1">
-        <label for="destStartDate" class="text-sm font-medium text-slate-700 dark:text-slate-200"
+        <label for="destStartDate" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
           >Date de début</label
         >
         <input
@@ -28,12 +28,12 @@
           type="date"
           formControlName="startDate"
           required
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
         />
       </div>
 
       <div class="flex flex-col gap-1">
-        <label for="destEndDate" class="text-sm font-medium text-slate-700 dark:text-slate-200"
+        <label for="destEndDate" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
           >Date de fin</label
         >
         <input
@@ -41,10 +41,10 @@
           type="date"
           formControlName="endDate"
           required
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
         />
         @if (dateRangeError) {
-          <p class="text-sm text-red-600 dark:text-red-400">
+          <p class="text-sm text-red">
             La date de fin doit être postérieure ou égale à la date de début.
           </p>
         }
@@ -86,7 +86,7 @@
 
     <div>
       <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Activités</h3>
+        <h3 class="text-sm font-semibold text-ink">Activités</h3>
         <app-button type="button" variant="secondary" (clicked)="addActivity()"
           >Ajouter une activité</app-button
         >
@@ -100,21 +100,21 @@
               [formControlName]="$index"
               aria-label="Nom de l'activité"
               placeholder="Ex: Tram 28 ride"
-              class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              class="min-w-0 flex-1 border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
             />
             <app-button type="button" variant="danger" (clicked)="removeActivity($index)"
               >Retirer</app-button
             >
           </div>
         } @empty {
-          <p class="text-sm text-slate-500 dark:text-slate-400">Aucune activité.</p>
+          <p class="text-sm text-ink-dim">Aucune activité.</p>
         }
       </div>
     </div>
 
     <div>
       <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-slate-900 dark:text-slate-100">Hébergements</h3>
+        <h3 class="text-sm font-semibold text-ink">Hébergements</h3>
         <app-button type="button" variant="secondary" (clicked)="addAccommodation()"
           >Ajouter un hébergement</app-button
         >
@@ -126,7 +126,7 @@
             <div class="flex flex-col gap-1">
               <label
                 [attr.for]="'accName' + $index"
-                class="text-xs font-medium text-slate-700 dark:text-slate-200"
+                class="text-xs font-medium text-ink"
                 >Nom de l'hébergement</label
               >
               <input
@@ -134,14 +134,14 @@
                 type="text"
                 formControlName="name"
                 placeholder="Ex: Hotel Lisboa"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
               />
             </div>
 
             <div class="flex flex-col gap-1">
               <label
                 [attr.for]="'accType' + $index"
-                class="text-xs font-medium text-slate-700 dark:text-slate-200"
+                class="text-xs font-medium text-ink"
                 >Type d'hébergement</label
               >
               <input
@@ -149,35 +149,35 @@
                 type="text"
                 formControlName="type"
                 placeholder="Ex: HOTEL"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
               />
             </div>
 
             <div class="flex flex-col gap-1">
               <label
                 [attr.for]="'accIn' + $index"
-                class="text-xs font-medium text-slate-700 dark:text-slate-200"
+                class="text-xs font-medium text-ink"
                 >Check-in</label
               >
               <input
                 [id]="'accIn' + $index"
                 type="date"
                 formControlName="checkIn"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
               />
             </div>
 
             <div class="flex flex-col gap-1">
               <label
                 [attr.for]="'accOut' + $index"
-                class="text-xs font-medium text-slate-700 dark:text-slate-200"
+                class="text-xs font-medium text-ink"
                 >Check-out</label
               >
               <input
                 [id]="'accOut' + $index"
                 type="date"
                 formControlName="checkOut"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
               />
             </div>
 
@@ -186,7 +186,7 @@
             >
           </div>
         } @empty {
-          <p class="text-sm text-slate-500 dark:text-slate-400">Aucun hébergement.</p>
+          <p class="text-sm text-ink-dim">Aucun hébergement.</p>
         }
       </div>
     </div>

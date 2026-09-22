@@ -1,13 +1,13 @@
 <div class="flex flex-col gap-6">
-  <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Signalements</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">Signalements</h1>
 
   <app-card title="File de modération">
     @if (loading()) {
-      <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+      <p class="text-sm text-ink-dim">Chargement…</p>
     } @else if (error()) {
       <app-alert variant="error">{{ error() }}</app-alert>
     } @else {
-      <p class="mb-3 text-sm text-slate-600 dark:text-slate-300" data-testid="open-count">
+      <p class="mb-3 text-sm text-ink-dim" data-testid="open-count">
         {{ openCount() }} signalement(s) en attente.
       </p>
 
@@ -15,11 +15,11 @@
         @for (option of filters; track option.value) {
           <button
             type="button"
-            class="rounded-full border px-3 py-1 text-sm font-medium"
+            class="border px-3 py-1 font-mono text-xs tracking-wide uppercase"
             [class]="
               filter() === option.value
-                ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
-                : 'border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
+                ? 'border-amber bg-amber text-amber-ink'
+                : 'border-line-strong text-ink-dim hover:bg-surface-2'
             "
             [attr.aria-pressed]="filter() === option.value"
             (click)="filter.set(option.value)"

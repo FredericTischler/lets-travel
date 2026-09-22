@@ -19,26 +19,26 @@ import { Feedback, FeedbackService } from './feedback.service';
   imports: [FormsModule, AlertComponent, CardComponent, RatingComponent, FeedbackListComponent],
   template: `
     <div class="flex flex-col gap-6">
-      <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Avis des voyageurs</h1>
+      <h1 class="font-display text-2xl font-bold text-ink">Avis des voyageurs</h1>
 
       @if (loading()) {
-        <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+        <p class="text-sm text-ink-dim">Chargement…</p>
       } @else if (error()) {
         <app-alert variant="error">{{ error() }}</app-alert>
       } @else {
         <app-card>
           <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p class="text-slate-700 dark:text-slate-200" data-testid="summary">
+            <p class="text-ink" data-testid="summary">
               {{ all().length }} avis · note moyenne : <app-rating [value]="average()" />
             </p>
             <div class="flex items-center gap-2">
-              <label for="ratingFilter" class="text-slate-700 dark:text-slate-200">Note</label>
+              <label for="ratingFilter" class="text-ink">Note</label>
               <select
                 id="ratingFilter"
                 name="ratingFilter"
                 [ngModel]="filter()"
                 (ngModelChange)="filter.set($event)"
-                class="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none"
               >
                 <option [ngValue]="0">Toutes</option>
                 @for (value of ratings; track value) {

@@ -37,10 +37,10 @@ export function feedbackErrorMessage(err: unknown): string {
   template: `
     <form class="flex flex-col gap-3" (ngSubmit)="submit()" data-testid="feedback-form">
       <fieldset class="flex flex-col gap-1">
-        <legend class="text-sm font-medium text-slate-700 dark:text-slate-200">Votre note</legend>
+        <legend class="font-mono text-xs tracking-wide text-ink-dim uppercase">Votre note</legend>
         <div class="flex flex-wrap gap-3">
           @for (value of ratings; track value) {
-            <label class="inline-flex items-center gap-1 text-sm text-slate-700 dark:text-slate-200">
+            <label class="inline-flex items-center gap-1 text-sm text-ink">
               <input
                 type="radio"
                 name="rating"
@@ -56,7 +56,7 @@ export function feedbackErrorMessage(err: unknown): string {
       </fieldset>
 
       <div class="flex flex-col gap-1">
-        <label for="feedbackComment" class="text-sm font-medium text-slate-700 dark:text-slate-200"
+        <label for="feedbackComment" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
           >Commentaire (facultatif)</label
         >
         <textarea
@@ -65,9 +65,9 @@ export function feedbackErrorMessage(err: unknown): string {
           rows="3"
           [maxLength]="commentMax"
           [(ngModel)]="comment"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
         ></textarea>
-        <span class="text-xs text-slate-500 dark:text-slate-400"
+        <span class="text-xs text-ink-dim"
           >Texte brut, {{ commentMax }} caractères au maximum. Votre avis ne pourra pas être modifié.</span
         >
       </div>
