@@ -1460,6 +1460,135 @@ donnée qui ne sert qu'à l'affichage.
 
 ---
 
+## 11. Bonus — Itinéraires multi-destinations (Neo4j pathfinding)
+
+### Constat de code
+
+`TransportRepository`/`TransportService` (§2, increment 2) s'arrêtent volontairement à une
+traversée à 1 saut : `findActiveOutgoing` ne fait qu'un hop, pas de pathfinding, pas
+d'update/delete sur la relation. C'est le scope assumé de l'increment 2, pas un oubli — mais
+laisser un graphe de transports inexploité au-delà d'1 saut est un choix étrange pour un
+projet noté sur l'usage de Neo4j.
+
+### Décision
+
+`GET /destinations/{fromId}/routes/{toId}?maxHops=N` (défaut 4, plafond 6 — évite un
+balayage combinatoire non borné) renvoie le plus court chemin, en nombre de sauts, entre
+deux destinations actives via des relations `TRANSPORT` sortantes, ou `reachable: false`
+sans chemin. Cypher explicite via `Neo4jClient` (même raison que `TransportRepository` :
+SDN ne fait pas de pathfinding), pattern `*1..N` borné, **`deletedAt IS NULL` filtré sur
+chaque nœud traversé**, pas seulement origine/cible. Réponse : liste ordonnée des sauts
+(destination + mode/durée de la liaison), durée totale. Lecture, ouverte aux 3 rôles
+(`requireAnyRole`), même découpage que `getOutgoing`.
+
+### Ce que je sacrifie
+
+Le "plus court" est en nombre de sauts, pas en durée cumulée (un trajet à 2 sauts rapides
+perd face à un trajet à 1 saut très long). Un seul itinéraire renvoyé, pas d'alternatives.
+`maxHops` plafonné à 6 : un chemin plus long n'est jamais trouvé même s'il existe.
+
+### Alternative rejetée
+
+Pondérer par `durationMinutes` (Dijkstra plutôt que BFS non pondéré) : plus juste, mais
+ajoute une dimension hors scope "bonus" (agrégation de durées hétérogènes entre segments) ;
+à reconsidérer si le produit demande un vrai calcul d'itinéraire.
+
+### Addendum — Transports : compléter le CRUD (update/delete)
+
+**Décision.** Chaque relation `TRANSPORT` gagne un `id` (UUID, propriété de la relation —
+les ids internes Neo4j ne sont pas des identifiants applicatifs stables). `PATCH
+/destinations/{fromId}/transports/{transportId}` et `DELETE .../transports/{transportId}` :
+même ownership que `create` (origine du lien = `managerId`, ou `ADMIN`), même ordre de
+validation (forme → origine 404 → propriété 403 → lien 404). `DELETE` est une suppression
+physique de la relation, pas un soft-delete : une relation n'a pas de cycle de vie propre
+indépendant de ses deux nœuds, et rien ne la référence après coup (contrairement à un
+paiement ou un avis).
+
+**Ce que je sacrifie.** Toujours pas d'anti-doublon. Une suppression physique rompt toute
+trace d'audit d'un trajet — accepté, rien n'en dépend aujourd'hui.
+
+**Alternative rejetée.** Soft-delete de la relation : cohérent en apparence avec la
+convention du repo, mais force `findActiveOutgoing` et le pathfinding à filtrer un
+troisième niveau pour un objet que rien d'autre ne référence — coût sans bénéfice, aucune
+"corbeille" de transports demandée par le sujet.
+
+## Addendum — Mot de passe : changement (sécurité G5)
+
+**Décision.** `PATCH /users/{id}/password` : le propriétaire (`callerId == id`) fournit
+`currentPassword` (revérifié BCrypt, sinon 401 générique) et `newPassword` ; un `ADMIN`
+réinitialise sans `currentPassword` (`AuthService.requireOwnerOrAdmin`, nouveau, même forme
+que l'ownership déjà utilisé en travel/payment-service — §10 addendum G2).
+`newPassword` : mêmes contraintes que `CreateUserRequest.password` (`@Size(min=8)`).
+
+**Ce que je sacrifie.** Pas de flux "mot de passe oublié" par email (pas d'infra mail dans
+le projet) — un `ADMIN` reste le seul recours pour un compte bloqué, cohérent avec le
+bootstrap déjà en place. Pas d'invalidation des JWT déjà émis après un changement (même
+sacrifice que G10, pas aggravé : un token émis avant reste valide jusqu'à ses 15 minutes).
+
+**Alternative rejetée.** Un flux par email/token de reset à durée limitée : correct, mais
+suppose un service mail que le projet n'a jamais eu (pas dans le sujet non plus) — nouvelle
+dépendance externe pour une fonctionnalité que l'admin couvre déjà.
+
+## Addendum — Normalisation des emails (sécurité G12)
+
+**Décision.** `trim + toLowerCase` appliqué à l'email dans `UserService.create`,
+`AuthService.login` (avant la recherche, avant le throttle) et `UserService.updateEmail` —
+réutilise la normalisation déjà écrite pour `LoginThrottle` (remontée en méthode partagée
+plutôt que dupliquée une troisième fois). `A@x.com` et `a@x.com` sont désormais
+définitivement le même compte à la création : ferme l'énumération de comptes par variation
+de casse documentée en G12.
+
+**Ce que je sacrifie.** Les comptes déjà créés avec des casses différentes avant cette
+migration ne sont pas fusionnés rétroactivement. Pas de normalisation Unicode (NFC) —
+aucun signal que ça arrive en pratique sur ce projet.
+
+## Addendum — Refresh token (mitigation partielle G10)
+
+**Constat de code.** `JwtService` : 15 min, "No refresh token, no revocation/blacklist —
+out of scope for this increment." Choix assumé à l'époque, mais un utilisateur reconnecté
+toutes les 15 minutes est un vrai défaut d'usage maintenant qu'un front avec dashboards de
+session longue existe.
+
+**Décision.** Nouvelle table `refresh_tokens` (Flyway, identity-service) : `id`, `user_id`,
+`token_hash` (SHA-256 de la valeur opaque — jamais la valeur en clair, même logique que
+`password_hash`), `created_at`, `expires_at` (7 jours), `revoked_at` nullable. `POST /login`
+renvoie en plus un refresh token opaque (pas dans le JWT — le token d'accès reste
+strictement stateless, inchangé). `POST /auth/refresh` : valide le hash, non expiré, non
+révoqué → **rotation** (révoque l'ancien, émet nouveau refresh token + nouveau JWT d'accès) ;
+la rotation empêche le rejeu d'un refresh token volé puis réutilisé après le légitime.
+`POST /auth/logout` : révoque le refresh token donné.
+
+**Ce que je sacrifie.** Le JWT d'accès reste non révocable pendant ses 15 minutes restantes
+même après un `logout` ou un changement de mot de passe (G10, pas aggravé). Un seul refresh
+token actif par login, pas de fusion multi-session. Pas de "reuse detection" en chaîne :
+la rotation détecte un usage après coup (révoque l'ancien) mais ne révoque pas
+automatiquement toute la chaîne si un attaquant a déjà tourné une fois avant le légitime.
+
+**Alternative rejetée.** Cookie `HttpOnly` plutôt qu'un champ JSON stocké côté front comme
+le token d'accès actuel (`localStorage`, G8) : plus sûr contre le XSS, mais suppose un
+domaine/CORS/SameSite partagé que Traefik ne fournit pas (sous-domaines séparés par
+service) et changerait le contrat d'auth du front pour toutes les requêtes existantes.
+Rejeté pour cette itération, noté comme durcissement futur (cohérent avec G8 déjà assumé).
+
+## Addendum — Headers de sécurité HTTP (sécurité G7)
+
+**Décision.** Middleware Traefik (labels Docker, même mécanisme que le routage existant,
+pas de nouveau fichier de config dynamique) sur chaque router applicatif :
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: strict-origin-when-cross-origin`, `Strict-Transport-Security` (TLS déjà
+terminé au bord par Traefik). Pas de `Content-Security-Policy` pour l'instant.
+
+**Ce que je sacrifie.** Pas de CSP : `admin-dashboard` n'était pas encore conteneurisé/routé
+par Traefik au moment d'écrire cet addendum (corrigé dans la même vague, voir README front) ;
+une CSP écrite avant que les vraies origines de scripts soient stabilisées casserait
+probablement l'app sans bénéfice mesurable. À écrire une fois le routage front stabilisé.
+
+**Alternative rejetée.** Headers posés côté Spring (`Filter`/`HandlerInterceptor` par
+service) : dupliquerait la logique 3 fois pour un concern qui est structurellement celui du
+bord (Traefik est "la gateway unique" — CLAUDE.md), pas des services.
+
+---
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |
@@ -1472,15 +1601,17 @@ donnée qui ne sert qu'à l'affichage.
 | Recommandation par requête de contenu (3 champs pondérés) | Pas de ML/filtrage collaboratif |
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
+| Pathfinding en sauts, pas en durée pondérée (§11) | Itinéraire "le plus court" peut être plus long en temps réel |
+| Suppression physique de la relation TRANSPORT (§11) | Pas de trace d'audit d'un trajet supprimé |
+| Refresh token opaque + rotation, JWT d'accès toujours non révocable (§11) | Fenêtre de 15 min où un token déjà émis reste valide malgré logout/changement de mdp |
+| Pas de reset de mot de passe par email (§11) | Compte bloqué → recours admin uniquement, pas d'infra mail |
+| i18n en scaffolding seulement (`@angular/localize` câblé, pas de traduction complète) | La majorité des libellés restent en dur en français |
 
 ## Points ouverts
 
-**Un seul, volontairement laissé ouvert** : la feature bonus "innovante" du
-sujet (§ Bonus). Pas d'arbitrage par défaut ici — c'est la seule partie
-créative de cette phase, à discuter avec l'utilisateur au moment voulu plutôt
-que figée à l'avance. PWA (`ng add @angular/pwa`) et i18n (`@angular/localize`)
-n'ont pas besoin de ce débat : ce sont des ajouts mécaniques, à faire en fin de
-phase une fois le cœur fonctionnel validé.
+Plus aucun laissé en suspens : la feature bonus (§11, itinéraires multi-destinations) est
+tranchée. PWA (`ng add @angular/pwa`) et i18n scaffolding (`@angular/localize`) sont des
+ajouts mécaniques, faits en fin de phase.
 
 > **STOP — chaque section ci-dessus est une phase séparée.** Ne pas
 > implémenter tout ce document d'un coup : `/adr` sert à confirmer le détail
