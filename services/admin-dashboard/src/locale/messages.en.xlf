@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file source-language="fr" target-language="en" datatype="plaintext" original="ng2.template">
+    <body>
+      <trans-unit id="login.title" datatype="html">
+        <source> Connexion </source>
+        <target> Login </target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">4,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.emailLabel" datatype="html">
+        <source>Email</source>
+        <target>Email</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">13</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.passwordLabel" datatype="html">
+        <source>Mot de passe</source>
+        <target>Password</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">23,24</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.submitting" datatype="html">
+        <source>Connexion…</source>
+        <target>Signing in…</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">37,39</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.submit" datatype="html">
+        <source>Se connecter</source>
+        <target>Log in</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">39,41</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.noAccount" datatype="html">
+        <source> Pas encore de compte ? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a
+        routerLink=&quot;/register&quot;
+        class=&quot;font-medium text-indigo-600 hover:underline dark:text-indigo-400&quot;
+        &gt;"/>Créer un compte<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a
+      &gt;"/></source>
+        <target> No account yet? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a
+        routerLink=&quot;/register&quot;
+        class=&quot;font-medium text-indigo-600 hover:underline dark:text-indigo-400&quot;
+        &gt;"/>Create one<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a
+      &gt;"/></target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/features/login/login.component.html</context>
+          <context context-type="linenumber">46,53</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.menuClose" datatype="html">
+        <source>Fermer</source>
+        <target>Close</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">14,16</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.menuOpen" datatype="html">
+        <source>Menu</source>
+        <target>Menu</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">16,18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.navLabel" datatype="html">
+        <source>Navigation principale</source>
+        <target>Main navigation</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">26</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.themeToLight" datatype="html">
+        <source>Mode clair</source>
+        <target>Light mode</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">58,60</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.themeToDark" datatype="html">
+        <source>Mode sombre</source>
+        <target>Dark mode</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">60,62</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.logout" datatype="html">
+        <source> Se déconnecter </source>
+        <target> Log out </target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/app-shell.component.html</context>
+          <context context-type="linenumber">70,71</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.travels" datatype="html">
+        <source>Voyages</source>
+        <target>Trips</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.mySubscriptions" datatype="html">
+        <source>Mes abonnements</source>
+        <target>My subscriptions</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">29</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.myStats" datatype="html">
+        <source>Mes statistiques</source>
+        <target>My stats</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.routes" datatype="html">
+        <source>Itinéraires</source>
+        <target>Routes</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">35</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.managerDashboard" datatype="html">
+        <source>Tableau de bord organisateur</source>
+        <target>Organizer dashboard</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">40</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.managerTravels" datatype="html">
+        <source>Mes voyages organisés</source>
+        <target>My organized trips</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">45</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.adminDashboard" datatype="html">
+        <source>Tableau de bord admin</source>
+        <target>Admin dashboard</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">50</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.feedback" datatype="html">
+        <source>Avis</source>
+        <target>Reviews</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">54</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.reports" datatype="html">
+        <source>Signalements</source>
+        <target>Reports</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">55</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.users" datatype="html">
+        <source>Utilisateurs</source>
+        <target>Users</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">56</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.payments" datatype="html">
+        <source>Paiements</source>
+        <target>Payments</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">57</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="nav.destinations" datatype="html">
+        <source>Destinations</source>
+        <target>Destinations</target>
+        <context-group purpose="location">
+          <context context-type="sourcefile">src/app/shared/layout/nav-items.ts</context>
+          <context context-type="linenumber">58</context>
+        </context-group>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

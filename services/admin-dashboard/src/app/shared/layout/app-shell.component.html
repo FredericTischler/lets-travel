@@ -10,7 +10,11 @@
         [attr.aria-expanded]="menuOpen()"
         (click)="toggleMenu()"
       >
-        {{ menuOpen() ? 'Fermer' : 'Menu' }}
+        @if (menuOpen()) {
+          <span i18n="@@shell.menuClose">Fermer</span>
+        } @else {
+          <span i18n="@@shell.menuOpen">Menu</span>
+        }
       </button>
 
       <div
@@ -19,7 +23,7 @@
         [class.hidden]="!menuOpen()"
         [class.flex]="menuOpen()"
       >
-        <nav aria-label="Navigation principale">
+        <nav aria-label="Navigation principale" i18n-aria-label="@@shell.navLabel">
           <ul class="flex flex-col gap-2 text-sm font-medium lg:flex-row lg:flex-wrap lg:gap-x-4 lg:gap-y-1">
             @for (item of navItems(); track item.route) {
               <li>
@@ -50,13 +54,18 @@
             (click)="themeService.toggle()"
             class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            {{ themeService.theme() === 'dark' ? 'Mode clair' : 'Mode sombre' }}
+            @if (themeService.theme() === 'dark') {
+              <span i18n="@@shell.themeToLight">Mode clair</span>
+            } @else {
+              <span i18n="@@shell.themeToDark">Mode sombre</span>
+            }
           </button>
 
           <button
             type="button"
             (click)="logout()"
             class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+            i18n="@@shell.logout"
           >
             Se déconnecter
           </button>

@@ -15,20 +15,47 @@ export interface NavItem {
  * Every navigation entry of the authenticated area. The shell filters this
  * list by the current role; a new screen only needs an entry here (plus its
  * route, guarded with the same roles — see app.routes.ts).
+ *
+ * Labels go through `$localize` (i18n scaffolding, ADR §11 addendum): unlike
+ * template text, a data-driven array has no `i18n` attribute to hang a
+ * translation off, so this is the TypeScript-source form of the same
+ * mechanism — `ng extract-i18n` picks up tagged templates here exactly like
+ * `i18n="@@id"` in a template. Source (French) is returned unchanged outside
+ * a localized `en` build (dev server, unit tests).
  */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { label: 'Voyages', route: '/travels', roles: [ROLES.TRAVELER] },
-  { label: 'Mes abonnements', route: '/my-subscriptions', roles: [ROLES.TRAVELER] },
-  { label: 'Mes statistiques', route: '/my-stats', roles: [ROLES.TRAVELER] },
-  { label: 'Itinéraires', route: '/destinations/routes', roles: [ROLES.TRAVELER] },
-  { label: 'Tableau de bord organisateur', route: '/manager/dashboard', roles: [ROLES.TRAVEL_MANAGER] },
-  { label: 'Mes voyages organisés', route: '/manager/travels', roles: [ROLES.TRAVEL_MANAGER] },
-  { label: 'Tableau de bord admin', route: '/admin/dashboard', roles: [ROLES.ADMIN] },
-  { label: 'Avis', route: '/admin/feedback', roles: [ROLES.ADMIN] },
-  { label: 'Signalements', route: '/admin/reports', roles: [ROLES.ADMIN] },
-  { label: 'Utilisateurs', route: '/users', roles: [ROLES.ADMIN] },
-  { label: 'Paiements', route: '/payments', roles: [ROLES.ADMIN] },
-  { label: 'Destinations', route: '/destinations', roles: [ROLES.ADMIN] },
+  { label: $localize`:@@nav.travels:Voyages`, route: '/travels', roles: [ROLES.TRAVELER] },
+  {
+    label: $localize`:@@nav.mySubscriptions:Mes abonnements`,
+    route: '/my-subscriptions',
+    roles: [ROLES.TRAVELER],
+  },
+  { label: $localize`:@@nav.myStats:Mes statistiques`, route: '/my-stats', roles: [ROLES.TRAVELER] },
+  {
+    label: $localize`:@@nav.routes:Itinéraires`,
+    route: '/destinations/routes',
+    roles: [ROLES.TRAVELER],
+  },
+  {
+    label: $localize`:@@nav.managerDashboard:Tableau de bord organisateur`,
+    route: '/manager/dashboard',
+    roles: [ROLES.TRAVEL_MANAGER],
+  },
+  {
+    label: $localize`:@@nav.managerTravels:Mes voyages organisés`,
+    route: '/manager/travels',
+    roles: [ROLES.TRAVEL_MANAGER],
+  },
+  {
+    label: $localize`:@@nav.adminDashboard:Tableau de bord admin`,
+    route: '/admin/dashboard',
+    roles: [ROLES.ADMIN],
+  },
+  { label: $localize`:@@nav.feedback:Avis`, route: '/admin/feedback', roles: [ROLES.ADMIN] },
+  { label: $localize`:@@nav.reports:Signalements`, route: '/admin/reports', roles: [ROLES.ADMIN] },
+  { label: $localize`:@@nav.users:Utilisateurs`, route: '/users', roles: [ROLES.ADMIN] },
+  { label: $localize`:@@nav.payments:Paiements`, route: '/payments', roles: [ROLES.ADMIN] },
+  { label: $localize`:@@nav.destinations:Destinations`, route: '/destinations', roles: [ROLES.ADMIN] },
 ];
 
 /** The entries a user with the given role (as read from the token) may see. */
