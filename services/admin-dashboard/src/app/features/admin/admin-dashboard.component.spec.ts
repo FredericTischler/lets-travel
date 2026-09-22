@@ -157,6 +157,45 @@ describe('AdminDashboardComponent', () => {
     expect(rows[0].querySelector('a[href="/manager/dashboard?managerId=m1"]')).not.toBeNull();
   });
 
+  it('hides the ranking pagination controls when everything fits on one page', () => {
+    load(); // default ranking has 3 entries
+
+    expect(el().querySelector('[data-testid="ranking-pagination"]')).toBeNull();
+  });
+
+  it('paginates the full ranking client-side (10 rows per page — the backend does not paginate it)', () => {
+    const ranking = Array.from({ length: 25 }, (_, i) => entry(i + 1, `m${i + 1}`));
+    load({ ranking });
+
+    const rankingRows = () => el().querySelectorAll('[data-testid="ranking-row"]');
+    const nextButton = () =>
+      Array.from(el().querySelectorAll('button') as NodeListOf<HTMLButtonElement>).find(
+        (b) => b.textContent?.trim() === 'Suivant',
+      )!;
+    const previousButton = () =>
+      Array.from(el().querySelectorAll('button') as NodeListOf<HTMLButtonElement>).find(
+        (b) => b.textContent?.trim() === 'Précédent',
+      )!;
+
+    expect(rankingRows()).toHaveLength(10);
+    expect(el().querySelector('[data-testid="ranking-page-info"]')!.textContent).toContain('Page 1 sur 3');
+    expect(previousButton().disabled).toBe(true);
+
+    nextButton().click();
+    fixture.detectChanges();
+
+    expect(rankingRows()).toHaveLength(10);
+    expect(el().querySelector('[data-testid="ranking-page-info"]')!.textContent).toContain('Page 2 sur 3');
+    expect(norm(rankingRows()[0].textContent)).toContain('m11');
+
+    nextButton().click();
+    fixture.detectChanges();
+
+    expect(rankingRows()).toHaveLength(5);
+    expect(el().querySelector('[data-testid="ranking-page-info"]')!.textContent).toContain('Page 3 sur 3');
+    expect(nextButton().disabled).toBe(true);
+  });
+
   it('says "données de revenus indisponibles" when payment-service was down, and still serves the rest', () => {
     load({
       dashboard: { ...dashboard, partial: true, income: null, topManagersByIncome: [], topTravelsByIncome: [] },

@@ -345,15 +345,21 @@ message explicite s'ils manquent.
 
 ## Non implémenté
 
-- **Stripe.js** : le backend crée bien le PaymentIntent et confirme l'abonnement par le
-  webhook Stripe, mais ce front n'intègre **pas** le formulaire de carte (pas de clé
-  publiable dans `environment.ts`, pas de script tiers, rien de testable sans compte Stripe).
-  Choisir « Carte bancaire (Stripe) » crée donc une réservation qui affiche sa référence et
-  son état et **ne peut pas être réglée depuis cette interface** ; elle expire. PayPal et le
-  paiement manuel sont les moyens réellement utilisables. Le flux PayPal (redirection +
-  capture) est implémenté mais **jamais exercé contre PayPal** ; il suppose que `/paypal/return`
-  est configuré comme URL de retour côté PayPal (le backend crée la commande sans URL de
-  retour), sinon le bouton « J'ai approuvé le paiement » fait la même capture.
+- **Stripe.js** : le formulaire de carte (Stripe Elements, `@stripe/stripe-js`) existe
+  maintenant (`features/payments/stripe.service.ts`, `stripe-card-form.component`), mais reste
+  **inactif par défaut** : `environment.stripePublishableKey` vaut `''` (pas de clé Stripe
+  réelle dans ce projet), et dans ce cas le comportement précédent est inchangé — choisir
+  « Carte bancaire (Stripe) » crée une réservation qui affiche sa référence et son état et
+  **ne peut pas être réglée depuis cette interface** ; elle expire. Avec une clé publiable
+  renseignée, le panneau « en attente de paiement » affiche le formulaire de carte et appelle
+  `stripe.confirmCardPayment` avec le `clientSecret` renvoyé à la réservation ; **non testable
+  ici faute d'une clé Stripe de test réelle** (personne n'en a une dans ce projet) — seule la
+  mécanique (montage/démontage de l'élément, erreurs de carte, appel de confirmation) est
+  couverte en Vitest avec un Stripe.js simulé. PayPal et le paiement manuel restent les seuls
+  moyens réellement exercés de bout en bout. Le flux PayPal (redirection + capture) est
+  implémenté mais **jamais exercé contre PayPal** ; il suppose que `/paypal/return` est
+  configuré comme URL de retour côté PayPal (le backend crée la commande sans URL de retour),
+  sinon le bouton « J'ai approuvé le paiement » fait la même capture.
 - **Remboursement / paiement échoué distingué d'une annulation** : un `FAILED` devient
   `CANCELLED` côté backend et gonfle le compteur d'annulations (limite documentée en ADR §4).
 - **Avis modifiables ou modérables** : un avis est unique et immuable (décision backend).

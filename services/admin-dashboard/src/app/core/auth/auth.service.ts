@@ -1,11 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, tap, throwError } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { Role } from './roles';
 
 const TOKEN_STORAGE_KEY = 'admin-dashboard.jwt';
+const REFRESH_TOKEN_STORAGE_KEY = 'admin-dashboard.refreshToken';
 
 export interface LoginRequest {
   email: string;
@@ -28,23 +29,32 @@ export interface RegisteredUser {
 }
 
 /**
- * Shape of the identity-service POST /login response.
+ * Shape of the identity-service POST /login response. `refreshToken` is an
+ * additive field (docs/lets-travel-architecture-decisions.md §11 addendum
+ * "Refresh token") — `token` remains the 15 min access JWT, unchanged.
  * See services/identity-service LoginResponse.java.
  */
 export interface LoginResponse {
   id: string;
   email: string;
   token: string;
+  refreshToken: string;
+}
+
+/** Body/response of identity-service POST /auth/refresh (public, rotates the refresh token). */
+export interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
 }
 
 /**
  * Minimal auth state: holds the JWT issued by identity-service and exposes
  * it to the rest of the app (interceptor, guard).
  *
- * Storage is plain localStorage — no dedicated refresh-token flow, no
- * silent renewal: the backend JWT is short-lived (15 min, see
- * LoginResponse.java) and on expiry the user is simply redirected to
- * /login (see the auth interceptor's 401 handling).
+ * Storage is plain localStorage. The access JWT is short-lived (15 min, see
+ * LoginResponse.java); a refresh token (opaque, `admin-dashboard.refreshToken`)
+ * is stored alongside it so the auth interceptor can renew the session once
+ * on a 401 instead of always redirecting to /login (see auth.interceptor.ts).
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -52,6 +62,9 @@ export class AuthService {
 
   private readonly tokenSignal = signal<string | null>(
     localStorage.getItem(TOKEN_STORAGE_KEY),
+  );
+  private readonly refreshTokenSignal = signal<string | null>(
+    localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY),
   );
 
   readonly isAuthenticated = computed(() => this.tokenSignal() !== null);
@@ -91,13 +104,44 @@ export class AuthService {
   }
 
   login(request: LoginRequest): Observable<LoginResponse> {
-    return this.http
-      .post<LoginResponse>(`${environment.identityApiUrl}/login`, request)
-      .pipe(tap((response) => this.setToken(response.token)));
+    return this.http.post<LoginResponse>(`${environment.identityApiUrl}/login`, request).pipe(
+      tap((response) => {
+        this.setToken(response.token);
+        this.setRefreshToken(response.refreshToken);
+      }),
+    );
   }
 
   getToken(): string | null {
     return this.tokenSignal();
+  }
+
+  getRefreshToken(): string | null {
+    return this.refreshTokenSignal();
+  }
+
+  /**
+   * POST /auth/refresh with the stored refresh token. On success replaces
+   * both the stored access token and refresh token (rotation: the backend
+   * revokes the old refresh token, the one returned here is the only valid
+   * one afterwards). Errors out synchronously (no HTTP call) when there is
+   * no refresh token stored, so a caller (the auth interceptor) can tell
+   * "nothing to refresh" apart from "the refresh call failed".
+   */
+  refresh(): Observable<RefreshResponse> {
+    const refreshToken = this.refreshTokenSignal();
+    if (!refreshToken) {
+      return throwError(() => new Error('Aucun refresh token stocké : impossible de renouveler la session.'));
+    }
+
+    return this.http
+      .post<RefreshResponse>(`${environment.identityApiUrl}/auth/refresh`, { refreshToken })
+      .pipe(
+        tap((response) => {
+          this.setToken(response.accessToken);
+          this.setRefreshToken(response.refreshToken);
+        }),
+      );
   }
 
   /**
@@ -116,8 +160,23 @@ export class AuthService {
     return typeof claims?.['sub'] === 'string' ? claims['sub'] : null;
   }
 
+  /**
+   * Clears the local session first (never blocked on the network — a local
+   * logout must always succeed), then best-effort revokes the refresh token
+   * server-side (POST /auth/logout, always 204, idempotent): fire-and-forget,
+   * any network error is silently ignored, the caller is logged out locally
+   * either way.
+   */
   logout(): void {
+    const refreshToken = this.refreshTokenSignal();
     this.setToken(null);
+    this.setRefreshToken(null);
+
+    if (refreshToken) {
+      this.http
+        .post(`${environment.identityApiUrl}/auth/logout`, { refreshToken })
+        .subscribe({ error: () => undefined });
+    }
   }
 
   /**
@@ -152,6 +211,15 @@ export class AuthService {
       localStorage.setItem(TOKEN_STORAGE_KEY, token);
     } else {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  }
+
+  private setRefreshToken(token: string | null): void {
+    this.refreshTokenSignal.set(token);
+    if (token) {
+      localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, token);
+    } else {
+      localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
     }
   }
 }

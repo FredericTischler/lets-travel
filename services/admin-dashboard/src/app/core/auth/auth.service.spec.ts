@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import { AuthService, LoginResponse } from './auth.service';
 
 const TOKEN_STORAGE_KEY = 'admin-dashboard.jwt';
+const REFRESH_TOKEN_STORAGE_KEY = 'admin-dashboard.refreshToken';
 
 /**
  * Builds a syntactically valid (but unsigned) JWT carrying the given
@@ -23,6 +24,7 @@ describe('AuthService', () => {
 
   beforeEach(() => {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
 
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
@@ -36,16 +38,23 @@ describe('AuthService', () => {
   afterEach(() => {
     httpMock.verify();
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   });
 
   it('starts unauthenticated with no stored token', () => {
     expect(service.isAuthenticated()).toBe(false);
     expect(service.getToken()).toBeNull();
+    expect(service.getRefreshToken()).toBeNull();
   });
 
-  it('login() stores the returned token and exposes it as authenticated', () => {
+  it('login() stores the returned token and refresh token, and exposes it as authenticated', () => {
     const token = buildToken({ sub: 'user-1' });
-    const response: LoginResponse = { id: 'user-1', email: 'admin@example.com', token };
+    const response: LoginResponse = {
+      id: 'user-1',
+      email: 'admin@example.com',
+      token,
+      refreshToken: 'refresh-1',
+    };
 
     let result: LoginResponse | undefined;
     service.login({ email: 'admin@example.com', password: 'secret' }).subscribe((res) => (result = res));
@@ -58,7 +67,9 @@ describe('AuthService', () => {
     expect(result).toEqual(response);
     expect(service.isAuthenticated()).toBe(true);
     expect(service.getToken()).toBe(token);
+    expect(service.getRefreshToken()).toBe('refresh-1');
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(token);
+    expect(localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBe('refresh-1');
   });
 
   it('picks up a previously stored token on construction (session restored on reload)', () => {
@@ -82,9 +93,9 @@ describe('AuthService', () => {
     expect(service.getCurrentUserId()).toBeNull();
   });
 
-  it('logout() clears the token and flips isAuthenticated to false', () => {
+  it('logout() clears the token and refresh token, flips isAuthenticated to false, and best-effort revokes server-side', () => {
     const token = buildToken({ sub: 'user-1' });
-    const response: LoginResponse = { id: 'user-1', email: 'admin@example.com', token };
+    const response: LoginResponse = { id: 'user-1', email: 'admin@example.com', token, refreshToken: 'refresh-1' };
 
     service.login({ email: 'admin@example.com', password: 'secret' }).subscribe();
     httpMock.expectOne(`${environment.identityApiUrl}/login`).flush(response);
@@ -93,14 +104,34 @@ describe('AuthService', () => {
 
     service.logout();
 
+    // Local state is cleared synchronously, before/regardless of the network call.
     expect(service.isAuthenticated()).toBe(false);
     expect(service.getToken()).toBeNull();
+    expect(service.getRefreshToken()).toBeNull();
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBeNull();
+
+    const logoutReq = httpMock.expectOne(`${environment.identityApiUrl}/auth/logout`);
+    expect(logoutReq.request.method).toBe('POST');
+    expect(logoutReq.request.body).toEqual({ refreshToken: 'refresh-1' });
+    // Best-effort: a network error on this call must not throw / break anything.
+    logoutReq.flush('boom', { status: 500, statusText: 'Error' });
+  });
+
+  it('logout() does not call /auth/logout when there is no stored refresh token', () => {
+    service.logout();
+
+    httpMock.expectNone(`${environment.identityApiUrl}/auth/logout`);
   });
 
   it('getCurrentUserId() returns the sub claim of the token set via login()', () => {
     const token = buildToken({ sub: 'user-99' });
-    const response: LoginResponse = { id: 'user-99', email: 'admin@example.com', token };
+    const response: LoginResponse = {
+      id: 'user-99',
+      email: 'admin@example.com',
+      token,
+      refreshToken: 'refresh-99',
+    };
 
     service.login({ email: 'admin@example.com', password: 'secret' }).subscribe();
     httpMock.expectOne(`${environment.identityApiUrl}/login`).flush(response);
@@ -112,7 +143,9 @@ describe('AuthService', () => {
     const token = buildToken({ sub: 'u1', email: 'm@example.com', role: 'TRAVEL_MANAGER' });
 
     service.login({ email: 'm@example.com', password: 'secret' }).subscribe();
-    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'm@example.com', token });
+    httpMock
+      .expectOne(`${environment.identityApiUrl}/login`)
+      .flush({ id: 'u1', email: 'm@example.com', token, refreshToken: 'r1' });
 
     expect(service.role()).toBe('TRAVEL_MANAGER');
     expect(service.email()).toBe('m@example.com');
@@ -124,7 +157,9 @@ describe('AuthService', () => {
 
     const token = buildToken({ sub: 'u1' });
     service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
-    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'a@example.com', token });
+    httpMock
+      .expectOne(`${environment.identityApiUrl}/login`)
+      .flush({ id: 'u1', email: 'a@example.com', token, refreshToken: 'r1' });
 
     expect(service.role()).toBeNull();
   });
@@ -132,12 +167,66 @@ describe('AuthService', () => {
   it('role() goes back to null on logout', () => {
     const token = buildToken({ sub: 'u1', role: 'TRAVELER' });
     service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
-    httpMock.expectOne(`${environment.identityApiUrl}/login`).flush({ id: 'u1', email: 'a@example.com', token });
+    httpMock
+      .expectOne(`${environment.identityApiUrl}/login`)
+      .flush({ id: 'u1', email: 'a@example.com', token, refreshToken: 'r1' });
     expect(service.role()).toBe('TRAVELER');
 
     service.logout();
+    httpMock.expectOne(`${environment.identityApiUrl}/auth/logout`).flush(null, { status: 204, statusText: 'No Content' });
 
     expect(service.role()).toBeNull();
+  });
+
+  describe('refresh()', () => {
+    it('errors out synchronously (no HTTP call) when there is no stored refresh token', () => {
+      let error: unknown;
+      service.refresh().subscribe({ error: (err) => (error = err) });
+
+      expect(error).toBeInstanceOf(Error);
+      httpMock.expectNone(`${environment.identityApiUrl}/auth/refresh`);
+    });
+
+    it('POSTs the stored refresh token and replaces both stored values on success (rotation)', () => {
+      const token = buildToken({ sub: 'u1' });
+      service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
+      httpMock
+        .expectOne(`${environment.identityApiUrl}/login`)
+        .flush({ id: 'u1', email: 'a@example.com', token, refreshToken: 'refresh-1' });
+
+      const newToken = buildToken({ sub: 'u1', role: 'TRAVELER' });
+      let result: { accessToken: string; refreshToken: string } | undefined;
+      service.refresh().subscribe((res) => (result = res));
+
+      const req = httpMock.expectOne(`${environment.identityApiUrl}/auth/refresh`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ refreshToken: 'refresh-1' });
+      req.flush({ accessToken: newToken, refreshToken: 'refresh-2' });
+
+      expect(result).toEqual({ accessToken: newToken, refreshToken: 'refresh-2' });
+      expect(service.getToken()).toBe(newToken);
+      expect(service.getRefreshToken()).toBe('refresh-2');
+      expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBe(newToken);
+      expect(localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY)).toBe('refresh-2');
+    });
+
+    it('propagates a failed refresh (e.g. 401: unknown/expired/revoked token) without touching stored state', () => {
+      const token = buildToken({ sub: 'u1' });
+      service.login({ email: 'a@example.com', password: 'secret' }).subscribe();
+      httpMock
+        .expectOne(`${environment.identityApiUrl}/login`)
+        .flush({ id: 'u1', email: 'a@example.com', token, refreshToken: 'refresh-1' });
+
+      let errored = false;
+      service.refresh().subscribe({ error: () => (errored = true) });
+      httpMock
+        .expectOne(`${environment.identityApiUrl}/auth/refresh`)
+        .flush({ error: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+
+      expect(errored).toBe(true);
+      expect(service.getToken()).toBe(token);
+      expect(service.getRefreshToken()).toBe('refresh-1');
+    });
   });
 
   it('register() POSTs the credentials and the chosen role to the public /users, without logging in', () => {

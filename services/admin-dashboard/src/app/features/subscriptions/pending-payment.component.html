@@ -54,12 +54,24 @@
         }
       }
       @case ('STRIPE') {
-        <p data-testid="stripe-explanation">
-          Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'intègre
-          pas encore le formulaire de carte (Stripe.js). Il ne peut donc pas être réglé depuis
-          cet écran ; la confirmation arrive du webhook Stripe et active l'inscription. Sans
-          règlement avant l'échéance, la réservation expire.
-        </p>
+        @if (stripeConfigured) {
+          @if (clientSecret(); as secret) {
+            <app-stripe-card-form [clientSecret]="secret" (paid)="onStripePaid()" />
+          } @else {
+            <p data-testid="stripe-secret-missing">
+              Le formulaire de paiement Stripe n'est plus disponible dans ce navigateur (il
+              n'est fourni qu'à la réservation) : annulez cette réservation et recommencez
+              pour payer par carte.
+            </p>
+          }
+        } @else {
+          <p data-testid="stripe-explanation">
+            Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'intègre
+            pas encore le formulaire de carte (Stripe.js). Il ne peut donc pas être réglé depuis
+            cet écran ; la confirmation arrive du webhook Stripe et active l'inscription. Sans
+            règlement avant l'échéance, la réservation expire.
+          </p>
+        }
         @if (reference()) {
           <p class="break-all text-xs">Référence : <code>{{ reference() }}</code></p>
         }
