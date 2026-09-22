@@ -1,8 +1,10 @@
 package com.travelplan.identity.controller;
 
+import com.travelplan.identity.dto.ChangePasswordRequest;
 import com.travelplan.identity.dto.CreateUserRequest;
 import com.travelplan.identity.dto.UpdateEmailRequest;
 import com.travelplan.identity.dto.UserResponse;
+import com.travelplan.identity.entity.User;
 import com.travelplan.identity.service.AuthService;
 import com.travelplan.identity.service.PaymentServiceClient;
 import com.travelplan.identity.service.UserService;
@@ -152,5 +154,31 @@ public class UserController {
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         authService.requireAdmin(authorizationHeader);
         return ResponseEntity.ok(userService.updateEmail(id, request));
+    }
+
+    /**
+     * Change the password of an active user (security audit G5). The caller
+     * must be either the account's own owner or an administrator
+     * ({@link AuthService#requireOwnerOrAdmin}): an owner must additionally
+     * confirm their current password in the request body; an administrator
+     * acting on someone else's account is not asked for one (see
+     * {@link UserService#changePassword}).
+     *
+     * @return 200 with the updated user, 404 if absent or soft-deleted, 400
+     *         if the request body fails validation (e.g. {@code newPassword}
+     *         shorter than 8 characters), 401 with a generic message if the
+     *         Authorization header is missing/invalid/expired, or (for an
+     *         owner) if {@code currentPassword} is missing or incorrect, 403
+     *         if the token is valid but the caller is neither the owner nor
+     *         an administrator
+     */
+    @PatchMapping("/{id}/password")
+    public ResponseEntity<UserResponse> changePassword(
+            @PathVariable UUID id,
+            @Valid @RequestBody ChangePasswordRequest request,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        User caller = authService.requireOwnerOrAdmin(authorizationHeader, id);
+        boolean callerIsOwner = caller.getId().equals(id);
+        return ResponseEntity.ok(userService.changePassword(id, request, callerIsOwner));
     }
 }

@@ -8,7 +8,6 @@ import java.time.Clock;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalLong;
 
@@ -75,9 +74,14 @@ public class LoginThrottle {
         this.byIp = new FailureWindow(maxTrackedKeys);
     }
 
-    /** Canonical form of an email for throttling purposes. */
+    /**
+     * Canonical form of an email for throttling purposes — delegates to the
+     * single shared rule ({@link EmailNormalizer}) instead of duplicating it,
+     * so the throttle key can never drift from what {@code UserService}/
+     * {@code AuthService} treat as the same address.
+     */
     static String normalise(String email) {
-        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        return email == null ? "" : EmailNormalizer.normalize(email);
     }
 
     /**
