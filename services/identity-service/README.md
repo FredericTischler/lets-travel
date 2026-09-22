@@ -70,9 +70,10 @@ Ansible `app-secrets` → `/opt/travel-plan/.env` → `docker-compose.identity.y
   recreates the bootstrap one (a deliberate break-glass path).
 
 Rationale and rejected alternatives: `docs/lets-travel-architecture-decisions.md`
-§1 addendum. There is still **no password-change or reset endpoint** (listed in
-`docs/security-audit.md`), so rotating the bootstrap password means changing the
-Vault value and soft-deleting the admin row so the next startup recreates it.
+§1 addendum. `PATCH /users/{id}/password` (see "Authentication and JWT" below)
+now lets an ADMIN rotate the bootstrap password directly; soft-deleting the
+admin row so the next startup recreates it remains the fallback if every
+admin is gone.
 
 ## Reports (signalements)
 
@@ -123,9 +124,27 @@ constraint on `email` only applies among active (non-deleted) rows.
 ## Authentication and JWT
 
 - Passwords are hashed with BCrypt (`BCryptPasswordEncoder`).
-- On login, tokens are HS256-signed JWTs with a 15-minute expiration. There is
-  no refresh token and no revocation/blacklist.
+- On login, access tokens are HS256-signed JWTs with a 15-minute expiration.
+  There is no revocation/blacklist for the access token itself.
 - The token subject is the user id; custom claims are the email and the `role`.
+- `POST /login` also returns a `refreshToken` (security audit G10 —
+  docs/lets-travel-architecture-decisions.md addendum "Refresh token"): an
+  opaque, random value (never a JWT), valid 7 days, only its SHA-256 hash
+  persisted. `POST /auth/refresh` (public, the refresh token itself is the
+  credential) exchanges it for a fresh access token + refresh token pair and
+  revokes the one presented (single-use, so a captured-but-already-used token
+  cannot be replayed); an unknown, expired or already-revoked token is a
+  generic 401 (`InvalidTokenException`), same non-disclosure philosophy as the
+  rest of this service. `POST /auth/logout` (public) revokes a refresh token
+  and always answers 204, whether it existed or not.
+- `PATCH /users/{id}/password` changes a user's password. The caller must be
+  the account's own owner or an `ADMIN` (`AuthService#requireOwnerOrAdmin`,
+  403 otherwise); an owner must additionally supply the correct
+  `currentPassword` (401 if missing/wrong, same generic message as a failed
+  login) — an `ADMIN` acting on someone else's account is not asked for one.
+- Every email (`POST /users`, `POST /login`, `PATCH /users/{id}`) is
+  normalised (`trim` + lowercase) before lookup/uniqueness/storage — security
+  audit G12 — so `A@x.com` and `a@x.com` are always the same account.
 
 ## Assumed debt
 

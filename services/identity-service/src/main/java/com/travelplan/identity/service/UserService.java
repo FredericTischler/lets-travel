@@ -1,11 +1,13 @@
 package com.travelplan.identity.service;
 
+import com.travelplan.identity.dto.ChangePasswordRequest;
 import com.travelplan.identity.dto.CreateUserRequest;
 import com.travelplan.identity.dto.UpdateEmailRequest;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.entity.User;
 import com.travelplan.identity.exception.EmailAlreadyActiveException;
 import com.travelplan.identity.exception.InsufficientRoleException;
+import com.travelplan.identity.exception.InvalidCredentialsException;
 import com.travelplan.identity.exception.UserNotFoundException;
 import com.travelplan.identity.repository.UserRepository;
 import org.slf4j.Logger;
@@ -33,6 +35,14 @@ import java.util.stream.Collectors;
  * - Least privilege at account creation (docs/lets-travel-architecture-decisions.md
  *   §1 addendum "Bootstrap et création d'ADMIN"): only an authenticated ADMIN
  *   may create an ADMIN account, and an omitted role means TRAVELER.
+ * - Email normalisation (security audit G12): every email is normalised
+ *   ({@link EmailNormalizer}, the same rule {@link LoginThrottle} applies)
+ *   before it is looked up, compared for uniqueness, or persisted — so
+ *   {@code A@x.com} and {@code a@x.com} are always the same account, never
+ *   two.
+ * - {@link #changePassword}: an account owner changing their own password
+ *   must confirm the current one; an ADMIN changing someone else's does not
+ *   (see method javadoc).
  */
 @Service
 @Transactional(readOnly = true)
@@ -70,13 +80,15 @@ public class UserService {
             throw new InsufficientRoleException();
         }
 
-        userRepository.findByEmailAndDeletedAtIsNull(request.getEmail())
+        String email = EmailNormalizer.normalize(request.getEmail());
+
+        userRepository.findByEmailAndDeletedAtIsNull(email)
                 .ifPresent(existing -> {
-                    throw new EmailAlreadyActiveException(request.getEmail());
+                    throw new EmailAlreadyActiveException(email);
                 });
 
         String passwordHash = passwordEncoder.encode(request.getPassword());
-        User user = new User(request.getEmail(), passwordHash, role);
+        User user = new User(email, passwordHash, role);
         User saved = userRepository.save(user);
         return UserResponse.from(saved);
     }
@@ -143,6 +155,8 @@ public class UserService {
 
     /**
      * Update the email address of an active user. No other field is touched.
+     * {@code request.getEmail()} is normalised ({@link EmailNormalizer})
+     * before the uniqueness check and before being stored.
      *
      * @throws UserNotFoundException if the user does not exist or is soft-deleted
      * @throws EmailAlreadyActiveException if another active user already owns the new email
@@ -152,13 +166,52 @@ public class UserService {
         User user = userRepository.findActiveById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
 
-        userRepository.findByEmailAndDeletedAtIsNull(request.getEmail())
+        String email = EmailNormalizer.normalize(request.getEmail());
+
+        userRepository.findByEmailAndDeletedAtIsNull(email)
                 .filter(existing -> !existing.getId().equals(id))
                 .ifPresent(existing -> {
-                    throw new EmailAlreadyActiveException(request.getEmail());
+                    throw new EmailAlreadyActiveException(email);
                 });
 
-        user.setEmail(request.getEmail());
+        user.setEmail(email);
+        // the dirty check within the transaction persists the change automatically
+        return UserResponse.from(user);
+    }
+
+    /**
+     * Change the password of an active user.
+     *
+     * <p>Business rule (security audit G5): when the caller IS the account's
+     * own owner ({@code callerIsOwner}, established by the controller from
+     * {@link AuthService#requireOwnerOrAdmin}), {@code currentPassword} is
+     * mandatory and must match the stored BCrypt hash, or the request is
+     * refused with the exact same generic 401 semantics as a failed login —
+     * {@link InvalidCredentialsException} does not distinguish "wrong current
+     * password" from a token problem, same non-disclosure philosophy as the
+     * rest of this service. When the caller is an ADMIN acting on someone
+     * else's account, {@code currentPassword} is neither required nor
+     * checked, even if the client supplies one: an admin does not know — and
+     * is not expected to know — another user's current password.</p>
+     *
+     * @throws UserNotFoundException if the user does not exist or is soft-deleted
+     * @throws InvalidCredentialsException if {@code callerIsOwner} and
+     *         {@code request.getCurrentPassword()} is missing or does not
+     *         match the stored hash
+     */
+    @Transactional
+    public UserResponse changePassword(UUID id, ChangePasswordRequest request, boolean callerIsOwner) {
+        User user = userRepository.findActiveById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+
+        if (callerIsOwner) {
+            String currentPassword = request.getCurrentPassword();
+            if (currentPassword == null || !passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+                throw new InvalidCredentialsException();
+            }
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         // the dirty check within the transaction persists the change automatically
         return UserResponse.from(user);
     }

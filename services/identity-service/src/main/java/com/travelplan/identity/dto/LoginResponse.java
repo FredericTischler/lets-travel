@@ -6,19 +6,26 @@ import java.util.UUID;
  * API response for a successful {@code POST /login}.
  *
  * Includes a short-lived (15 min) JWT usable as a Bearer token against
- * {@code GET /me}. No refresh token, no session. Never includes the
- * password hash.
+ * {@code GET /me}, plus a longer-lived opaque {@code refreshToken}
+ * (partial mitigation of security audit G10 — see
+ * {@link com.travelplan.identity.service.RefreshTokenService}) that can be
+ * exchanged for a fresh pair via {@code POST /auth/refresh} without
+ * re-entering a password. {@code refreshToken} is additive: {@code id},
+ * {@code email} and {@code token} keep their original meaning. Never
+ * includes the password hash.
  */
 public class LoginResponse {
 
     private final UUID id;
     private final String email;
     private final String token;
+    private final String refreshToken;
 
-    public LoginResponse(UUID id, String email, String token) {
+    public LoginResponse(UUID id, String email, String token, String refreshToken) {
         this.id = id;
         this.email = email;
         this.token = token;
+        this.refreshToken = refreshToken;
     }
 
     public UUID getId() {
@@ -31,5 +38,9 @@ public class LoginResponse {
 
     public String getToken() {
         return token;
+    }
+
+    public String getRefreshToken() {
+        return refreshToken;
     }
 }

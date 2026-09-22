@@ -2,6 +2,7 @@ package com.travelplan.identity.service;
 
 import com.travelplan.identity.dto.LoginRequest;
 import com.travelplan.identity.dto.LoginResponse;
+import com.travelplan.identity.dto.RefreshResponse;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.entity.User;
 import com.travelplan.identity.exception.InsufficientRoleException;
@@ -44,6 +45,20 @@ import java.util.UUID;
  * resolve the caller against this service's own {@code users} table (unlike
  * payment-service, which has no access to identity_db), so it returns the
  * resolved {@link User} rather than just the raw claims.</p>
+ *
+ * <p>{@link #requireOwnerOrAdmin} is adapted from payment-service's
+ * {@code TokenValidationService#requireOwnerOrAdmin} for the endpoints that
+ * need "the owner, or any admin" rather than a role check alone (introduced
+ * for {@code PATCH /users/{id}/password} — security audit G5). Like
+ * {@link #requireAnyRole} it returns the resolved {@link User}: the caller
+ * needs to know whether that user IS {@code resourceOwnerId} (an id
+ * comparison expresses this more directly here than a boolean would).</p>
+ *
+ * <p>{@link #login} additionally issues a refresh token (security audit
+ * G10, {@link RefreshTokenService}); {@link #refresh} rotates one for a
+ * fresh access/refresh pair, {@link #logout} revokes one. Refresh tokens are
+ * opaque values, not JWTs — {@link JwtService} is not involved in validating
+ * them.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -63,13 +78,16 @@ public class AuthService {
     private final String dummyHash;
 
     private final LoginThrottle loginThrottle;
+    private final RefreshTokenService refreshTokenService;
 
     public AuthService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder,
-                        JwtService jwtService, LoginThrottle loginThrottle) {
+                        JwtService jwtService, LoginThrottle loginThrottle,
+                        RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.loginThrottle = loginThrottle;
+        this.refreshTokenService = refreshTokenService;
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing-safety");
     }
 
@@ -80,28 +98,37 @@ public class AuthService {
      * refused before any lookup or BCrypt work; every failure — unknown email or
      * wrong password alike — is recorded, a success clears the email's counter.</p>
      *
+     * <p>{@code request.getEmail()} is normalised ({@link EmailNormalizer},
+     * security audit G12) before the throttle check and the lookup, so
+     * {@code A@x.com} and {@code a@x.com} always hit the same throttle
+     * counter and the same account — consistent with how the email was
+     * normalised and stored by {@link UserService#create}.</p>
+     *
      * @throws InvalidCredentialsException if the email is unknown/soft-deleted
      *         or the password does not match — identical exception in both cases
      * @throws TooManyLoginAttemptsException if the email or the client IP is
      *         currently locked out
      */
     public LoginResponse login(LoginRequest request, String clientIp) {
-        loginThrottle.retryAfterSeconds(request.getEmail(), clientIp).ifPresent(seconds -> {
+        String email = EmailNormalizer.normalize(request.getEmail());
+
+        loginThrottle.retryAfterSeconds(email, clientIp).ifPresent(seconds -> {
             throw new TooManyLoginAttemptsException(seconds);
         });
 
-        User user = userRepository.findByEmailAndDeletedAtIsNull(request.getEmail()).orElse(null);
+        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
         String hashToCheck = (user != null) ? user.getPasswordHash() : dummyHash;
         boolean matches = passwordEncoder.matches(request.getPassword(), hashToCheck);
 
         if (user == null || !matches) {
-            loginThrottle.recordFailure(request.getEmail(), clientIp);
+            loginThrottle.recordFailure(email, clientIp);
             throw new InvalidCredentialsException();
         }
-        loginThrottle.recordSuccess(request.getEmail());
+        loginThrottle.recordSuccess(email);
 
         String token = jwtService.generateToken(user);
-        return new LoginResponse(user.getId(), user.getEmail(), token);
+        String refreshToken = refreshTokenService.issue(user.getId());
+        return new LoginResponse(user.getId(), user.getEmail(), token, refreshToken);
     }
 
     /**
@@ -189,6 +216,63 @@ public class AuthService {
             throw new InsufficientRoleException();
         }
         return user;
+    }
+
+    /**
+     * Reject the request unless the {@code Authorization} header carries a
+     * Bearer token that is valid, still active for a currently-active user
+     * (same checks as {@link #getCurrentUser}), AND the caller is either
+     * {@code resourceOwnerId} or an {@code ADMIN}.
+     *
+     * @param authorizationHeader raw header value, may be {@code null}
+     * @param resourceOwnerId the id of the account the action targets
+     * @return the resolved active {@link User} (the caller) — compare its id
+     *         to {@code resourceOwnerId} to know whether the caller IS the
+     *         owner, which callers need for finer-grained rules a plain
+     *         owner-or-admin gate cannot express by itself (e.g.
+     *         {@code UserController#changePassword}: an owner must confirm
+     *         their current password, an admin acting on someone else's
+     *         account must not)
+     * @throws InvalidTokenException if the header is absent, not a
+     *         {@code Bearer} value, the token fails signature/expiration
+     *         validation, or its subject no longer maps to an active user
+     * @throws InsufficientRoleException if the caller is neither the owner nor an admin
+     */
+    public User requireOwnerOrAdmin(String authorizationHeader, UUID resourceOwnerId) {
+        Claims claims = extractValidClaims(authorizationHeader);
+        User user = resolveActiveUser(claims);
+        boolean isAdmin = JwtService.ROLE_ADMIN.equals(claims.get(JwtService.CLAIM_ROLE, String.class));
+        if (!isAdmin && !user.getId().equals(resourceOwnerId)) {
+            throw new InsufficientRoleException();
+        }
+        return user;
+    }
+
+    /**
+     * Rotate a refresh token: consumes {@code refreshToken} (it cannot be
+     * presented again, see {@link RefreshTokenService#rotate}) and issues a
+     * fresh access token + refresh token pair for the user it was issued to.
+     *
+     * @throws InvalidTokenException if the token is unknown, expired, already
+     *         revoked, or its user has since been soft-deleted — all
+     *         indistinguishable to the caller, same generic 401 in every case
+     */
+    public RefreshResponse refresh(String refreshToken) {
+        UUID userId = refreshTokenService.rotate(refreshToken);
+        User user = userRepository.findActiveById(userId).orElseThrow(InvalidTokenException::new);
+        String accessToken = jwtService.generateToken(user);
+        String newRefreshToken = refreshTokenService.issue(user.getId());
+        return new RefreshResponse(accessToken, newRefreshToken);
+    }
+
+    /**
+     * Revoke {@code refreshToken} if a matching, not-already-revoked row
+     * exists. Never throws: {@code POST /auth/logout} always answers 204,
+     * whether the token existed, was already revoked, or is expired — no
+     * oracle on refresh-token existence.
+     */
+    public void logout(String refreshToken) {
+        refreshTokenService.revokeIfPresent(refreshToken);
     }
 
     private Claims extractValidClaims(String authorizationHeader) {

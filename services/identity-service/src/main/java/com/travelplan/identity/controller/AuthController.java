@@ -2,6 +2,8 @@ package com.travelplan.identity.controller;
 
 import com.travelplan.identity.dto.LoginRequest;
 import com.travelplan.identity.dto.LoginResponse;
+import com.travelplan.identity.dto.RefreshResponse;
+import com.travelplan.identity.dto.RefreshTokenRequest;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.service.AuthService;
 import com.travelplan.identity.service.ClientIp;
@@ -27,6 +29,10 @@ import org.springframework.web.bind.annotation.RestController;
  * successful login); {@link com.travelplan.identity.controller.UserController}
  * reuses this exact same manual-validation mechanism to protect the routes
  * that need it.
+ *
+ * <p>{@code POST /auth/refresh} and {@code POST /auth/logout} (security
+ * audit G10) are public too: the refresh token itself, not a Bearer header,
+ * is the credential they consume — see {@code RefreshTokenService}.</p>
  */
 @RestController
 public class AuthController {
@@ -71,5 +77,34 @@ public class AuthController {
     public ResponseEntity<UserResponse> me(
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         return ResponseEntity.ok(authService.getCurrentUser(authorizationHeader));
+    }
+
+    /**
+     * Exchange a refresh token for a fresh access token + refresh token pair.
+     * The presented refresh token is consumed (revoked) in the process — it
+     * cannot be presented again, see {@code RefreshTokenService#rotate}.
+     * Public: the refresh token itself is the credential, no Bearer header
+     * is involved.
+     *
+     * @return 200 with the new pair, 401 with a generic message if the token
+     *         is unknown, expired, already revoked, or its user has since
+     *         been soft-deleted, 400 if the request body fails validation
+     */
+    @PostMapping("/auth/refresh")
+    public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok(authService.refresh(request.getRefreshToken()));
+    }
+
+    /**
+     * Revoke a refresh token. Public, same reasoning as {@link #refresh}.
+     *
+     * @return 204 No Content always — whether the token existed, was already
+     *         revoked, or is expired; no oracle on refresh-token existence.
+     *         400 if the request body fails validation.
+     */
+    @PostMapping("/auth/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenRequest request) {
+        authService.logout(request.getRefreshToken());
+        return ResponseEntity.noContent().build();
     }
 }
