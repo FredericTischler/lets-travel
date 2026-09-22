@@ -74,6 +74,17 @@ export const routes: Routes = [
             (m) => m.PaypalReturnComponent,
           ),
       },
+      {
+        // Itinerary search (bonus, sujet §11 addendum): open to all 3 roles,
+        // same as every other /destinations/** GET — no ownership on a
+        // graph read. Kept out of the ADMIN-only /destinations screen below.
+        path: 'destinations/routes',
+        canActivate: [roleGuard(ROLES.TRAVELER)],
+        loadComponent: () =>
+          import('./features/destinations/route-search.component').then(
+            (m) => m.RouteSearchComponent,
+          ),
+      },
       // --- Travel Manager (also reachable by ADMIN) ---
       {
         // An admin may add ?managerId= to look at another manager's dashboard.

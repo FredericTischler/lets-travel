@@ -20,6 +20,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Voyages', route: '/travels', roles: [ROLES.TRAVELER] },
   { label: 'Mes abonnements', route: '/my-subscriptions', roles: [ROLES.TRAVELER] },
   { label: 'Mes statistiques', route: '/my-stats', roles: [ROLES.TRAVELER] },
+  { label: 'Itinéraires', route: '/destinations/routes', roles: [ROLES.TRAVELER] },
   { label: 'Tableau de bord organisateur', route: '/manager/dashboard', roles: [ROLES.TRAVEL_MANAGER] },
   { label: 'Mes voyages organisés', route: '/manager/travels', roles: [ROLES.TRAVEL_MANAGER] },
   { label: 'Tableau de bord admin', route: '/admin/dashboard', roles: [ROLES.ADMIN] },

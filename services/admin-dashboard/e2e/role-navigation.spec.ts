@@ -64,6 +64,7 @@ test.describe('Role navigation', () => {
       'Voyages',
       'Mes abonnements',
       'Mes statistiques',
+      'Itinéraires',
       'Tableau de bord organisateur',
       'Mes voyages organisés',
       'Tableau de bord admin',
