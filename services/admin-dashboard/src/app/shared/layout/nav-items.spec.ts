@@ -1,4 +1,4 @@
-import { NAV_ITEMS, navItemsFor } from './nav-items';
+import { NAV_ITEMS, navItemsFor, navSectionsFor } from './nav-items';
 
 describe('navItemsFor()', () => {
   const labels = (role: string | null) => navItemsFor(role).map((item) => item.label);
@@ -36,5 +36,42 @@ describe('navItemsFor()', () => {
     for (const item of NAV_ITEMS) {
       expect(item.route.startsWith('/')).toBe(true);
     }
+  });
+});
+
+describe('navSectionsFor()', () => {
+  const sectionLabels = (role: string | null) => navSectionsFor(role).map((s) => s.label);
+  const itemLabels = (role: string | null, label: string | null) =>
+    navSectionsFor(role)
+      .find((s) => s.label === label)
+      ?.items.map((item) => item.label);
+
+  it('puts a TRAVELER\'s entries in the flat (unlabelled) section only', () => {
+    expect(sectionLabels('TRAVELER')).toEqual([null]);
+    expect(itemLabels('TRAVELER', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+  });
+
+  it('splits an ADMIN\'s entries into the flat section and one "Administration" group', () => {
+    expect(sectionLabels('ADMIN')).toEqual([null, 'Administration']);
+    expect(itemLabels('ADMIN', null)).toEqual([
+      'Voyages',
+      'Mes abonnements',
+      'Mes statistiques',
+      'Tableau de bord organisateur',
+      'Mes voyages organisés',
+    ]);
+    expect(itemLabels('ADMIN', 'Administration')).toEqual([
+      'Tableau de bord admin',
+      'Avis',
+      'Signalements',
+      'Utilisateurs',
+      'Paiements',
+      'Destinations',
+    ]);
+  });
+
+  it('gives an empty flat section and no groups for a missing or unknown role', () => {
+    expect(navSectionsFor(null)).toEqual([{ label: null, items: [] }]);
+    expect(navSectionsFor('SUPERUSER')).toEqual([{ label: null, items: [] }]);
   });
 });

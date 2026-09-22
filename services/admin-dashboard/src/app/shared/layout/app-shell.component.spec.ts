@@ -96,6 +96,30 @@ describe('AppShellComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('groups the admin-only entries under a collapsible "Administration" section, open by default', () => {
+    setup('ADMIN');
+
+    const toggle = fixture.nativeElement.querySelector(
+      '[aria-controls="nav-group-Administration"]',
+    ) as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(linkLabels()).toEqual(
+      expect.arrayContaining(['Tableau de bord admin', 'Avis', 'Signalements', 'Utilisateurs', 'Paiements', 'Destinations']),
+    );
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(linkLabels()).toEqual([
+      'Voyages',
+      'Mes abonnements',
+      'Mes statistiques',
+      'Tableau de bord organisateur',
+      'Mes voyages organisés',
+    ]);
+  });
+
   it('toggles the mobile menu and reflects it in aria-expanded', () => {
     setup('TRAVELER');
     const toggle = button('Menu');
