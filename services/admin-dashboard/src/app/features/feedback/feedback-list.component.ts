@@ -21,42 +21,42 @@ import { Feedback } from './feedback.service';
     <ul class="flex flex-col gap-3" data-testid="feedback-list">
       @for (item of items(); track item.id) {
         <li
-          class="flex flex-col gap-1 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-700"
+          class="flex flex-col gap-1 border border-line-strong p-3 text-sm"
           data-testid="feedback-item"
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <app-rating [value]="item.rating" />
-            <span class="text-xs text-slate-500 dark:text-slate-400">{{
+            <span class="text-xs text-ink-dim">{{
               item.createdAt | date: 'dd/MM/yyyy'
             }}</span>
           </div>
           @if (showDestination()) {
-            <p class="font-medium text-slate-900 dark:text-slate-100">
+            <p class="font-medium text-ink">
               <a
                 [routerLink]="[travelLink(), item.destinationId]"
-                class="text-indigo-600 hover:underline dark:text-indigo-400"
+                class="text-teal hover:underline"
                 >{{ item.destinationName }}</a
               >
-              <span class="font-normal text-slate-500 dark:text-slate-400">
+              <span class="font-normal text-ink-dim">
                 — {{ item.destinationCountry }}</span
               >
             </p>
           }
           @if (item.comment) {
-            <p class="whitespace-pre-line break-words text-slate-700 dark:text-slate-200" data-testid="feedback-comment">{{
+            <p class="whitespace-pre-line break-words text-ink" data-testid="feedback-comment">{{
               item.comment
             }}</p>
           } @else {
-            <p class="text-slate-500 dark:text-slate-400">Pas de commentaire.</p>
+            <p class="text-ink-dim">Pas de commentaire.</p>
           }
           @if (showAuthor()) {
-            <p class="break-all text-xs text-slate-500 dark:text-slate-400">
+            <p class="break-all text-xs text-ink-dim">
               Voyageur : {{ item.travelerId }}
             </p>
           }
         </li>
       } @empty {
-        <li class="text-sm text-slate-500 dark:text-slate-400" data-testid="feedback-empty">
+        <li class="text-sm text-ink-dim" data-testid="feedback-empty">
           {{ emptyMessage() }}
         </li>
       }

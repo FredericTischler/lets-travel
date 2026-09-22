@@ -1,46 +1,67 @@
-<div class="flex min-h-screen items-center justify-center bg-white p-6 dark:bg-slate-900">
+<div class="flex min-h-screen items-center justify-center bg-surface-2 p-6">
   <div class="w-full max-w-sm">
-    <h1 class="mb-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">Connexion</h1>
+    <div
+      class="border border-line-strong bg-surface"
+      style="clip-path: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 22px))"
+    >
+      <div class="flex">
+        <div class="flex-1">
+          <div
+            class="flex items-center justify-between gap-3 border-b border-dashed border-line-strong bg-surface-2 px-5 py-4"
+          >
+            <span class="font-display text-xl font-bold tracking-wide text-ink">Let's Travel</span>
+            <span class="font-mono text-[11px] tracking-wide text-ink-dim uppercase">Gate · Admin</span>
+          </div>
 
-    <app-card>
-      <form class="flex flex-col gap-4" (ngSubmit)="submit()">
-        <app-input
-          fieldId="email"
-          name="email"
-          label="Email"
-          type="email"
-          [(ngModel)]="email"
-          [required]="true"
-          autocomplete="username"
-        />
+          <form class="flex flex-col gap-4 px-5 pt-5 pb-6" (ngSubmit)="submit()">
+            <app-input
+              fieldId="email"
+              name="email"
+              label="Email"
+              type="email"
+              [(ngModel)]="email"
+              [required]="true"
+              autocomplete="username"
+            />
 
-        <app-input
-          fieldId="password"
-          name="password"
-          label="Mot de passe"
-          type="password"
-          [(ngModel)]="password"
-          [required]="true"
-          autocomplete="current-password"
-        />
+            <app-input
+              fieldId="password"
+              name="password"
+              label="Mot de passe"
+              type="password"
+              [(ngModel)]="password"
+              [required]="true"
+              autocomplete="current-password"
+            />
 
-        @if (error()) {
-          <app-alert variant="error">{{ error() }}</app-alert>
-        }
+            @if (error()) {
+              <app-alert variant="error">{{ error() }}</app-alert>
+            }
 
-        <app-button type="submit" [disabled]="submitting()">
-          {{ submitting() ? 'Connexion…' : 'Se connecter' }}
-        </app-button>
-      </form>
-    </app-card>
+            <button
+              type="submit"
+              [disabled]="submitting()"
+              class="mt-1 bg-amber px-4 py-3 font-display text-lg font-bold tracking-wide text-amber-ink uppercase transition-[filter] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              style="clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%)"
+            >
+              {{ submitting() ? 'Connexion…' : 'Se connecter' }}
+            </button>
 
-    <p class="mt-4 text-sm text-slate-600 dark:text-slate-300">
-      Pas encore de compte ?
-      <a
-        routerLink="/register"
-        class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-        >Créer un compte</a
-      >
-    </p>
+            <div class="flex items-center justify-between pt-1">
+              <span class="text-xs text-ink-dim">Pas encore de compte ?</span>
+              <a routerLink="/register" class="text-sm font-medium text-teal hover:underline"
+                >Créer un compte</a
+              >
+            </div>
+          </form>
+        </div>
+        <div
+          class="flex items-center justify-center border-l border-dashed border-line-strong px-2 font-mono text-[10px] tracking-widest text-ink-dim uppercase"
+          style="writing-mode: vertical-rl"
+        >
+          LT · {{ currentYear }}
+        </div>
+      </div>
+    </div>
   </div>
 </div>

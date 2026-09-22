@@ -25,10 +25,10 @@ import { PendingPaymentStore } from './pending-payment.store';
   imports: [RouterLink, AlertComponent, CardComponent],
   template: `
     <div class="flex flex-col gap-6">
-      <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Retour de PayPal</h1>
+      <h1 class="font-display text-2xl font-bold text-ink">Retour de PayPal</h1>
       <app-card>
         @if (state() === 'capturing') {
-          <p class="text-sm text-slate-600 dark:text-slate-300" data-testid="capturing">
+          <p class="text-sm text-ink-dim" data-testid="capturing">
             Finalisation de votre paiement…
           </p>
         } @else if (state() === 'done') {
@@ -40,7 +40,7 @@ import { PendingPaymentStore } from './pending-payment.store';
         }
         @if (state() !== 'capturing') {
           <p class="mt-3 text-sm">
-            <a routerLink="/my-subscriptions" class="text-indigo-600 hover:underline dark:text-indigo-400"
+            <a routerLink="/my-subscriptions" class="text-teal hover:underline"
               >Voir mes abonnements</a
             >
           </p>

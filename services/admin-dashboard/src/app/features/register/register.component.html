@@ -1,71 +1,92 @@
-<div class="flex min-h-screen items-center justify-center bg-white p-4 dark:bg-slate-900 md:p-6">
+<div class="flex min-h-screen items-center justify-center bg-surface-2 p-4 md:p-6">
   <div class="w-full max-w-sm">
-    <h1 class="mb-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">Créer un compte</h1>
+    <div
+      class="border border-line-strong bg-surface"
+      style="clip-path: polygon(0 0, 100% 0, 100% 100%, 22px 100%, 0 calc(100% - 22px))"
+    >
+      <div class="flex">
+        <div class="flex-1">
+          <div
+            class="flex items-center justify-between gap-3 border-b border-dashed border-line-strong bg-surface-2 px-5 py-4"
+          >
+            <span class="font-display text-xl font-bold tracking-wide text-ink">Let's Travel</span>
+            <span class="font-mono text-[11px] tracking-wide text-ink-dim uppercase">Nouveau billet</span>
+          </div>
 
-    <app-card>
-      <form class="flex flex-col gap-4" (ngSubmit)="submit()">
-        <app-input
-          fieldId="email"
-          name="email"
-          label="Email"
-          type="email"
-          [(ngModel)]="email"
-          [required]="true"
-          autocomplete="username"
-        />
+          <form class="flex flex-col gap-4 px-5 pt-5 pb-6" (ngSubmit)="submit()">
+            <app-input
+              fieldId="email"
+              name="email"
+              label="Email"
+              type="email"
+              [(ngModel)]="email"
+              [required]="true"
+              autocomplete="username"
+            />
 
-        <app-input
-          fieldId="password"
-          name="password"
-          label="Mot de passe"
-          type="password"
-          [(ngModel)]="password"
-          [required]="true"
-          autocomplete="new-password"
-        />
-        <p class="-mt-2 text-xs text-slate-500 dark:text-slate-400">
-          {{ minPasswordLength }} caractères minimum.
-        </p>
-
-        <fieldset class="flex flex-col gap-2">
-          <legend class="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-            Je souhaite être
-          </legend>
-          @for (option of roles; track option.value) {
-            <label
-              class="flex cursor-pointer items-start gap-2 rounded-md border border-slate-300 p-2 text-sm dark:border-slate-600"
-            >
-              <input
-                type="radio"
-                name="role"
-                class="mt-1"
-                [value]="option.value"
-                [attr.value]="option.value"
-                [(ngModel)]="role"
+            <div class="flex flex-col gap-1.5">
+              <app-input
+                fieldId="password"
+                name="password"
+                label="Mot de passe"
+                type="password"
+                [(ngModel)]="password"
+                [required]="true"
+                autocomplete="new-password"
               />
-              <span>
-                <span class="block font-medium text-slate-900 dark:text-slate-100">{{ option.label }}</span>
-                <span class="block text-slate-500 dark:text-slate-400">{{ option.hint }}</span>
-              </span>
-            </label>
-          }
-        </fieldset>
+              <p class="text-xs text-ink-dim">{{ minPasswordLength }} caractères minimum.</p>
+            </div>
 
-        @if (error()) {
-          <app-alert variant="error">{{ error() }}</app-alert>
-        }
+            <fieldset class="flex flex-col gap-2">
+              <legend class="mb-1 font-mono text-xs tracking-wide text-ink-dim uppercase">
+                Je souhaite être
+              </legend>
+              @for (option of roles; track option.value) {
+                <label
+                  class="flex cursor-pointer items-start gap-2 border border-line-strong p-2 text-sm has-[:checked]:border-amber"
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    class="mt-1 accent-amber"
+                    [value]="option.value"
+                    [attr.value]="option.value"
+                    [(ngModel)]="role"
+                  />
+                  <span>
+                    <span class="block font-medium text-ink">{{ option.label }}</span>
+                    <span class="block text-xs text-ink-dim">{{ option.hint }}</span>
+                  </span>
+                </label>
+              }
+            </fieldset>
 
-        <app-button type="submit" [disabled]="submitting()">
-          {{ submitting() ? 'Création…' : 'Créer mon compte' }}
-        </app-button>
-      </form>
-    </app-card>
+            @if (error()) {
+              <app-alert variant="error">{{ error() }}</app-alert>
+            }
 
-    <p class="mt-4 text-sm text-slate-600 dark:text-slate-300">
-      Déjà un compte ?
-      <a routerLink="/login" class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-        >Se connecter</a
-      >
-    </p>
+            <button
+              type="submit"
+              [disabled]="submitting()"
+              class="mt-1 bg-amber px-4 py-3 font-display text-lg font-bold tracking-wide text-amber-ink uppercase transition-[filter] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              style="clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%)"
+            >
+              {{ submitting() ? 'Création…' : 'Créer mon compte' }}
+            </button>
+
+            <div class="flex items-center justify-between pt-1">
+              <span class="text-xs text-ink-dim">Déjà un compte ?</span>
+              <a routerLink="/login" class="text-sm font-medium text-teal hover:underline">Se connecter</a>
+            </div>
+          </form>
+        </div>
+        <div
+          class="flex items-center justify-center border-l border-dashed border-line-strong px-2 font-mono text-[10px] tracking-widest text-ink-dim uppercase"
+          style="writing-mode: vertical-rl"
+        >
+          LT · {{ currentYear }}
+        </div>
+      </div>
+    </div>
   </div>
 </div>

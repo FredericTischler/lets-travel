@@ -5,8 +5,6 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { homeRouteFor } from '../../core/auth/roles';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
-import { ButtonComponent } from '../../shared/ui/button/button.component';
-import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 
 /**
@@ -16,13 +14,14 @@ import { InputComponent } from '../../shared/ui/input/input.component';
  */
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, RouterLink, AlertComponent, ButtonComponent, CardComponent, InputComponent],
+  imports: [FormsModule, RouterLink, AlertComponent, InputComponent],
   templateUrl: './login.component.html',
 })
 export class LoginComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
 
+  protected readonly currentYear = new Date().getFullYear();
   protected email = '';
   protected password = '';
 

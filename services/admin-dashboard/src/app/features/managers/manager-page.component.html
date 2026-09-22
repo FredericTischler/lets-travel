@@ -1,20 +1,20 @@
 <div class="flex flex-col gap-6">
-  <a routerLink="/travels" class="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+  <a routerLink="/travels" class="text-sm font-medium text-teal hover:underline"
     >← Retour aux voyages</a
   >
 
   <div>
-    <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">Page de l'organisateur</h1>
-    <p class="break-all text-sm text-slate-600 dark:text-slate-300">Identifiant : {{ id() }}</p>
+    <h1 class="font-display text-2xl font-bold text-ink">Page de l'organisateur</h1>
+    <p class="break-all text-sm text-ink-dim">Identifiant : {{ id() }}</p>
   </div>
 
   @if (loading()) {
-    <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+    <p class="text-sm text-ink-dim">Chargement…</p>
   } @else if (error()) {
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else if (stats(); as s) {
     @if (!hasActivity()) {
-      <p role="status" class="text-sm text-slate-600 dark:text-slate-300" data-testid="no-activity">
+      <p role="status" class="text-sm text-ink-dim" data-testid="no-activity">
         Cet organisateur n'a aucun voyage ni aucun avis pour le moment.
       </p>
     }
@@ -53,10 +53,10 @@
                 <td class="table-cell">
                   <a
                     [routerLink]="['/travels', row.destinationId]"
-                    class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                    class="font-medium text-teal hover:underline"
                     >{{ row.name }}</a
                   >
-                  <span class="text-slate-500 dark:text-slate-400"> — {{ row.country }}</span>
+                  <span class="text-ink-dim"> — {{ row.country }}</span>
                 </td>
                 <td class="table-cell">
                   {{ row.startDate | date: 'dd/MM/yyyy' }} → {{ row.endDate | date: 'dd/MM/yyyy' }}
@@ -75,12 +75,12 @@
     </app-card>
 
     <app-card title="Signaler cet organisateur">
-      <div class="flex flex-col gap-3 text-sm text-slate-700 dark:text-slate-200">
+      <div class="flex flex-col gap-3 text-sm text-ink">
         @if (reportSent()) {
           <app-alert variant="success">Votre signalement a été transmis à l'équipe de modération.</app-alert>
         }
         @if (!canReport()) {
-          <p class="text-slate-500 dark:text-slate-400">Vous ne pouvez pas vous signaler vous-même.</p>
+          <p class="text-ink-dim">Vous ne pouvez pas vous signaler vous-même.</p>
         } @else if (reportOpen()) {
           <form class="flex flex-col gap-2" (ngSubmit)="submitReport()">
             <label for="reportReason" class="font-medium">Motif du signalement</label>
@@ -91,7 +91,7 @@
               required
               [maxLength]="reasonMaxLength"
               [(ngModel)]="reportReason"
-              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
             ></textarea>
             <div class="flex gap-2">
               <app-button type="submit" [disabled]="reporting()">

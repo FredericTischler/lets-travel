@@ -43,10 +43,10 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
               <td class="table-cell">
                 <a
                   [routerLink]="['/travels', row.destinationId]"
-                  class="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                  class="font-medium text-teal hover:underline"
                   >{{ row.name }}</a
                 >
-                <span class="text-slate-500 dark:text-slate-400"> — {{ row.country }}</span>
+                <span class="text-ink-dim"> — {{ row.country }}</span>
               </td>
               <td class="table-cell whitespace-nowrap">
                 {{ row.startDate | date: 'dd/MM/yyyy' }} → {{ row.endDate | date: 'dd/MM/yyyy' }}
@@ -59,7 +59,7 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
               </td>
               <td class="table-cell whitespace-nowrap">
                 <app-rating [value]="row.averageRating" />
-                <span class="text-xs text-slate-500 dark:text-slate-400"> ({{ row.feedbackCount }})</span>
+                <span class="text-xs text-ink-dim"> ({{ row.feedbackCount }})</span>
               </td>
               <td class="table-cell whitespace-nowrap tabular-nums" data-testid="row-income">
                 {{ row.income === null ? 'indisponible' : money(row.income) }}
@@ -68,7 +68,7 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
                 <td class="table-cell">
                   <a
                     [routerLink]="[feedbackLink(), row.destinationId, 'feedback']"
-                    class="text-indigo-600 hover:underline dark:text-indigo-400"
+                    class="text-teal hover:underline"
                     >Voir les avis</a
                   >
                 </td>

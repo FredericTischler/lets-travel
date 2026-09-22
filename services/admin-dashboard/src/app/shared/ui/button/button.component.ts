@@ -25,15 +25,12 @@ export class ButtonComponent {
 
   protected readonly classes = computed(() => {
     const base =
-      'inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium ' +
-      'transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+      'inline-flex items-center justify-center gap-1.5 border px-3 py-1.5 font-mono text-xs font-medium ' +
+      'tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50';
     const variants: Record<ButtonVariant, string> = {
-      primary:
-        'bg-indigo-600 text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400',
-      secondary:
-        'border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800',
-      danger:
-        'bg-red-600 text-white hover:bg-red-500 dark:bg-red-500 dark:hover:bg-red-400',
+      primary: 'border-amber bg-amber text-amber-ink hover:brightness-110',
+      secondary: 'border-line-strong text-ink hover:bg-surface-2',
+      danger: 'border-red text-red hover:bg-red hover:text-surface',
     };
     return `${base} ${variants[this.variant()]}`;
   });

@@ -12,18 +12,16 @@ import { Component, input } from '@angular/core';
 @Component({
   selector: 'app-stat-tile',
   template: `
-    <div
-      class="flex h-full flex-col gap-1 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/50"
-    >
-      <p class="text-sm text-slate-600 dark:text-slate-300">{{ label() }}</p>
+    <div class="flex h-full flex-col gap-1 border-t-2 border-line-strong bg-surface p-4">
+      <p class="font-mono text-xs tracking-wide text-ink-dim uppercase">{{ label() }}</p>
       <p
-        class="break-words text-xl font-semibold text-slate-900 sm:text-3xl dark:text-slate-100"
+        class="font-mono text-xl font-semibold break-words tabular-nums text-ink sm:text-3xl"
         data-testid="stat-value"
       >
         {{ value() }}
       </p>
       @if (hint()) {
-        <p class="text-xs text-slate-500 dark:text-slate-400" data-testid="stat-hint">{{ hint() }}</p>
+        <p class="text-xs text-ink-dim" data-testid="stat-hint">{{ hint() }}</p>
       }
     </div>
   `,

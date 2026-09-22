@@ -2,54 +2,123 @@
 
 @import 'tailwindcss';
 
+/* Fonts loaded via <link> in index.html (preconnect + non-blocking
+   stylesheet) rather than @import here, which would block the rest of this
+   file behind two sequential round-trips to fonts.googleapis.com. */
+
 /* Manual class-based dark mode (toggled by ThemeService via the `dark`
    class on <html>), instead of Tailwind v4's default `prefers-color-scheme`
    strategy. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Data-viz tokens (dataviz skill). Series colour = categorical slot 1 (blue),
-   stepped for each surface; the chart chrome (grid, axis) is one step off the
-   surface so it stays recessive. Text never wears a series colour: labels use
-   the Tailwind slate text classes. `.dark` is toggled on <html> by
-   ThemeService. */
+/*
+ * Design system — "console d'exploitation aéroportuaire" (validated design
+ * concept, see the redesign PR): tableau d'affichage des départs, carte
+ * d'embarquement, tour de contrôle — plutôt que la palette crème/terracotta
+ * générique. Un jeu de tokens sémantiques (--app-*), redéfini sous `.dark`,
+ * puis exposé à Tailwind v4 via `@theme` (chaque `--color-*`/`--font-*`
+ * devient une utilité : `bg-surface`, `text-ink-dim`, `font-display`, …).
+ * Les composants ne doivent plus utiliser les couleurs Tailwind par défaut
+ * (indigo/slate) : tout passe par ces tokens pour rester cohérent clair/sombre.
+ */
 :root {
-  --viz-series-1: #2a78d6;
-  --viz-grid: #e1e0d9;
-  --viz-axis: #c3c2b7;
+  --app-bg: #f2ede3;
+  --app-surface: #fffdf8;
+  --app-surface-2: #eae2d2;
+  --app-ink: #1c2622;
+  --app-ink-dim: #5c6b64;
+  --app-amber: #c97a1a;
+  --app-amber-ink: #3a2408;
+  --app-teal: #0f7a5c;
+  --app-red: #b8382a;
+  --app-line: #c9bfa8;
+  --app-line-strong: #8f8367;
 }
 .dark {
-  --viz-series-1: #3987e5;
-  --viz-grid: #2c2c2a;
-  --viz-axis: #383835;
+  --app-bg: #0e1613;
+  --app-surface: #141f1b;
+  --app-surface-2: #1b2a24;
+  --app-ink: #e9efe9;
+  --app-ink-dim: #8fa39a;
+  --app-amber: #f0a83e;
+  --app-amber-ink: #26170a;
+  --app-teal: #3ddc97;
+  --app-red: #ff6b5b;
+  --app-line: #2a3b34;
+  --app-line-strong: #3d5148;
 }
 
-/* Shared table classes for the three list screens (users/payments/
-   destinations). A generic table *component* was considered and rejected:
-   the three tables differ too much in shape (the users table swaps two
-   cells for an inline edit <form>, the payments table shows conditional
-   per-row action buttons based on status, the destinations table has no
-   edit at all) for a single generic API to stay simple. Plain shared
-   classes give visual consistency without forcing that abstraction. */
+@theme {
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-2: var(--app-surface-2);
+  --color-ink: var(--app-ink);
+  --color-ink-dim: var(--app-ink-dim);
+  --color-amber: var(--app-amber);
+  --color-amber-ink: var(--app-amber-ink);
+  --color-teal: var(--app-teal);
+  --color-red: var(--app-red);
+  --color-line: var(--app-line);
+  --color-line-strong: var(--app-line-strong);
+
+  --font-display: 'Big Shoulders Display', ui-sans-serif, sans-serif;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-ink;
+    font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+}
+
+/* Data-viz tokens (dataviz skill). Series colour = the accent amber (the
+ * "runway light" of the concept); grid/axis are one step off the surface so
+ * they stay recessive. Text never wears a series colour: labels use the
+ * ink/ink-dim tokens. Reusing --app-amber (already redefined under `.dark`)
+ * means these never need their own light/dark split. */
+:root {
+  --viz-series-1: var(--app-amber);
+  --viz-grid: var(--app-line);
+  --viz-axis: var(--app-line-strong);
+}
+
+/* Shared table classes for the list screens (users/payments/destinations/…).
+ * A generic table *component* was considered and rejected: the tables differ
+ * too much in shape (inline edit forms, conditional per-row actions) for a
+ * single generic API to stay simple. Plain shared classes give visual
+ * consistency — departure-board style: mono figures, dashed head rule,
+ * square corners — without forcing that abstraction. */
 @layer components {
   .table-shell {
-    @apply w-full overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700;
+    @apply w-full overflow-x-auto border border-line bg-surface;
   }
   .table-base {
-    @apply w-full border-collapse text-left text-sm;
+    @apply w-full border-collapse text-left font-mono text-sm;
   }
   .table-head-row {
-    @apply bg-slate-50 dark:bg-slate-800;
+    @apply bg-surface-2;
   }
   .table-head-cell {
-    @apply px-4 py-2 font-medium text-slate-600 dark:text-slate-300;
+    @apply border-b border-dashed border-line-strong px-4 py-2 text-xs font-medium tracking-wide text-ink-dim uppercase;
   }
   .table-row {
-    @apply border-t border-slate-200 dark:border-slate-700;
+    @apply border-t border-line;
+  }
+  .table-row:hover {
+    @apply bg-surface-2;
   }
   .table-cell {
-    @apply px-4 py-2 align-middle text-slate-700 dark:text-slate-200;
+    @apply px-4 py-2 align-middle text-ink;
   }
   .table-empty-cell {
-    @apply px-4 py-6 text-center text-slate-500 dark:text-slate-400;
+    @apply px-4 py-6 text-center text-ink-dim;
   }
 }

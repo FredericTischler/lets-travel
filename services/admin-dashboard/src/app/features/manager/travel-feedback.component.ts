@@ -25,22 +25,22 @@ import { Feedback, FeedbackService } from '../feedback/feedback.service';
     <div class="flex flex-col gap-6">
       <a
         routerLink="/manager/travels"
-        class="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+        class="text-sm font-medium text-teal hover:underline"
         >← Retour à mes voyages</a
       >
-      <h1 class="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+      <h1 class="font-display text-2xl font-bold text-ink">
         Avis@if (travel(); as t) {
           <span class="font-normal"> — {{ t.name }}</span>
         }
       </h1>
 
       @if (loading()) {
-        <p class="text-sm text-slate-600 dark:text-slate-300">Chargement…</p>
+        <p class="text-sm text-ink-dim">Chargement…</p>
       } @else if (error()) {
         <app-alert variant="error">{{ error() }}</app-alert>
       } @else {
         <app-card title="Synthèse">
-          <p class="text-sm text-slate-700 dark:text-slate-200" data-testid="summary">
+          <p class="text-sm text-ink" data-testid="summary">
             {{ items().length }} avis · note moyenne :
             <app-rating [value]="average()" />
           </p>
