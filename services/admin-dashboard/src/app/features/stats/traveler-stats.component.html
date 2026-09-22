@@ -25,13 +25,9 @@
 
     <app-card title="Moyens de paiement préférés">
       @if (s.partial || !s.payments) {
-        <p
-          role="status"
-          class="border-l-4 border-l-amber bg-surface-2 px-3 py-2 text-sm text-ink"
-          data-testid="payments-unavailable"
-        >
+        <app-alert variant="warning" data-testid="payments-unavailable">
           Données de paiement indisponibles pour le moment (service de paiement injoignable).
-        </p>
+        </app-alert>
       } @else if (s.payments.totalCount === 0) {
         <p class="text-sm text-ink-dim" data-testid="payments-none">
           Aucun paiement effectué pour l'instant.

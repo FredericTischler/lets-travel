@@ -65,7 +65,7 @@ export function feedbackErrorMessage(err: unknown): string {
           rows="3"
           [maxLength]="commentMax"
           [(ngModel)]="comment"
-          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         ></textarea>
         <span class="text-xs text-ink-dim"
           >Texte brut, {{ commentMax }} caractères au maximum. Votre avis ne pourra pas être modifié.</span

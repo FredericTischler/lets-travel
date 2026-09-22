@@ -11,7 +11,7 @@
     [value]="displayValue"
     (input)="handleInput($any($event.target).value)"
     (blur)="handleBlur()"
-    class="border-0 border-b-2 bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+    class="border-0 border-b-2 bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber disabled:cursor-not-allowed disabled:opacity-50"
     [class.border-red]="error()"
     [class.border-line-strong]="!error()"
   />

@@ -10,7 +10,7 @@
         name="months"
         [ngModel]="months()"
         (ngModelChange)="setMonths($event)"
-        class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+        class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
       >
         @for (choice of monthChoices; track choice) {
           <option [ngValue]="choice">{{ choice }} derniers mois</option>
@@ -25,14 +25,10 @@
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else if (data(); as d) {
     @if (d.partial) {
-      <p
-        role="status"
-        class="border-l-4 border-l-amber bg-surface-2 px-3 py-2 text-sm text-ink"
-        data-testid="income-unavailable"
-      >
+      <app-alert variant="warning" data-testid="income-unavailable">
         Données de revenus indisponibles pour le moment (service de paiement injoignable) : les
         autres statistiques restent exactes.
-      </p>
+      </app-alert>
     }
 
     <div class="grid grid-cols-2 gap-4 lg:grid-cols-4" data-testid="kpis">

@@ -28,7 +28,7 @@
           type="date"
           formControlName="startDate"
           required
-          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         />
       </div>
 
@@ -41,7 +41,7 @@
           type="date"
           formControlName="endDate"
           required
-          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         />
         @if (dateRangeError) {
           <p class="text-sm text-red">
@@ -100,7 +100,7 @@
               [formControlName]="$index"
               aria-label="Nom de l'activité"
               placeholder="Ex: Tram 28 ride"
-              class="min-w-0 flex-1 border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+              class="min-w-0 flex-1 border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
             />
             <app-button type="button" variant="danger" (clicked)="removeActivity($index)"
               >Retirer</app-button
@@ -134,7 +134,7 @@
                 type="text"
                 formControlName="name"
                 placeholder="Ex: Hotel Lisboa"
-                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
 
@@ -149,7 +149,7 @@
                 type="text"
                 formControlName="type"
                 placeholder="Ex: HOTEL"
-                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
 
@@ -163,7 +163,7 @@
                 [id]="'accIn' + $index"
                 type="date"
                 formControlName="checkIn"
-                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
 
@@ -177,7 +177,7 @@
                 [id]="'accOut' + $index"
                 type="date"
                 formControlName="checkOut"
-                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
 

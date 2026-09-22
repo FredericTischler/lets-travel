@@ -23,7 +23,7 @@
           [ngModel]="query()"
           (ngModelChange)="onQueryChange($event)"
           (keydown)="onKeydown($event)"
-          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+          class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         />
 
         @if (suggestions().length > 0) {
@@ -40,7 +40,6 @@
                 [attr.aria-selected]="i === activeSuggestion()"
                 class="cursor-pointer px-3 py-2 text-sm text-ink-dim hover:bg-surface-2"
                 [class.bg-surface-2]="i === activeSuggestion()"
-                [class.dark:bg-surface-2]="i === activeSuggestion()"
                 (mousedown)="openSuggestion(suggestion)"
               >
                 {{ suggestion.name }}
@@ -61,12 +60,7 @@
   </app-card>
 
   @if (notice()) {
-    <div
-      role="status"
-      class="border-l-4 border-l-amber bg-surface-2 px-3 py-2 text-sm text-ink"
-    >
-      {{ notice() }}
-    </div>
+    <app-alert variant="warning">{{ notice() }}</app-alert>
   }
 
   @if (loading()) {
@@ -97,7 +91,7 @@
             <p class="text-sm text-ink-dim">
               {{ travel.startDate }} → {{ travel.endDate }} ({{ travel.durationDays }} j)
             </p>
-            <p class="mt-auto text-sm font-medium text-ink-dim">
+            <p class="mt-auto text-sm font-medium text-ink">
               {{ travel.price === null ? 'Prix non renseigné' : (travel.price | number: '1.2-2') + ' €' }}
               <span class="font-normal text-ink-dim">
                 · {{ travel.capacity ?? '—' }} place(s)

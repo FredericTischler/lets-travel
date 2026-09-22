@@ -1,16 +1,17 @@
 import { Component, computed, input } from '@angular/core';
 
-export type AlertVariant = 'error' | 'success';
+export type AlertVariant = 'error' | 'success' | 'warning';
 
 /**
- * Styled message box for error/success feedback — replaces the bare
+ * Styled message box for error/success/warning feedback — replaces the bare
  * `<p role="alert">{{ message }}</p>` previously used for backend/frontend
- * error text. Keeps `role="alert"` for the same accessibility behaviour.
+ * error text. Keeps `role="alert"` for the same accessibility behaviour
+ * (callers needing `role="status"` instead, e.g. a non-error degraded-service
+ * notice, set that attribute themselves — it still binds to this component's
+ * classes).
  *
- * Only the `error` variant is exercised today: none of the four screens
- * currently produce a success message (mutations just silently reload the
- * list), so `success` exists to satisfy the required variant set without
- * inventing new success-messaging behaviour that isn't there today.
+ * `warning` covers the "service degraded, showing partial data" notices
+ * repeated identically across several dashboards before this variant existed.
  */
 @Component({
   selector: 'app-alert',
@@ -24,6 +25,7 @@ export class AlertComponent {
     const variants: Record<AlertVariant, string> = {
       error: 'border-l-red',
       success: 'border-l-teal',
+      warning: 'border-l-amber',
     };
     return `${base} ${variants[this.variant()]}`;
   });

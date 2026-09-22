@@ -1,7 +1,10 @@
 /* You can add global styles to this file, and also import other style files */
 
-@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import 'tailwindcss';
+
+/* Fonts loaded via <link> in index.html (preconnect + non-blocking
+   stylesheet) rather than @import here, which would block the rest of this
+   file behind two sequential round-trips to fonts.googleapis.com. */
 
 /* Manual class-based dark mode (toggled by ThemeService via the `dark`
    class on <html>), instead of Tailwind v4's default `prefers-color-scheme`
@@ -85,33 +88,6 @@
   --viz-series-1: var(--app-amber);
   --viz-grid: var(--app-line);
   --viz-axis: var(--app-line-strong);
-}
-
-/* Shared "status flag" pastilles — dot + label, used instead of the rounded
- * pill badges of a generic admin UI, for subscription/report/payment status
- * across every list. Semantic colour only (never the accent): teal = actif/
- * positif, amber = en attente, rouge = négatif/annulé, ink-dim = neutre. */
-@layer components {
-  .flag {
-    @apply inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-xs tracking-wide;
-  }
-  .flag::before {
-    content: '';
-    @apply block h-1.5 w-1.5 rounded-full;
-    background-color: currentColor;
-  }
-  .flag-on {
-    @apply text-teal;
-  }
-  .flag-pending {
-    @apply text-amber;
-  }
-  .flag-off {
-    @apply text-red;
-  }
-  .flag-neutral {
-    @apply text-ink-dim;
-  }
 }
 
 /* Shared table classes for the list screens (users/payments/destinations/…).

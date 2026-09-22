@@ -19,7 +19,7 @@ export class BadgeComponent {
       'inline-flex items-center border px-2 py-0.5 font-mono text-[11px] font-medium tracking-wide uppercase';
     const tones: Record<BadgeTone, string> = {
       neutral: 'border-line-strong text-ink-dim',
-      info: 'border-amber text-amber',
+      info: 'border-ink text-ink',
       success: 'border-teal text-teal',
       warning: 'border-amber text-amber',
       danger: 'border-red text-red',

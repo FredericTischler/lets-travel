@@ -56,7 +56,7 @@
                     </app-button>
                     <a
                       [routerLink]="['/manager/travels', destination.id, 'subscribers']"
-                      class="inline-flex items-center border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-dim hover:bg-surface-2"
+                      class="inline-flex items-center border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2"
                       >Abonnés</a
                     >
                     <app-button variant="secondary" (clicked)="toggleTransports(destination)">
@@ -150,7 +150,7 @@
                               name="createTransportToId"
                               [(ngModel)]="createTransportToId"
                               required
-                              class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                              class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
                             >
                               <option value="" disabled>Choisir…</option>
                               @for (target of transportTargets(); track target.id) {
@@ -172,7 +172,7 @@
                               name="createTransportMode"
                               [(ngModel)]="createTransportMode"
                               required
-                              class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                              class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
                             >
                               <option value="" disabled>Choisir…</option>
                               @for (mode of transportModes; track mode) {

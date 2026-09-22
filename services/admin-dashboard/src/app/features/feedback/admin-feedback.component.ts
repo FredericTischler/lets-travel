@@ -38,7 +38,7 @@ import { Feedback, FeedbackService } from './feedback.service';
                 name="ratingFilter"
                 [ngModel]="filter()"
                 (ngModelChange)="filter.set($event)"
-                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none"
+                class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               >
                 <option [ngValue]="0">Toutes</option>
                 @for (value of ratings; track value) {
