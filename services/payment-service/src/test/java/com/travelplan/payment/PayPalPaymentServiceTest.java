@@ -247,13 +247,15 @@ class PayPalPaymentServiceTest {
         when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
         when(ordersController.createOrder(any())).thenThrow(new ApiException("PayPal rejected the order"));
 
-        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("19.99"), "USD")))
+        CreatePayPalPaymentRequest request = createRequest(new BigDecimal("19.99"), "USD");
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(request))
                 .isInstanceOf(PaymentProviderException.class);
     }
 
     @Test
     void createOrder_throwsPaymentProviderException_forAPseudoCurrencyWithNoMinorUnit() {
-        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("10.00"), "XXX")))
+        CreatePayPalPaymentRequest request = createRequest(new BigDecimal("10.00"), "XXX");
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(request))
                 .isInstanceOf(PaymentProviderException.class);
 
         verifyNoInteractions(paypalServerSdkClient);
@@ -261,7 +263,8 @@ class PayPalPaymentServiceTest {
 
     @Test
     void createOrder_throwsPaymentProviderException_forAnUnrecognizedCurrencyCode() {
-        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("10.00"), "ZZZ")))
+        CreatePayPalPaymentRequest request = createRequest(new BigDecimal("10.00"), "ZZZ");
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(request))
                 .isInstanceOf(PaymentProviderException.class);
 
         verifyNoInteractions(paypalServerSdkClient);

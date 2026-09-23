@@ -96,6 +96,6 @@ class CreatePaymentRequestTest {
 
     @Test
     void everyCreateRequestSubtype_isInstantiableWithNoArgConstructor() {
-        assertThat(requests()).allSatisfy(request -> assertThat(request).isNotNull());
+        assertThat(requests()).isNotEmpty().allSatisfy(request -> assertThat(request).isNotNull());
     }
 }

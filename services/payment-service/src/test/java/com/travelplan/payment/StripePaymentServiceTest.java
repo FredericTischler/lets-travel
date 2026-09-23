@@ -64,7 +64,7 @@ class StripePaymentServiceTest {
     }
 
     @Test
-    void createPaymentIntent_persistsAPendingPayment_andReturnsTheClientSecret() throws Exception {
+    void createPaymentIntent_persistsAPendingPayment_andReturnsTheClientSecret() {
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         PaymentIntent intent = new PaymentIntent();
         intent.setId("pi_test_123");
@@ -88,7 +88,7 @@ class StripePaymentServiceTest {
     }
 
     @Test
-    void createPaymentIntent_linksTheSubscription_whenBothTravelIdAndSubscriptionRefArePresent() throws Exception {
+    void createPaymentIntent_linksTheSubscription_whenBothTravelIdAndSubscriptionRefArePresent() {
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         PaymentIntent intent = new PaymentIntent();
         intent.setId("pi_test_456");
@@ -119,28 +119,28 @@ class StripePaymentServiceTest {
             mockedStatic.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class)))
                     .thenThrow(stripeException);
 
-            assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(
-                    request(new BigDecimal("19.99"), "USD")))
+            CreateStripePaymentRequest request = request(new BigDecimal("19.99"), "USD");
+            assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(request))
                     .isInstanceOf(PaymentProviderException.class);
         }
     }
 
     @Test
     void createPaymentIntent_throwsPaymentProviderException_forAPseudoCurrencyWithNoMinorUnit() {
-        assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(
-                request(new BigDecimal("10.00"), "XXX")))
+        CreateStripePaymentRequest request = request(new BigDecimal("10.00"), "XXX");
+        assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(request))
                 .isInstanceOf(PaymentProviderException.class);
     }
 
     @Test
     void createPaymentIntent_throwsPaymentProviderException_forAnUnrecognizedCurrencyCode() {
-        assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(
-                request(new BigDecimal("10.00"), "ZZZ")))
+        CreateStripePaymentRequest request = request(new BigDecimal("10.00"), "ZZZ");
+        assertThatThrownBy(() -> stripePaymentService.createPaymentIntent(request))
                 .isInstanceOf(PaymentProviderException.class);
     }
 
     @Test
-    void createPaymentIntent_handlesAZeroDecimalCurrency() throws Exception {
+    void createPaymentIntent_handlesAZeroDecimalCurrency() {
         when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
         PaymentIntent intent = new PaymentIntent();
         intent.setId("pi_test_jpy");
