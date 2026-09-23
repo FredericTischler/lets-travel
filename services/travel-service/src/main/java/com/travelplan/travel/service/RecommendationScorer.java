@@ -126,8 +126,9 @@ public final class RecommendationScorer {
         return ranked.stream()
                 .limit(limit)
                 .map(r -> new RecommendationResponse(
-                        r.candidate().destinationId(), r.candidate().name(), r.candidate().country(),
-                        r.candidate().startDate(), r.candidate().endDate(), r.candidate().price(),
+                        new RecommendationResponse.DestinationSummary(
+                                r.candidate().destinationId(), r.candidate().name(), r.candidate().country(),
+                                r.candidate().startDate(), r.candidate().endDate(), r.candidate().price()),
                         r.score(), r.reasons()))
                 .toList();
     }
@@ -145,39 +146,49 @@ public final class RecommendationScorer {
         RecommendationRow candidate = candidateRows.get(0);
         List<Contribution> contributions = new ArrayList<>();
         for (RecommendationRow row : candidateRows) {
-            HistoryMatch h = row.history();
-            if (h == null) {
-                continue;
-            }
-            double weight = weight(h);
-            if (weight == 0.0) {
-                continue;
-            }
-            String basis = h.rating() != null ? "which you rated " + h.rating() : "which you took part in";
-            String subject = "\"" + h.name() + "\", " + basis;
-            if (h.sameCountry()) {
-                contributions.add(new Contribution(weight * SAME_COUNTRY_POINTS,
-                        "same country (" + candidate.country() + ") as " + subject));
-            }
-            int shared = Math.min(h.sharedActivities().size(), MAX_SHARED_ACTIVITIES);
-            if (shared > 0) {
-                contributions.add(new Contribution(weight * SHARED_ACTIVITY_POINTS * shared,
-                        "shares " + (shared == 1 ? "activity " : "activities ")
-                                + quoted(h.sharedActivities().subList(0, shared)) + " with " + subject));
-            }
-            if (!h.sharedAccommodationTypes().isEmpty()) {
-                contributions.add(new Contribution(weight * SHARED_ACCOMMODATION_TYPE_POINTS,
-                        "same accommodation type " + quoted(h.sharedAccommodationTypes()) + " as " + subject));
-            }
-            if (h.similarPrice()) {
-                contributions.add(new Contribution(weight * SIMILAR_PRICE_POINTS,
-                        "price " + money(candidate.price()) + " within " + Math.round(PRICE_TOLERANCE * 100)
-                                + "% of " + money(h.price()) + " for " + subject));
-            }
+            contributions.addAll(contributionsFor(candidate, row.history()));
         }
 
         double score = round(contributions.stream().mapToDouble(Contribution::points).sum());
         return new Ranked(candidate, score, reasons(candidate, contributions));
+    }
+
+    /**
+     * The contributions a single history match adds to {@code candidate}'s
+     * score, or none if there is no history for this row or it carries no
+     * weight (neither rated nor participated).
+     */
+    private static List<Contribution> contributionsFor(RecommendationRow candidate, HistoryMatch h) {
+        if (h == null) {
+            return List.of();
+        }
+        double weight = weight(h);
+        if (weight == 0.0) {
+            return List.of();
+        }
+        List<Contribution> contributions = new ArrayList<>();
+        String basis = h.rating() != null ? "which you rated " + h.rating() : "which you took part in";
+        String subject = "\"" + h.name() + "\", " + basis;
+        if (h.sameCountry()) {
+            contributions.add(new Contribution(weight * SAME_COUNTRY_POINTS,
+                    "same country (" + candidate.country() + ") as " + subject));
+        }
+        int shared = Math.min(h.sharedActivities().size(), MAX_SHARED_ACTIVITIES);
+        if (shared > 0) {
+            contributions.add(new Contribution(weight * SHARED_ACTIVITY_POINTS * shared,
+                    "shares " + (shared == 1 ? "activity " : "activities ")
+                            + quoted(h.sharedActivities().subList(0, shared)) + " with " + subject));
+        }
+        if (!h.sharedAccommodationTypes().isEmpty()) {
+            contributions.add(new Contribution(weight * SHARED_ACCOMMODATION_TYPE_POINTS,
+                    "same accommodation type " + quoted(h.sharedAccommodationTypes()) + " as " + subject));
+        }
+        if (h.similarPrice()) {
+            contributions.add(new Contribution(weight * SIMILAR_PRICE_POINTS,
+                    "price " + money(candidate.price()) + " within " + Math.round(PRICE_TOLERANCE * 100)
+                            + "% of " + money(h.price()) + " for " + subject));
+        }
+        return contributions;
     }
 
     /**

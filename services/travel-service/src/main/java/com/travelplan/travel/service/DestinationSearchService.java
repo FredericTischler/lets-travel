@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -48,6 +49,8 @@ import java.util.UUID;
 @Service
 public class DestinationSearchService {
 
+    private static final String SUGGEST = "suggest";
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final DestinationService destinationService;
@@ -77,15 +80,25 @@ public class DestinationSearchService {
             List<UUID> ids = extractHitIds(response);
             List<DestinationResponse> results = new ArrayList<>();
             for (UUID id : ids) {
-                try {
-                    results.add(destinationService.findById(id));
-                } catch (DestinationNotFoundException ex) {
-                    // Index drift (see class Javadoc): silently drop rather than leak.
-                }
+                findByIdIfStillActive(id).ifPresent(results::add);
             }
             return results;
         } catch (IOException ex) {
             throw new SearchUnavailableException("search", ex);
+        }
+    }
+
+    /**
+     * {@code destinationService.findById}, or empty when the id no longer
+     * resolves to an active destination (index drift, see class Javadoc):
+     * silently dropped rather than leaked. Extracted out of {@link #search}'s
+     * loop so that method doesn't nest a try block inside another (java:S1141).
+     */
+    private Optional<DestinationResponse> findByIdIfStillActive(UUID id) {
+        try {
+            return Optional.of(destinationService.findById(id));
+        } catch (DestinationNotFoundException ex) {
+            return Optional.empty();
         }
     }
 
@@ -98,9 +111,9 @@ public class DestinationSearchService {
      */
     public List<AutocompleteSuggestion> autocomplete(String prefix) {
         Map<String, Object> body = Map.of(
-                "suggest", Map.of("destination-suggest", Map.of(
+                SUGGEST, Map.of("destination-suggest", Map.of(
                         "prefix", prefix,
-                        "completion", Map.of("field", "suggest", "size", 10, "skip_duplicates", true))),
+                        "completion", Map.of("field", SUGGEST, "size", 10, "skip_duplicates", true))),
                 "_source", List.of("id", "name", "country"));
         try {
             Response response = performSearch(body);
@@ -131,7 +144,7 @@ public class DestinationSearchService {
     @SuppressWarnings("unchecked")
     private List<AutocompleteSuggestion> extractSuggestions(Response response) throws IOException {
         Map<String, Object> json = objectMapper.readValue(response.getEntity().getContent(), Map.class);
-        Map<String, Object> suggestWrapper = (Map<String, Object>) json.get("suggest");
+        Map<String, Object> suggestWrapper = (Map<String, Object>) json.get(SUGGEST);
         List<AutocompleteSuggestion> results = new ArrayList<>();
         if (suggestWrapper == null) {
             return results;

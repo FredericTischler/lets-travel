@@ -45,14 +45,14 @@ public class TravelerStatsRepository {
         return neo4jClient.query(SUBSCRIPTIONS_QUERY)
                 .bindAll(Map.of("travelerId", travelerId.toString()))
                 .fetchAs(TravelerSubscriptionSummary.class)
-                .mappedBy((typeSystem, record) -> new TravelerSubscriptionSummary(
-                        record.get("status").asString(),
-                        UUID.fromString(record.get("destinationId").asString()),
-                        record.get("name").asString(),
-                        record.get("country").asString(),
-                        record.get("startDate").isNull() ? null : record.get("startDate").asLocalDate(),
-                        record.get("endDate").isNull() ? null : record.get("endDate").asLocalDate(),
-                        record.get("feedbackGiven").asBoolean()))
+                .mappedBy((typeSystem, row) -> new TravelerSubscriptionSummary(
+                        row.get("status").asString(),
+                        UUID.fromString(row.get("destinationId").asString()),
+                        row.get("name").asString(),
+                        row.get("country").asString(),
+                        row.get("startDate").isNull() ? null : row.get("startDate").asLocalDate(),
+                        row.get("endDate").isNull() ? null : row.get("endDate").asLocalDate(),
+                        row.get("feedbackGiven").asBoolean()))
                 .all()
                 .stream()
                 .toList();

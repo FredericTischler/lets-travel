@@ -80,7 +80,7 @@ public class DashboardService {
      * and empty lists (identity-service owns "does this manager exist").
      */
     public ManagerDashboardResponse managerDashboard(UUID managerId, int months) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         IncomeLedger ledger = fetchLedger();
         List<DestinationSummaryView> summaries = managerStatsRepository.findDestinationSummaries(managerId);
         List<TravelStatsRow> travels = summaries.stream().map(d -> toRow(d, ledger, today)).toList();
@@ -108,7 +108,7 @@ public class DashboardService {
      * counts of organised travels, the past-travel history and the newest feedbacks.
      */
     public AdminDashboardResponse adminDashboard(int months) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         IncomeLedger ledger = fetchLedger();
         boolean partial = ledger == null;
         List<DestinationSummaryView> summaries = managerStatsRepository.findDestinationSummaries(null);
@@ -167,7 +167,7 @@ public class DashboardService {
 
     /** {@code months} kept within {@code [1, MAX_MONTHS]}: a chart window, not something worth a 400. */
     public static int clampMonths(int months) {
-        return Math.max(1, Math.min(MAX_MONTHS, months));
+        return Math.clamp(months, 1, MAX_MONTHS);
     }
 
     private IncomeLedger fetchLedger() {

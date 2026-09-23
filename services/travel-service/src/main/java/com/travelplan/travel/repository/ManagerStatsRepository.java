@@ -90,6 +90,11 @@ public class ManagerStatsRepository {
             RETURN count(DISTINCT t) AS subscribers
             """;
 
+    private static final String MANAGER_ID = "managerId";
+    private static final String START_DATE = "startDate";
+    private static final String END_DATE = "endDate";
+    private static final String SUBSCRIBERS = "subscribers";
+
     private final Neo4jClient neo4jClient;
 
     public ManagerStatsRepository(Neo4jClient neo4jClient) {
@@ -99,16 +104,16 @@ public class ManagerStatsRepository {
     /** Every active destination of {@code managerId} with its feedback aggregate. */
     public List<ManagerDestinationRatingView> findDestinationRatings(UUID managerId) {
         return neo4jClient.query(DESTINATION_RATINGS_QUERY)
-                .bindAll(Map.of("managerId", managerId.toString()))
+                .bindAll(Map.of(MANAGER_ID, managerId.toString()))
                 .fetchAs(ManagerDestinationRatingView.class)
-                .mappedBy((typeSystem, record) -> new ManagerDestinationRatingView(
-                        UUID.fromString(record.get("destinationId").asString()),
-                        record.get("name").asString(),
-                        record.get("country").asString(),
-                        record.get("startDate").isNull() ? null : record.get("startDate").asLocalDate(),
-                        record.get("endDate").isNull() ? null : record.get("endDate").asLocalDate(),
-                        record.get("feedbackCount").asLong(),
-                        record.get("ratingSum").asLong()))
+                .mappedBy((typeSystem, row) -> new ManagerDestinationRatingView(
+                        UUID.fromString(row.get("destinationId").asString()),
+                        row.get("name").asString(),
+                        row.get("country").asString(),
+                        row.get(START_DATE).isNull() ? null : row.get(START_DATE).asLocalDate(),
+                        row.get(END_DATE).isNull() ? null : row.get(END_DATE).asLocalDate(),
+                        row.get("feedbackCount").asLong(),
+                        row.get("ratingSum").asLong()))
                 .all()
                 .stream()
                 .toList();
@@ -117,9 +122,9 @@ public class ManagerStatsRepository {
     /** Number of distinct travelers currently (ACTIVE) subscribed to any active destination of the manager. */
     public long countActiveSubscribers(UUID managerId) {
         return neo4jClient.query(SUBSCRIBERS_QUERY)
-                .bindAll(Map.of("managerId", managerId.toString()))
+                .bindAll(Map.of(MANAGER_ID, managerId.toString()))
                 .fetchAs(Long.class)
-                .mappedBy((typeSystem, record) -> record.get("subscribers").asLong())
+                .mappedBy((typeSystem, row) -> row.get(SUBSCRIBERS).asLong())
                 .one()
                 .orElse(0L);
     }
@@ -132,21 +137,21 @@ public class ManagerStatsRepository {
      */
     public List<DestinationSummaryView> findDestinationSummaries(UUID managerId) {
         Map<String, Object> params = new HashMap<>();
-        params.put("managerId", managerId == null ? null : managerId.toString());
+        params.put(MANAGER_ID, managerId == null ? null : managerId.toString());
         return neo4jClient.query(DESTINATION_SUMMARIES_QUERY)
                 .bindAll(params)
                 .fetchAs(DestinationSummaryView.class)
-                .mappedBy((typeSystem, record) -> new DestinationSummaryView(
-                        UUID.fromString(record.get("destinationId").asString()),
-                        UUID.fromString(record.get("managerId").asString()),
-                        record.get("name").asString(),
-                        record.get("country").asString(),
-                        record.get("startDate").isNull() ? null : record.get("startDate").asLocalDate(),
-                        record.get("endDate").isNull() ? null : record.get("endDate").asLocalDate(),
-                        record.get("capacity").isNull() ? null : record.get("capacity").asInt(),
-                        record.get("subscribers").asLong(),
-                        record.get("feedbackCount").asLong(),
-                        record.get("ratingSum").asLong()))
+                .mappedBy((typeSystem, row) -> new DestinationSummaryView(
+                        UUID.fromString(row.get("destinationId").asString()),
+                        UUID.fromString(row.get(MANAGER_ID).asString()),
+                        row.get("name").asString(),
+                        row.get("country").asString(),
+                        row.get(START_DATE).isNull() ? null : row.get(START_DATE).asLocalDate(),
+                        row.get(END_DATE).isNull() ? null : row.get(END_DATE).asLocalDate(),
+                        row.get("capacity").isNull() ? null : row.get("capacity").asInt(),
+                        row.get(SUBSCRIBERS).asLong(),
+                        row.get("feedbackCount").asLong(),
+                        row.get("ratingSum").asLong()))
                 .all()
                 .stream()
                 .toList();
@@ -158,8 +163,8 @@ public class ManagerStatsRepository {
         neo4jClient.query(SUBSCRIBERS_BY_MANAGER_QUERY)
                 .fetch()
                 .all()
-                .forEach(row -> result.put(UUID.fromString((String) row.get("managerId")),
-                        ((Number) row.get("subscribers")).longValue()));
+                .forEach(row -> result.put(UUID.fromString((String) row.get(MANAGER_ID)),
+                        ((Number) row.get(SUBSCRIBERS)).longValue()));
         return result;
     }
 
@@ -167,7 +172,7 @@ public class ManagerStatsRepository {
     public long countAllActiveSubscribers() {
         return neo4jClient.query(ALL_SUBSCRIBERS_QUERY)
                 .fetchAs(Long.class)
-                .mappedBy((typeSystem, record) -> record.get("subscribers").asLong())
+                .mappedBy((typeSystem, row) -> row.get(SUBSCRIBERS).asLong())
                 .one()
                 .orElse(0L);
     }

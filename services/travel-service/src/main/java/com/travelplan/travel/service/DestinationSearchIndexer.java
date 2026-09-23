@@ -17,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Thin Elasticsearch dual-write hook, called from {@link DestinationService}
@@ -73,10 +72,10 @@ public class DestinationSearchIndexer {
             doc.put("managerId", destination.getManagerId() == null ? null : destination.getManagerId().toString());
             doc.put("activities", destination.getActivities().stream()
                     .map(ActivityResponse::getName)
-                    .collect(Collectors.toList()));
+                    .toList());
             doc.put("accommodations", destination.getAccommodations().stream()
                     .map(AccommodationResponse::getName)
-                    .collect(Collectors.toList()));
+                    .toList());
             doc.put("suggest", Map.of("input", suggestInputs(destination)));
 
             Request request = new Request("PUT", "/" + ElasticsearchIndexInitializer.INDEX_NAME

@@ -153,6 +153,14 @@ public class SubscriptionRepository {
             ORDER BY s.subscribedAt DESC
             """.formatted(EFFECTIVE_STATUS);
 
+    private static final String STATUS = "status";
+    private static final String EXPIRES_AT = "expiresAt";
+    private static final String AMOUNT = "amount";
+    private static final String CURRENCY = "currency";
+    private static final String PAYMENT_ID = "paymentId";
+    private static final String DESTINATION_ID = "destinationId";
+    private static final String TRAVELER_ID = "travelerId";
+
     private final Neo4jClient neo4jClient;
 
     public SubscriptionRepository(Neo4jClient neo4jClient) {
@@ -170,7 +178,7 @@ public class SubscriptionRepository {
         return neo4jClient.query(FIND_LIVE_STATUS_QUERY)
                 .bindAll(params)
                 .fetchAs(String.class)
-                .mappedBy((typeSystem, record) -> record.get("status").asString())
+                .mappedBy((typeSystem, row) -> row.get(STATUS).asString())
                 .first();
     }
 
@@ -186,17 +194,17 @@ public class SubscriptionRepository {
     public Optional<SubscriptionView> subscribe(NewSubscription subscription, OffsetDateTime now) {
         Map<String, Object> params = idParams(subscription.travelerId(), subscription.destinationId());
         params.put("id", subscription.id().toString());
-        params.put("status", subscription.status());
+        params.put(STATUS, subscription.status());
         params.put("now", now);
-        params.put("expiresAt", subscription.expiresAt());
+        params.put(EXPIRES_AT, subscription.expiresAt());
         // BigDecimal is stored as a plain string: Neo4j has no decimal type, and this keeps the
         // exact price the traveler was asked to pay (same choice SDN makes for Destination.price).
-        params.put("amount", subscription.amount() == null ? null : subscription.amount().toPlainString());
-        params.put("currency", subscription.currency());
+        params.put(AMOUNT, subscription.amount() == null ? null : subscription.amount().toPlainString());
+        params.put(CURRENCY, subscription.currency());
         return neo4jClient.query(SUBSCRIBE_QUERY)
                 .bindAll(params)
                 .fetchAs(SubscriptionView.class)
-                .mappedBy((typeSystem, record) -> toSubscriptionView(record))
+                .mappedBy((typeSystem, row) -> toSubscriptionView(row))
                 .first();
     }
 
@@ -204,7 +212,7 @@ public class SubscriptionRepository {
     public void attachPayment(UUID subscriptionId, UUID paymentId, String provider) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", subscriptionId.toString());
-        params.put("paymentId", paymentId.toString());
+        params.put(PAYMENT_ID, paymentId.toString());
         params.put("provider", provider);
         neo4jClient.query(ATTACH_PAYMENT_QUERY).bindAll(params).fetch().one();
     }
@@ -228,7 +236,7 @@ public class SubscriptionRepository {
     public boolean activatePending(UUID subscriptionId, UUID paymentId, OffsetDateTime now) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", subscriptionId.toString());
-        params.put("paymentId", paymentId.toString());
+        params.put(PAYMENT_ID, paymentId.toString());
         params.put("now", now);
         return updatedCount(ACTIVATE_PENDING_QUERY, params) > 0;
     }
@@ -242,7 +250,7 @@ public class SubscriptionRepository {
     public boolean cancelPending(UUID subscriptionId, UUID paymentId, OffsetDateTime now) {
         Map<String, Object> params = new HashMap<>();
         params.put("id", subscriptionId.toString());
-        params.put("paymentId", paymentId == null ? null : paymentId.toString());
+        params.put(PAYMENT_ID, paymentId == null ? null : paymentId.toString());
         params.put("now", now);
         return updatedCount(CANCEL_PENDING_QUERY, params) > 0;
     }
@@ -264,7 +272,7 @@ public class SubscriptionRepository {
         return neo4jClient.query(FIND_BY_ID_QUERY)
                 .bindAll(Map.of("id", subscriptionId.toString()))
                 .fetchAs(SubscriptionView.class)
-                .mappedBy((typeSystem, record) -> toSubscriptionView(record))
+                .mappedBy((typeSystem, row) -> toSubscriptionView(row))
                 .first();
     }
 
@@ -274,12 +282,12 @@ public class SubscriptionRepository {
      */
     public List<SubscriptionView> findForDestination(UUID destinationId, OffsetDateTime now) {
         Map<String, Object> params = new HashMap<>();
-        params.put("destinationId", destinationId.toString());
+        params.put(DESTINATION_ID, destinationId.toString());
         params.put("now", now);
         return neo4jClient.query(FIND_FOR_DESTINATION_QUERY)
                 .bindAll(params)
                 .fetchAs(SubscriptionView.class)
-                .mappedBy((typeSystem, record) -> toSubscriptionView(record))
+                .mappedBy((typeSystem, row) -> toSubscriptionView(row))
                 .all()
                 .stream()
                 .toList();
@@ -291,23 +299,23 @@ public class SubscriptionRepository {
      */
     public List<TravelerSubscriptionView> findForTraveler(UUID travelerId, OffsetDateTime now) {
         Map<String, Object> params = new HashMap<>();
-        params.put("travelerId", travelerId.toString());
+        params.put(TRAVELER_ID, travelerId.toString());
         params.put("now", now);
         return neo4jClient.query(FIND_FOR_TRAVELER_QUERY)
                 .bindAll(params)
                 .fetchAs(TravelerSubscriptionView.class)
-                .mappedBy((typeSystem, record) -> new TravelerSubscriptionView(
-                        UUID.fromString(record.get("destinationId").asString()),
-                        record.get("destinationName").asString(),
-                        record.get("destinationCountry").asString(),
-                        record.get("destinationStartDate").isNull()
-                                ? null : record.get("destinationStartDate").asLocalDate(),
-                        record.get("status").asString(),
-                        offsetDateTime(record, "subscribedAt"),
-                        offsetDateTime(record, "cancelledAt"),
-                        uuid(record, "subscriptionId"),
-                        uuid(record, "paymentId"),
-                        offsetDateTime(record, "expiresAt")))
+                .mappedBy((typeSystem, row) -> new TravelerSubscriptionView(
+                        UUID.fromString(row.get(DESTINATION_ID).asString()),
+                        row.get("destinationName").asString(),
+                        row.get("destinationCountry").asString(),
+                        row.get("destinationStartDate").isNull()
+                                ? null : row.get("destinationStartDate").asLocalDate(),
+                        row.get(STATUS).asString(),
+                        offsetDateTime(row, "subscribedAt"),
+                        offsetDateTime(row, "cancelledAt"),
+                        uuid(row, "subscriptionId"),
+                        uuid(row, PAYMENT_ID),
+                        offsetDateTime(row, EXPIRES_AT)))
                 .all()
                 .stream()
                 .toList();
@@ -317,37 +325,37 @@ public class SubscriptionRepository {
         return neo4jClient.query(query)
                 .bindAll(params)
                 .fetchAs(Long.class)
-                .mappedBy((typeSystem, record) -> record.get("updated").asLong())
+                .mappedBy((typeSystem, row) -> row.get("updated").asLong())
                 .one()
                 .orElse(0L);
     }
 
-    private static SubscriptionView toSubscriptionView(Record record) {
+    private static SubscriptionView toSubscriptionView(Record row) {
         return new SubscriptionView(
-                UUID.fromString(record.get("destinationId").asString()),
-                UUID.fromString(record.get("travelerId").asString()),
-                record.get("status").asString(),
-                offsetDateTime(record, "subscribedAt"),
-                offsetDateTime(record, "cancelledAt"),
-                uuid(record, "id"),
-                offsetDateTime(record, "expiresAt"),
-                uuid(record, "paymentId"),
-                record.get("amount").isNull() ? null : new BigDecimal(record.get("amount").asString()),
-                record.get("currency").isNull() ? null : record.get("currency").asString());
+                UUID.fromString(row.get(DESTINATION_ID).asString()),
+                UUID.fromString(row.get(TRAVELER_ID).asString()),
+                row.get(STATUS).asString(),
+                offsetDateTime(row, "subscribedAt"),
+                offsetDateTime(row, "cancelledAt"),
+                uuid(row, "id"),
+                offsetDateTime(row, EXPIRES_AT),
+                uuid(row, PAYMENT_ID),
+                row.get(AMOUNT).isNull() ? null : new BigDecimal(row.get(AMOUNT).asString()),
+                row.get(CURRENCY).isNull() ? null : row.get(CURRENCY).asString());
     }
 
-    private static OffsetDateTime offsetDateTime(Record record, String column) {
-        return record.get(column).isNull() ? null : record.get(column).asOffsetDateTime();
+    private static OffsetDateTime offsetDateTime(Record row, String column) {
+        return row.get(column).isNull() ? null : row.get(column).asOffsetDateTime();
     }
 
-    private static UUID uuid(Record record, String column) {
-        return record.get(column).isNull() ? null : UUID.fromString(record.get(column).asString());
+    private static UUID uuid(Record row, String column) {
+        return row.get(column).isNull() ? null : UUID.fromString(row.get(column).asString());
     }
 
     private static Map<String, Object> idParams(UUID travelerId, UUID destinationId) {
         Map<String, Object> params = new HashMap<>();
-        params.put("travelerId", travelerId.toString());
-        params.put("destinationId", destinationId.toString());
+        params.put(TRAVELER_ID, travelerId.toString());
+        params.put(DESTINATION_ID, destinationId.toString());
         return params;
     }
 

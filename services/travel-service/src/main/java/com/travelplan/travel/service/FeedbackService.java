@@ -9,12 +9,12 @@ import com.travelplan.travel.exception.FeedbackNotAllowedException;
 import com.travelplan.travel.exception.InsufficientRoleException;
 import com.travelplan.travel.repository.DestinationRepository;
 import com.travelplan.travel.repository.FeedbackRepository;
-import com.travelplan.travel.repository.FeedbackView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -72,7 +72,7 @@ public class FeedbackService {
             throw new FeedbackNotAllowedException(travelerId, destinationId);
         }
         LocalDate endDate = destination.getEndDate();
-        if (endDate == null || !endDate.isBefore(LocalDate.now())) {
+        if (endDate == null || !endDate.isBefore(LocalDate.now(ZoneOffset.UTC))) {
             throw FeedbackConflictException.travelNotFinished(destinationId);
         }
 
@@ -80,7 +80,7 @@ public class FeedbackService {
         // or stripped of markup here: escaping is the renderer's job (ADR §5 addendum).
         String comment = request.getComment() == null ? null : request.getComment().strip();
         boolean created = feedbackRepository.give(
-                travelerId, destinationId, request.getRating(), comment, OffsetDateTime.now());
+                travelerId, destinationId, request.getRating(), comment, OffsetDateTime.now(ZoneOffset.UTC));
         if (!created) {
             throw FeedbackConflictException.alreadyGiven(travelerId, destinationId);
         }

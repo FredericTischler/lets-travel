@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -36,10 +37,11 @@ public class RecommendationService {
      * user from a new one (identity lives in identity-service), so there is no 404 here.
      */
     public List<RecommendationResponse> recommend(UUID travelerId, int limit) {
-        int bounded = Math.max(1, Math.min(limit, MAX_LIMIT));
+        int bounded = Math.clamp(limit, 1, MAX_LIMIT);
         return RecommendationScorer.rank(
                 recommendationRepository.findCandidateRows(
-                        travelerId, LocalDate.now(), OffsetDateTime.now(), RecommendationScorer.PRICE_TOLERANCE),
+                        travelerId, LocalDate.now(ZoneOffset.UTC), OffsetDateTime.now(ZoneOffset.UTC),
+                        RecommendationScorer.PRICE_TOLERANCE),
                 bounded);
     }
 }

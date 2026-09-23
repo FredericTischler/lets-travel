@@ -25,6 +25,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -113,12 +115,13 @@ class RecommendationIntegrationTest {
 
         assertThat(forAlice).allSatisfy(r -> assertThat(reasons(r)).isNotEmpty());
         // The score is the sum of the signed points quoted at the end of the reasons (nothing was truncated here).
+        // Compiled once outside the loop below (java:S9142): the pattern never changes between iterations.
+        Pattern signedPointsPattern = Pattern.compile("\\(([+-][0-9.]+)\\)( - pulls this destination down)?$");
         for (Map<String, Object> r : forAlice) {
             double sum = reasons(r).stream()
                     .filter(text -> !text.startsWith("Nothing in common"))
                     .mapToDouble(text -> {
-                        java.util.regex.Matcher m = java.util.regex.Pattern
-                                .compile("\\(([+-][0-9.]+)\\)( - pulls this destination down)?$").matcher(text);
+                        Matcher m = signedPointsPattern.matcher(text);
                         assertThat(m.find()).as(text).isTrue();
                         return Double.parseDouble(m.group(1));
                     }).sum();
@@ -227,6 +230,9 @@ class RecommendationIntegrationTest {
 
         List<Map<String, Object>> list = recommendations(traveler, "TRAVELER", "");
 
+        // isNotEmpty() first (java:S5841): allSatisfy vacuously passes on an empty list, which would let this
+        // test claim "pending/cancelled subscriptions are not history" without ever inspecting a real reason.
+        assertThat(list).isNotEmpty();
         assertThat(list).allSatisfy(r -> assertThat(reasons(r)).singleElement().asString().startsWith("No history yet"));
     }
 
