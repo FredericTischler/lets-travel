@@ -76,6 +76,16 @@ class StripeWebhookIntegrationTest {
     private PaymentRepository paymentRepository;
 
     private static String eventPayload(String paymentIntentId, String eventType) {
+        return eventPayload(paymentIntentId, eventType, "payment_intent");
+    }
+
+    /**
+     * @param dataObjectType the {@code data.object.object} discriminator Stripe's own
+     *     deserializer uses to pick a model class — {@code "payment_intent"} for every
+     *     normal case, deliberately mismatched in a test that exercises the "event data
+     *     object isn't actually a PaymentIntent" branch of {@code extractPaymentIntentId}.
+     */
+    private static String eventPayload(String paymentIntentId, String eventType, String dataObjectType) {
         return "{"
                 + "\"id\":\"evt_test_" + UUID.randomUUID() + "\","
                 + "\"object\":\"event\","
@@ -84,7 +94,7 @@ class StripeWebhookIntegrationTest {
                 + "\"type\":\"" + eventType + "\","
                 + "\"data\":{\"object\":{"
                 + "\"id\":\"" + paymentIntentId + "\","
-                + "\"object\":\"payment_intent\","
+                + "\"object\":\"" + dataObjectType + "\","
                 + "\"amount\":1999,"
                 + "\"currency\":\"usd\","
                 + "\"status\":\"succeeded\""
@@ -162,5 +172,47 @@ class StripeWebhookIntegrationTest {
         ResponseEntity<Void> response = restTemplate.postForEntity("/webhooks/stripe", request, Void.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void anEventTypeThatIsNeitherSucceededNorFailedIsAcceptedAndIgnored() {
+        String payload = eventPayload("pi_test_" + UUID.randomUUID(), "payment_intent.created");
+        HttpEntity<String> request = requestWithSignature(payload, signatureHeader(payload, WEBHOOK_SECRET));
+
+        ResponseEntity<Void> response = restTemplate.postForEntity("/webhooks/stripe", request, Void.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void aDataObjectThatIsNotActuallyAPaymentIntentIsAcceptedAndIgnored() {
+        // "object":"charge" while the event type claims payment_intent.succeeded —
+        // extractPaymentIntentId deserializes it as a Charge, fails the
+        // instanceof PaymentIntent check and returns null, so the whole event
+        // is accepted and ignored rather than acted upon.
+        String payload = eventPayload("pi_test_" + UUID.randomUUID(), "payment_intent.succeeded", "charge");
+        HttpEntity<String> request = requestWithSignature(payload, signatureHeader(payload, WEBHOOK_SECRET));
+
+        ResponseEntity<Void> response = restTemplate.postForEntity("/webhooks/stripe", request, Void.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void aPaymentAlreadyInATerminalStatusIsLeftUntouched_onRedelivery() {
+        String paymentIntentId = "pi_test_" + UUID.randomUUID();
+        Payment payment = new Payment(UUID.randomUUID(), new BigDecimal("19.99"), "USD",
+                PaymentProvider.STRIPE, paymentIntentId);
+        payment.setStatus(Payment.STATUS_COMPLETED);
+        Payment saved = paymentRepository.save(payment);
+
+        String payload = eventPayload(paymentIntentId, "payment_intent.payment_failed");
+        HttpEntity<String> request = requestWithSignature(payload, signatureHeader(payload, WEBHOOK_SECRET));
+
+        ResponseEntity<Void> response = restTemplate.postForEntity("/webhooks/stripe", request, Void.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(paymentRepository.findActiveById(saved.getId()).orElseThrow().getStatus())
+                .isEqualTo(Payment.STATUS_COMPLETED);
     }
 }

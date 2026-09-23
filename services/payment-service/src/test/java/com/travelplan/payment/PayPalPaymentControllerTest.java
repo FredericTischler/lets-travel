@@ -1,6 +1,8 @@
 package com.travelplan.payment;
 
 import com.travelplan.payment.controller.PayPalPaymentController;
+import com.travelplan.payment.dto.CreatePayPalPaymentRequest;
+import com.travelplan.payment.dto.PayPalPaymentResponse;
 import com.travelplan.payment.dto.PaymentResponse;
 import com.travelplan.payment.entity.Payment;
 import com.travelplan.payment.entity.PaymentProvider;
@@ -63,6 +65,28 @@ class PayPalPaymentControllerTest {
 
         verify(tokenValidationService).requireAnyRole("Bearer valid-token");
         assertThat(result.getStatusCode().value()).isEqualTo(200);
+        assertThat(result.getBody()).isSameAs(response);
+    }
+
+    @Test
+    void create_validatesTokenAndOwnership_thenReturns201WithTheCreatedOrder() {
+        UUID userId = UUID.randomUUID();
+        CreatePayPalPaymentRequest request = new CreatePayPalPaymentRequest();
+        request.setUserId(userId);
+        request.setAmount(new BigDecimal("19.99"));
+        request.setCurrency("USD");
+        Payment payment = new Payment(userId, new BigDecimal("19.99"), "USD",
+                PaymentProvider.PAYPAL, "ORDER-1");
+        PayPalPaymentResponse response = PayPalPaymentResponse.from(payment, "https://paypal.example/approve");
+        Claims claims = mock(Claims.class);
+        when(tokenValidationService.requireAnyRole("Bearer valid-token")).thenReturn(claims);
+        when(payPalPaymentService.createOrder(request)).thenReturn(response);
+
+        var result = controller.create(request, "Bearer valid-token");
+
+        verify(tokenValidationService).requireAnyRole("Bearer valid-token");
+        verify(tokenValidationService).requireOwnerOrAdmin(claims, userId);
+        assertThat(result.getStatusCode().value()).isEqualTo(201);
         assertThat(result.getBody()).isSameAs(response);
     }
 }

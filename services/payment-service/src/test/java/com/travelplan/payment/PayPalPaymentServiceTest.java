@@ -4,8 +4,10 @@ import com.paypal.sdk.PaypalServerSdkClient;
 import com.paypal.sdk.controllers.OrdersController;
 import com.paypal.sdk.exceptions.ApiException;
 import com.paypal.sdk.http.response.ApiResponse;
+import com.paypal.sdk.models.LinkDescription;
 import com.paypal.sdk.models.Order;
 import com.paypal.sdk.models.OrderStatus;
+import com.travelplan.payment.dto.CreatePayPalPaymentRequest;
 import com.travelplan.payment.entity.Payment;
 import com.travelplan.payment.entity.PaymentProvider;
 import com.travelplan.payment.exception.PaymentAlreadyTerminalException;
@@ -21,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -172,5 +175,109 @@ class PayPalPaymentServiceTest {
         var response = payPalPaymentService.captureOrder(orderId, UUID.randomUUID(), true);
 
         assertThat(response.getStatus()).isEqualTo(Payment.STATUS_COMPLETED);
+    }
+
+    private CreatePayPalPaymentRequest createRequest(BigDecimal amount, String currency) {
+        CreatePayPalPaymentRequest request = new CreatePayPalPaymentRequest();
+        request.setUserId(OWNER);
+        request.setAmount(amount);
+        request.setCurrency(currency);
+        return request;
+    }
+
+    @Test
+    void createOrder_persistsAPendingPayment_andReturnsTheApproveUrl() throws Exception {
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        Order order = new Order();
+        order.setId("ORDER-CREATE-1");
+        order.setLinks(List.of(
+                new LinkDescription.Builder("https://paypal.example/cancel", "cancel").build(),
+                new LinkDescription.Builder("https://paypal.example/approve", "approve").build()));
+        when(ordersController.createOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
+
+        var response = payPalPaymentService.createOrder(createRequest(new BigDecimal("19.99"), "USD"));
+
+        assertThat(response.getOrderId()).isEqualTo("ORDER-CREATE-1");
+        assertThat(response.getApproveUrl()).isEqualTo("https://paypal.example/approve");
+        assertThat(response.getStatus()).isEqualTo(Payment.STATUS_PENDING);
+        assertThat(response.getUserId()).isEqualTo(OWNER);
+        assertThat(response.getId()).isNull();
+        assertThat(response.getAmount()).isEqualByComparingTo("19.99");
+        assertThat(response.getProvider()).isEqualTo(PaymentProvider.PAYPAL);
+        assertThat(response.getCreatedAt()).isNotNull();
+    }
+
+    @Test
+    void createOrder_returnsNullApproveUrl_whenPayPalDidNotIncludeOne() throws Exception {
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        Order order = new Order();
+        order.setId("ORDER-CREATE-2");
+        order.setLinks(null);
+        when(ordersController.createOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
+
+        var response = payPalPaymentService.createOrder(createRequest(new BigDecimal("19.99"), "USD"));
+
+        assertThat(response.getApproveUrl()).isNull();
+    }
+
+    @Test
+    void createOrder_linksTheSubscription_whenBothTravelIdAndSubscriptionRefArePresent() throws Exception {
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        Order order = new Order();
+        order.setId("ORDER-CREATE-3");
+        order.setLinks(List.of(new LinkDescription.Builder("https://paypal.example/approve", "approve").build()));
+        when(ordersController.createOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
+        CreatePayPalPaymentRequest request = createRequest(new BigDecimal("9.00"), "USD");
+        UUID travelId = UUID.randomUUID();
+        UUID subscriptionRef = UUID.randomUUID();
+        request.setTravelId(travelId);
+        request.setSubscriptionRef(subscriptionRef);
+
+        var response = payPalPaymentService.createOrder(request);
+
+        assertThat(response.getTravelId()).isEqualTo(travelId);
+        assertThat(response.getSubscriptionRef()).isEqualTo(subscriptionRef);
+    }
+
+    @Test
+    void createOrder_throwsPaymentProviderException_whenPayPalApiCallFails() throws Exception {
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        when(ordersController.createOrder(any())).thenThrow(new ApiException("PayPal rejected the order"));
+
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("19.99"), "USD")))
+                .isInstanceOf(PaymentProviderException.class);
+    }
+
+    @Test
+    void createOrder_throwsPaymentProviderException_forAPseudoCurrencyWithNoMinorUnit() {
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("10.00"), "XXX")))
+                .isInstanceOf(PaymentProviderException.class);
+
+        verifyNoInteractions(paypalServerSdkClient);
+    }
+
+    @Test
+    void createOrder_throwsPaymentProviderException_forAnUnrecognizedCurrencyCode() {
+        assertThatThrownBy(() -> payPalPaymentService.createOrder(createRequest(new BigDecimal("10.00"), "ZZZ")))
+                .isInstanceOf(PaymentProviderException.class);
+
+        verifyNoInteractions(paypalServerSdkClient);
+    }
+
+    @Test
+    void createOrder_handlesAZeroDecimalCurrency() throws Exception {
+        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(paypalServerSdkClient.getOrdersController()).thenReturn(ordersController);
+        Order order = new Order();
+        order.setId("ORDER-CREATE-JPY");
+        order.setLinks(List.of(new LinkDescription.Builder("https://paypal.example/approve", "approve").build()));
+        when(ordersController.createOrder(any())).thenReturn(new ApiResponse<>(201, null, order));
+
+        var response = payPalPaymentService.createOrder(createRequest(new BigDecimal("1000"), "JPY"));
+
+        assertThat(response.getCurrency()).isEqualTo("JPY");
     }
 }
