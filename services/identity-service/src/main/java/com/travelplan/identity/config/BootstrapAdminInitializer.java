@@ -74,7 +74,7 @@ public class BootstrapAdminInitializer implements ApplicationRunner {
             throw new IllegalStateException(
                     "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD must be set together (or both left unset)");
         }
-        if (!email.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+")) {
+        if (!email.matches("[^@\\s]+@[^@\\s.]+\\.[^@\\s]+")) {
             throw new IllegalStateException("BOOTSTRAP_ADMIN_EMAIL is not a valid email address");
         }
         if (password.length() < MIN_PASSWORD_LENGTH) {
