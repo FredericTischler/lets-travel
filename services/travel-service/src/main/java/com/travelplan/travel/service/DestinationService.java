@@ -21,9 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for the {@link Destination} node.
@@ -121,7 +121,7 @@ public class DestinationService {
     public List<DestinationResponse> findAll() {
         return destinationRepository.findAllActive().stream()
                 .map(this::buildResponse)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -177,7 +177,7 @@ public class DestinationService {
         Destination destination = destinationRepository.findActiveById(id)
                 .orElseThrow(() -> new DestinationNotFoundException(id));
         requireOwnership(destination, callerId, isAdmin);
-        destination.setDeletedAt(OffsetDateTime.now());
+        destination.setDeletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         destinationRepository.save(destination);
         // Search index mirror of the soft-delete: remove the document entirely
         // rather than flag it inactive (docs/lets-travel-architecture-decisions.md §6).
@@ -202,11 +202,11 @@ public class DestinationService {
     private DestinationResponse buildResponse(Destination destination) {
         List<ActivityResponse> activities = activityRepository.findActiveForDestination(destination.getId()).stream()
                 .map(this::toActivityResponse)
-                .collect(Collectors.toList());
+                .toList();
         List<AccommodationResponse> accommodations =
                 accommodationRepository.findActiveForDestination(destination.getId()).stream()
                         .map(this::toAccommodationResponse)
-                        .collect(Collectors.toList());
+                        .toList();
         return DestinationResponse.from(destination, activities, accommodations);
     }
 
@@ -221,7 +221,7 @@ public class DestinationService {
     private List<AccommodationInput> toAccommodationInputs(List<AccommodationRequest> requests) {
         return requests.stream()
                 .map(r -> new AccommodationInput(r.getName(), r.getType(), r.getCheckIn(), r.getCheckOut()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private void validateDates(LocalDate startDate, LocalDate endDate) {

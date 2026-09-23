@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for the {@code TRANSPORT} relationship between two
@@ -108,6 +107,6 @@ public class TransportService {
                 .map(edge -> new TransportResponse(edge.mode(), edge.durationMinutes(),
                         edge.departureTime(), edge.arrivalTime(),
                         edge.targetId(), edge.targetName(), edge.targetCountry()))
-                .collect(Collectors.toList());
+                .toList();
     }
 }
