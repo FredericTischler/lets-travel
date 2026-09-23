@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
@@ -59,7 +60,7 @@ public class User {
     public User(String email, String passwordHash, String role) {
         this.email = email;
         this.passwordHash = passwordHash;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.role = role;
     }
 

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -96,7 +97,7 @@ public class JwtService {
      * verbatim from {@link User#getRole()}). No refresh token.
      */
     public String generateToken(User user) {
-        Instant now = Instant.now();
+        Instant now = Instant.now(Clock.systemUTC());
         return Jwts.builder()
                 .subject(user.getId().toString())
                 .claim(CLAIM_EMAIL, user.getEmail())
@@ -115,7 +116,7 @@ public class JwtService {
      * this is not a user's token.
      */
     public String generateServiceToken() {
-        Instant now = Instant.now();
+        Instant now = Instant.now(Clock.systemUTC());
         return Jwts.builder()
                 .subject(SERVICE_IDENTITY_SUBJECT)
                 .issuedAt(Date.from(now))
