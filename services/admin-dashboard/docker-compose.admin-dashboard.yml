@@ -1,0 +1,65 @@
+# Fragment de service Compose pour admin-dashboard.
+#
+# Meme statut qu'identity/payment/travel-service (docs compose-assembly) :
+# STATIQUE, vit dans le depot, co-localise avec le Dockerfile + nginx.conf +
+# src/ — admin-dashboard BUILD depuis les sources, son contexte de build doit
+# donc rester a cote. Le docker-compose.yml top-level l'inclut par CHEMIN
+# ABSOLU (voir role compose-assembly).
+#
+# CABLAGE RESEAU : contrairement aux 3 services Spring Boot, admin-dashboard ne
+# fait AUCUN appel serveur-a-serveur (pas de SSR) : c'est le NAVIGATEUR qui
+# appelle identity/payment/travel-service directement via leurs hostnames
+# *.localhost (baked in a la compilation, voir Dockerfile). Le conteneur n'a
+# donc besoin QUE d'etre DECOUVERT et route par Traefik :
+#   - backend-net : pour etre route par Traefik (labels ci-dessous).
+#   PAS de data-net : ce conteneur ne parle a aucune base de donnees.
+#   AUCUN port publie vers l'hote : seul Traefik expose (443, terminaison TLS).
+services:
+  admin-dashboard:
+    build:
+      # Contexte = repertoire de CE fragment (le depot services/admin-dashboard/),
+      # ou se trouvent Dockerfile + nginx.conf + package.json + src/. Resolu par
+      # Compose relativement au fichier inclus, PAS au docker-compose.yml top-level.
+      context: .
+      dockerfile: Dockerfile
+    image: "travel-plan/admin-dashboard:0.1.0"
+    # PAS de `container_name` : meme raisonnement que les 3 services Spring Boot
+    # (prerequis du multi-replica, cf. docker-compose.identity.yml). On adresse
+    # par NOM DE SERVICE Compose (`admin-dashboard`), jamais par un nom fixe.
+    restart: unless-stopped
+    # --- Replicas / load-balancing -------------------------------------------
+    # nginx statique : cout marginal tres faible par replica (pas de JVM), donc
+    # meme defaut que les services Spring Boot (2), redescendable a 1 sur un
+    # poste contraint via ADMIN_DASHBOARD_REPLICAS=1 sans editer ce fragment.
+    deploy:
+      replicas: ${ADMIN_DASHBOARD_REPLICAS:-2}
+    # nginx + assets statiques : bien plus leger qu'une JVM Spring Boot.
+    mem_limit: "64m"
+    networks:
+      - backend-net
+    # Healthcheck applicatif : /healthz (voir nginx.conf). curl installe dans
+    # le Dockerfile runtime (absent de l'image nginx-unprivileged de base).
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    # --- Routage Traefik par LABELS (meme idiome que les 3 services Spring Boot) --
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=backend-net"
+      # Host racine (pas de sous-domaine service comme *.localhost) : c'est
+      # l'ecran d'accueil du projet, adresse par https://localhost.
+      - "traefik.http.routers.admin-dashboard.rule=Host(`localhost`)"
+      - "traefik.http.routers.admin-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.admin-dashboard.tls=true"
+      # Port INTERNE du conteneur (EXPOSE 8080, nginx-unprivileged). Traefik y
+      # route via backend-net.
+      - "traefik.http.services.admin-dashboard.loadbalancer.server.port=8080"
+
+networks:
+  # Reseau cloisonne cree et possede par Ansible (role compose-assembly,
+  # community.docker.docker_network) ; declare externe ici (Compose ne le gere pas).
+  backend-net:
+    external: true

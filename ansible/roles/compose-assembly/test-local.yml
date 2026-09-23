@@ -11,12 +11,14 @@
 # (postgres, vault, neo4j, traefik) — il assemble leurs fragments DÉJÀ rendus.
 # Appliqué seul avant eux, l'include Compose référencerait des fragments absents.
 #
-# Le fragment identity-service (statique, chemin absolu variable par machine) doit
-# être fourni via -e assembly_identity_fragment=/chemin/absolu/.../docker-compose.identity.yml
-# (assembly_identity_enabled=true par défaut désormais).
+# Les fragments identity-service et admin-dashboard (statiques, chemin absolu
+# variable par machine) doivent être fournis via -e assembly_identity_fragment=...
+# et -e assembly_admin_dashboard_fragment=... (les deux _enabled=true par défaut
+# désormais).
 # Lancement (depuis la racine du projet, venv activé) :
 #   ansible-playbook ansible/roles/compose-assembly/test-local.yml -K \
-#     -e assembly_identity_fragment=/chemin/absolu/vers/le/depot/services/identity-service/docker-compose.identity.yml
+#     -e assembly_identity_fragment=/chemin/absolu/vers/le/depot/services/identity-service/docker-compose.identity.yml \
+#     -e assembly_admin_dashboard_fragment=/chemin/absolu/vers/le/depot/services/admin-dashboard/docker-compose.admin-dashboard.yml
 - name: Assembler le docker-compose.yml top-level (local)
   hosts: localhost
   connection: local

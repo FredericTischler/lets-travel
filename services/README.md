@@ -36,16 +36,22 @@ Spring Boot `3.4.3`, Java, build Maven (`./mvnw`), image construite depuis le
 
 - **Pas de CRUD complet sur `TRANSPORT`** : ni mise à jour, ni suppression, ni
   anti-doublon ; traversée limitée à 1 saut (pas de pathfinding multi-hop).
-- **`admin-dashboard` non conteneurisé** : pas de `Dockerfile`, pas de fragment
-  Compose, pas de route Traefik ; tourne uniquement via `ng serve`.
 - **Aucune CI/CD pour cette phase** : `ci/jenkins/README.md` et
   `ci/sonarqube/README.md` restent des placeholders Phase 0 ; aucun pipeline
   n'exécute les tests ni n'analyse la qualité du code automatiquement.
 
 ~~Aucune intégration Stripe ni PayPal~~ — **corrigé** : `payment-service` intègre
 Stripe (PaymentIntent + webhook) et PayPal (Order + capture) ; voir son README pour
-le détail. Le formulaire de carte Stripe côté front reste à intégrer (voir le README
-de `admin-dashboard`).
+le détail. Le formulaire de carte Stripe côté front est intégré (voir le README de
+`admin-dashboard` pour la limite restante : pas de vraie clé publiable dans cet
+environnement).
+
+~~`admin-dashboard` non conteneurisé~~ — **corrigé** : `Dockerfile` (build Node
++ runtime `nginx-unprivileged` non-root) et fragment Compose statique
+(`docker-compose.admin-dashboard.yml`), même mécanisme que les 3 services
+Spring Boot (chemin absolu inclus par `compose-assembly`, cf. ligne 29-33
+ci-dessus). Route Traefik `Host(\`localhost\`)` vérifiée bout-en-bout
+(build, healthcheck, TLS, fallback SPA, cache des assets hashés).
 
 ~~Pas d'entité `Travel`~~ — **corrigé, par un choix assumé** : `Destination` porte
 désormais dates, prix, capacité, activités et hébergements — c'est l'entité
