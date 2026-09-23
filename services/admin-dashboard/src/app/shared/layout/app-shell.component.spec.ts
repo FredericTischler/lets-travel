@@ -96,6 +96,22 @@ describe('AppShellComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('groups a TRAVELER\'s entries under a collapsible "Voyageur" section, open by default', () => {
+    setup('TRAVELER');
+
+    const toggle = fixture.nativeElement.querySelector(
+      '[aria-controls="nav-group-Voyageur"]',
+    ) as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(linkLabels()).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(linkLabels()).toEqual([]);
+  });
+
   it('groups a TRAVEL_MANAGER\'s own entries under a collapsible "Organisateur" section, open by default', () => {
     setup('TRAVEL_MANAGER');
 

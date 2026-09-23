@@ -46,23 +46,30 @@ describe('navSectionsFor()', () => {
       .find((s) => s.label === label)
       ?.items.map((item) => item.label);
 
-  it('puts a TRAVELER\'s entries in the flat (unlabelled) section only', () => {
-    expect(sectionLabels('TRAVELER')).toEqual([null]);
-    expect(itemLabels('TRAVELER', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+  it('groups a TRAVELER\'s entries under "Voyageur", the flat section staying empty', () => {
+    expect(sectionLabels('TRAVELER')).toEqual([null, 'Voyageur']);
+    expect(itemLabels('TRAVELER', null)).toEqual([]);
+    expect(itemLabels('TRAVELER', 'Voyageur')).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
   });
 
-  it('groups a TRAVEL_MANAGER\'s own entries under "Organisateur", leaving the traveler ones flat', () => {
-    expect(sectionLabels('TRAVEL_MANAGER')).toEqual([null, 'Organisateur']);
-    expect(itemLabels('TRAVEL_MANAGER', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+  it('groups a TRAVEL_MANAGER\'s entries under "Voyageur" and "Organisateur"', () => {
+    expect(sectionLabels('TRAVEL_MANAGER')).toEqual([null, 'Voyageur', 'Organisateur']);
+    expect(itemLabels('TRAVEL_MANAGER', null)).toEqual([]);
+    expect(itemLabels('TRAVEL_MANAGER', 'Voyageur')).toEqual([
+      'Voyages',
+      'Mes abonnements',
+      'Mes statistiques',
+    ]);
     expect(itemLabels('TRAVEL_MANAGER', 'Organisateur')).toEqual([
       'Tableau de bord organisateur',
       'Mes voyages organisés',
     ]);
   });
 
-  it('splits an ADMIN\'s entries into the flat section and the "Organisateur"/"Administration" groups', () => {
-    expect(sectionLabels('ADMIN')).toEqual([null, 'Organisateur', 'Administration']);
-    expect(itemLabels('ADMIN', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+  it('splits an ADMIN\'s entries into the "Voyageur"/"Organisateur"/"Administration" groups', () => {
+    expect(sectionLabels('ADMIN')).toEqual([null, 'Voyageur', 'Organisateur', 'Administration']);
+    expect(itemLabels('ADMIN', null)).toEqual([]);
+    expect(itemLabels('ADMIN', 'Voyageur')).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
     expect(itemLabels('ADMIN', 'Organisateur')).toEqual([
       'Tableau de bord organisateur',
       'Mes voyages organisés',
