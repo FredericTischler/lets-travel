@@ -54,12 +54,34 @@
         }
       }
       @case ('STRIPE') {
-        <p data-testid="stripe-explanation">
-          Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'intègre
-          pas encore le formulaire de carte (Stripe.js). Il ne peut donc pas être réglé depuis
-          cet écran ; la confirmation arrive du webhook Stripe et active l'inscription. Sans
-          règlement avant l'échéance, la réservation expire.
-        </p>
+        @if (!stripeConfigured) {
+          <p data-testid="stripe-explanation">
+            Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'est pas
+            configuré pour collecter la carte (clé publique Stripe manquante). La confirmation
+            arrive du webhook Stripe et active l'inscription si le paiement est réglé autrement.
+            Sans règlement avant l'échéance, la réservation expire.
+          </p>
+        } @else if (!stripeClientSecret()) {
+          <p data-testid="stripe-no-secret">
+            Le formulaire de carte n'est disponible qu'au moment de l'inscription et n'est pas
+            conservé d'une visite à l'autre. Si vous avez déjà payé, actualisez l'état ci-dessous ;
+            sinon annulez la réservation et recommencez pour obtenir un nouveau formulaire.
+          </p>
+        } @else {
+          <p>Réglez par carte bancaire (paiement sécurisé, géré par Stripe) :</p>
+          <div #stripeMount data-testid="stripe-elements" class="min-h-10"></div>
+          @if (stripeLoading()) {
+            <p class="text-xs text-ink-dim">Chargement du formulaire de paiement…</p>
+          }
+          @if (stripeError()) {
+            <app-alert variant="error">{{ stripeError() }}</app-alert>
+          }
+          <div class="flex flex-wrap gap-2">
+            <app-button [disabled]="!stripeReady() || stripeSubmitting()" (clicked)="payWithStripe()">
+              {{ stripeSubmitting() ? 'Paiement en cours…' : 'Payer par carte' }}
+            </app-button>
+          </div>
+        }
         @if (reference()) {
           <p class="break-all text-xs">Référence : <code>{{ reference() }}</code></p>
         }

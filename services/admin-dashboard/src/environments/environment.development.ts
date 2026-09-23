@@ -6,4 +6,8 @@ export const environment = {
   identityApiUrl: '/api/identity',
   paymentApiUrl: '/api/payment',
   travelApiUrl: '/api/travel',
+  // Set to a real `pk_test_...` (matching payment-service's STRIPE_SECRET_KEY)
+  // to exercise the card form locally; see environment.ts for why this is
+  // safe to hardcode (it's the publishable key, not the secret one).
+  stripePublishableKey: '',
 };
