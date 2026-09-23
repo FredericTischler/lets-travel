@@ -95,6 +95,6 @@ class StripePaymentIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).containsKeys("clientSecret", "paymentIntentId");
-        assertThat(response.getBody().get("provider")).isEqualTo("STRIPE");
+        assertThat(response.getBody()).containsEntry("provider", "STRIPE");
     }
 }

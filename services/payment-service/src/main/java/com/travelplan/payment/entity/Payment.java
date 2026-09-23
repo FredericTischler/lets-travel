@@ -11,6 +11,7 @@ import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
@@ -121,7 +122,7 @@ public class Payment {
         this.amount = amount;
         this.currency = currency;
         this.status = STATUS_PENDING;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.provider = PaymentProvider.MANUAL;
     }
 
@@ -137,7 +138,7 @@ public class Payment {
         this.amount = amount;
         this.currency = currency;
         this.status = STATUS_PENDING;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         this.provider = provider;
         this.externalReference = externalReference;
     }
@@ -187,7 +188,7 @@ public class Payment {
     public void setStatus(String status) {
         this.status = status;
         if (STATUS_COMPLETED.equals(status) && completedAt == null) {
-            this.completedAt = OffsetDateTime.now();
+            this.completedAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
     }
 
