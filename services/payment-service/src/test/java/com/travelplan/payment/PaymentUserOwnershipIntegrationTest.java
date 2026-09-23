@@ -137,6 +137,29 @@ class PaymentUserOwnershipIntegrationTest {
     }
 
     @Test
+    void deleteByUserRejectsANonAdminUserToken() {
+        UUID userId = UUID.randomUUID();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(TestJwtTokens.tokenFor(UUID.randomUUID(), "TRAVELER"));
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/payments/by-user/" + userId, HttpMethod.DELETE, new HttpEntity<>(headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void aMalformedBearerTokenIsRejectedAsUnauthorized() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth("this-is-not-a-valid-jwt");
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/payments/by-user/" + UUID.randomUUID(), HttpMethod.DELETE, new HttpEntity<>(headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void serviceTokenRejectedOnOtherEndpoints() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
