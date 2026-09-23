@@ -100,6 +100,11 @@ public class FeedbackRepository {
             LIMIT $limit
             """;
 
+    private static final String DESTINATION_ID = "destinationId";
+    private static final String TRAVELER_ID = "travelerId";
+    private static final String COMMENT = "comment";
+    private static final String CREATED_AT = "createdAt";
+
     private final Neo4jClient neo4jClient;
 
     public FeedbackRepository(Neo4jClient neo4jClient) {
@@ -114,7 +119,7 @@ public class FeedbackRepository {
         Long count = neo4jClient.query(HAS_ACTIVE_SUBSCRIPTION_QUERY)
                 .bindAll(idParams(travelerId, destinationId))
                 .fetchAs(Long.class)
-                .mappedBy((typeSystem, record) -> record.get("activeCount").asLong())
+                .mappedBy((typeSystem, row) -> row.get("activeCount").asLong())
                 .one()
                 .orElse(0L);
         return count > 0;
@@ -134,12 +139,12 @@ public class FeedbackRepository {
         Map<String, Object> params = idParams(travelerId, destinationId);
         params.put("feedbackId", UUID.randomUUID().toString());
         params.put("rating", rating);
-        params.put("comment", comment);
-        params.put("createdAt", createdAt);
+        params.put(COMMENT, comment);
+        params.put(CREATED_AT, createdAt);
         return neo4jClient.query(GIVE_QUERY)
                 .bindAll(params)
                 .fetchAs(Boolean.class)
-                .mappedBy((typeSystem, record) -> record.get("created").asBoolean())
+                .mappedBy((typeSystem, row) -> row.get("created").asBoolean())
                 .one()
                 .orElseThrow(() -> new IllegalStateException(
                         "Feedback query returned no row for destination " + destinationId));
@@ -148,9 +153,9 @@ public class FeedbackRepository {
     /** Every feedback on a single active destination, newest first. */
     public List<FeedbackView> findForDestination(UUID destinationId) {
         return neo4jClient.query(FIND_FOR_DESTINATION_QUERY)
-                .bindAll(Map.of("destinationId", destinationId.toString()))
+                .bindAll(Map.of(DESTINATION_ID, destinationId.toString()))
                 .fetchAs(FeedbackView.class)
-                .mappedBy((typeSystem, record) -> toView(record))
+                .mappedBy((typeSystem, row) -> toView(row))
                 .all()
                 .stream()
                 .toList();
@@ -161,16 +166,16 @@ public class FeedbackRepository {
         return neo4jClient.query(FIND_ONE_QUERY)
                 .bindAll(idParams(travelerId, destinationId))
                 .fetchAs(FeedbackView.class)
-                .mappedBy((typeSystem, record) -> toView(record))
+                .mappedBy((typeSystem, row) -> toView(row))
                 .one();
     }
 
     /** Every feedback given by one traveler, across every active destination, newest first. */
     public List<FeedbackView> findForTraveler(UUID travelerId) {
         return neo4jClient.query(FIND_FOR_TRAVELER_QUERY)
-                .bindAll(Map.of("travelerId", travelerId.toString()))
+                .bindAll(Map.of(TRAVELER_ID, travelerId.toString()))
                 .fetchAs(FeedbackView.class)
-                .mappedBy((typeSystem, record) -> toView(record))
+                .mappedBy((typeSystem, row) -> toView(row))
                 .all()
                 .stream()
                 .toList();
@@ -180,7 +185,7 @@ public class FeedbackRepository {
     public List<FeedbackView> findAll() {
         return neo4jClient.query(FIND_ALL_QUERY)
                 .fetchAs(FeedbackView.class)
-                .mappedBy((typeSystem, record) -> toView(record))
+                .mappedBy((typeSystem, row) -> toView(row))
                 .all()
                 .stream()
                 .toList();
@@ -198,29 +203,29 @@ public class FeedbackRepository {
         return neo4jClient.query(FIND_RECENT_QUERY)
                 .bindAll(params)
                 .fetchAs(FeedbackView.class)
-                .mappedBy((typeSystem, record) -> toView(record))
+                .mappedBy((typeSystem, row) -> toView(row))
                 .all()
                 .stream()
                 .toList();
     }
 
-    private static FeedbackView toView(Record record) {
+    private static FeedbackView toView(Record row) {
         return new FeedbackView(
-                UUID.fromString(record.get("id").asString()),
-                UUID.fromString(record.get("travelerId").asString()),
-                UUID.fromString(record.get("destinationId").asString()),
-                record.get("destinationName").asString(),
-                record.get("destinationCountry").asString(),
-                record.get("destinationEndDate").isNull() ? null : record.get("destinationEndDate").asLocalDate(),
-                record.get("rating").asInt(),
-                record.get("comment").isNull() ? null : record.get("comment").asString(),
-                record.get("createdAt").isNull() ? null : record.get("createdAt").asOffsetDateTime());
+                UUID.fromString(row.get("id").asString()),
+                UUID.fromString(row.get(TRAVELER_ID).asString()),
+                UUID.fromString(row.get(DESTINATION_ID).asString()),
+                row.get("destinationName").asString(),
+                row.get("destinationCountry").asString(),
+                row.get("destinationEndDate").isNull() ? null : row.get("destinationEndDate").asLocalDate(),
+                row.get("rating").asInt(),
+                row.get(COMMENT).isNull() ? null : row.get(COMMENT).asString(),
+                row.get(CREATED_AT).isNull() ? null : row.get(CREATED_AT).asOffsetDateTime());
     }
 
     private static Map<String, Object> idParams(UUID travelerId, UUID destinationId) {
         Map<String, Object> params = new HashMap<>();
-        params.put("travelerId", travelerId.toString());
-        params.put("destinationId", destinationId.toString());
+        params.put(TRAVELER_ID, travelerId.toString());
+        params.put(DESTINATION_ID, destinationId.toString());
         return params;
     }
 }

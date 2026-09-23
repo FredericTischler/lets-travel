@@ -26,8 +26,7 @@ class PerformanceScoreTest {
         double established = PerformanceScore.dampedRating(490, 100);
 
         assertThat(single).isCloseTo(3.33, within(0.01));
-        assertThat(established).isCloseTo(4.81, within(0.01));
-        assertThat(established).isGreaterThan(single);
+        assertThat(established).isCloseTo(4.81, within(0.01)).isGreaterThan(single);
         assertThat(PerformanceScore.ratingScore(490, 100)).isGreaterThan(PerformanceScore.ratingScore(5, 1));
     }
 

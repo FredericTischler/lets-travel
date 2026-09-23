@@ -1,5 +1,8 @@
 package com.travelplan.travel.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -15,52 +18,62 @@ import java.util.UUID;
  * traveler liked or took part in, negative ones from destinations they rated
  * low. When the traveler has no history at all the score is the number of
  * {@code ACTIVE} subscribers (popularity) and the single reason says so.
+ *
+ * <p>The destination's own identifying fields are grouped into
+ * {@link DestinationSummary} to keep the constructor under Sonar's parameter
+ * limit (java:S107); {@link JsonUnwrapped} flattens them back into the JSON
+ * response, so {@code GET /travelers/me/recommendations} is unaffected — the
+ * per-field getters below are kept (and {@link JsonIgnore}d) purely so
+ * existing callers can keep reading {@code getName()}/{@code getScore()}/…
+ * directly on a {@code RecommendationResponse}, as {@link
+ * com.travelplan.travel.service.RecommendationScorer} and its tests do.</p>
  */
 public class RecommendationResponse {
 
-    private final UUID destinationId;
-    private final String name;
-    private final String country;
-    private final LocalDate startDate;
-    private final LocalDate endDate;
-    private final BigDecimal price;
+    /** The candidate destination's own fields, flattened into the parent JSON via {@link JsonUnwrapped}. */
+    public record DestinationSummary(UUID destinationId, String name, String country, LocalDate startDate,
+                                      LocalDate endDate, BigDecimal price) {
+    }
+
+    @JsonUnwrapped
+    private final DestinationSummary destination;
     private final double score;
     private final List<String> reasons;
 
-    public RecommendationResponse(UUID destinationId, String name, String country, LocalDate startDate,
-                                   LocalDate endDate, BigDecimal price, double score, List<String> reasons) {
-        this.destinationId = destinationId;
-        this.name = name;
-        this.country = country;
-        this.startDate = startDate;
-        this.endDate = endDate;
-        this.price = price;
+    public RecommendationResponse(DestinationSummary destination, double score, List<String> reasons) {
+        this.destination = destination;
         this.score = score;
         this.reasons = reasons;
     }
 
+    @JsonIgnore
     public UUID getDestinationId() {
-        return destinationId;
+        return destination.destinationId();
     }
 
+    @JsonIgnore
     public String getName() {
-        return name;
+        return destination.name();
     }
 
+    @JsonIgnore
     public String getCountry() {
-        return country;
+        return destination.country();
     }
 
+    @JsonIgnore
     public LocalDate getStartDate() {
-        return startDate;
+        return destination.startDate();
     }
 
+    @JsonIgnore
     public LocalDate getEndDate() {
-        return endDate;
+        return destination.endDate();
     }
 
+    @JsonIgnore
     public BigDecimal getPrice() {
-        return price;
+        return destination.price();
     }
 
     public double getScore() {

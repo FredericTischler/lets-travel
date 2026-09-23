@@ -464,8 +464,8 @@ class FeedbackIntegrationTest {
                 .containsEntry("averageRating", 3.67);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> pastRatings = (List<Map<String, Object>>) stats.get("pastRatings");
-        assertThat(pastRatings).hasSize(3);
-        assertThat(pastRatings).noneSatisfy(r -> assertThat(r).containsEntry("destinationId", future.toString()));
+        assertThat(pastRatings).hasSize(3)
+                .noneSatisfy(r -> assertThat(r).containsEntry("destinationId", future.toString()));
         assertThat(pastRatings).filteredOn(r -> pastA.toString().equals(r.get("destinationId")))
                 .singleElement().satisfies(r -> assertThat(r)
                         .containsEntry("feedbackCount", 2).containsEntry("averageRating", 4.5));

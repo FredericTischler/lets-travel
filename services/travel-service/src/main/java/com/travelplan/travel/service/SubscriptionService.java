@@ -16,9 +16,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -136,7 +136,7 @@ public class SubscriptionService {
             throw SubscriptionConflictException.paymentMismatch(
                     subscriptionRef, "subscription is waiting for payment " + sub.paymentId());
         }
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         if (PAYMENT_FAILED.equals(result.getStatus())) {
             if (subscriptionRepository.cancelPending(subscriptionRef, result.getPaymentId(), now)) {
@@ -190,7 +190,7 @@ public class SubscriptionService {
     @Transactional
     public void unsubscribeSelf(UUID destinationId, UUID travelerId) {
         Destination destination = requireActiveDestination(destinationId);
-        String liveStatus = subscriptionRepository.findLiveStatus(travelerId, destinationId, OffsetDateTime.now())
+        String liveStatus = subscriptionRepository.findLiveStatus(travelerId, destinationId, OffsetDateTime.now(ZoneOffset.UTC))
                 .orElseThrow(() -> new SubscriptionNotFoundException(travelerId, destinationId));
         if (STATUS_ACTIVE.equals(liveStatus)) {
             requireCutoffRespected(destination);
@@ -225,7 +225,7 @@ public class SubscriptionService {
     public List<SubscriptionResponse> listSubscribers(UUID destinationId, UUID callerId, boolean isAdmin) {
         Destination destination = requireActiveDestination(destinationId);
         requireOwnership(destination, callerId, isAdmin);
-        return subscriptionRepository.findForDestination(destinationId, OffsetDateTime.now()).stream()
+        return subscriptionRepository.findForDestination(destinationId, OffsetDateTime.now(ZoneOffset.UTC)).stream()
                 .map(SubscriptionResponse::from)
                 .toList();
     }
@@ -236,7 +236,7 @@ public class SubscriptionService {
      * request their own history, there is no {@code travelerId} parameter.
      */
     public List<TravelerSubscriptionResponse> findMySubscriptions(UUID travelerId) {
-        return subscriptionRepository.findForTraveler(travelerId, OffsetDateTime.now()).stream()
+        return subscriptionRepository.findForTraveler(travelerId, OffsetDateTime.now(ZoneOffset.UTC)).stream()
                 .map(TravelerSubscriptionResponse::from)
                 .toList();
     }
@@ -253,7 +253,7 @@ public class SubscriptionService {
     }
 
     private void cancelOrThrow(UUID travelerId, UUID destinationId) {
-        boolean cancelled = subscriptionRepository.cancelLive(travelerId, destinationId, OffsetDateTime.now());
+        boolean cancelled = subscriptionRepository.cancelLive(travelerId, destinationId, OffsetDateTime.now(ZoneOffset.UTC));
         if (!cancelled) {
             throw new SubscriptionNotFoundException(travelerId, destinationId);
         }
@@ -263,7 +263,7 @@ public class SubscriptionService {
         if (destination.getStartDate() == null) {
             return;
         }
-        LocalDate cutoff = LocalDate.now().plusDays(CUTOFF_DAYS);
+        LocalDate cutoff = LocalDate.now(ZoneOffset.UTC).plusDays(CUTOFF_DAYS);
         if (destination.getStartDate().isBefore(cutoff)) {
             throw SubscriptionConflictException.cutoffPeriodExceeded(destination.getId());
         }

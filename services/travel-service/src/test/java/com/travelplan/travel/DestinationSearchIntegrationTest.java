@@ -66,7 +66,7 @@ class DestinationSearchIntegrationTest {
         registry.add("NEO4J_USERNAME", () -> "neo4j");
         registry.add("NEO4J_PASSWORD", neo4j::getAdminPassword);
         registry.add("JWT_SIGNING_KEY", () -> TestJwtTokens.SIGNING_KEY);
-        registry.add("ES_HOST", () -> elasticsearch.getHost());
+        registry.add("ES_HOST", elasticsearch::getHost);
         registry.add("ES_PORT", () -> String.valueOf(elasticsearch.getMappedPort(9200)));
     }
 

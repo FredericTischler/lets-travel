@@ -8,6 +8,7 @@ import com.travelplan.travel.repository.TravelerStatsRepository.TravelerSubscrip
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -50,7 +51,7 @@ public class TravelerStatsService {
      *                            "own summary unless admin" again on its side
      */
     public TravelerStatsResponse statsFor(UUID travelerId, String authorizationHeader) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         List<TravelerSubscriptionSummary> subscriptions = travelerStatsRepository.findSubscriptions(travelerId);
 
         List<TravelerStatsResponse.Participation> past = new ArrayList<>();
