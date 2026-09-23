@@ -350,12 +350,19 @@ message explicite s'ils manquent.
 
 ## Non implémenté
 
-- **Stripe.js** : le backend crée bien le PaymentIntent et confirme l'abonnement par le
-  webhook Stripe, mais ce front n'intègre **pas** le formulaire de carte (pas de clé
-  publiable dans `environment.ts`, pas de script tiers, rien de testable sans compte Stripe).
-  Choisir « Carte bancaire (Stripe) » crée donc une réservation qui affiche sa référence et
-  son état et **ne peut pas être réglée depuis cette interface** ; elle expire. PayPal et le
-  paiement manuel sont les moyens réellement utilisables. Le flux PayPal (redirection +
+- **Stripe.js configuré avec une vraie clé publiable** : le front intègre désormais le
+  formulaire de carte (`@stripe/stripe-js`, Payment Element monté avec le `clientSecret` reçu
+  à l'inscription, confirmation via `stripe.confirmPayment`, puis sondage de
+  `GET /payments/{id}` jusqu'à ce que le webhook Stripe passe le paiement à `COMPLETED`) —
+  voir `PendingPaymentComponent`/`StripeCheckoutService`. Il manque uniquement une clé
+  `pk_test_...` réelle (`environment.stripePublishableKey`, vide par défaut) correspondant au
+  `STRIPE_SECRET_KEY` du backend : sans elle, l'écran affiche honnêtement « paiement par carte
+  non configuré » plutôt que d'essayer de charger Stripe.js. Non exercé de bout en bout dans
+  cet environnement (le payment-service tourne avec des identifiants Stripe/PayPal factices
+  côté Vault, donc `POST /payments/stripe` répond 502 même avec le formulaire branché) ; le
+  montage du formulaire, la confirmation et le refus sont couverts en Vitest avec un
+  Stripe.js simulé. PayPal et le paiement manuel restent les moyens payables de bout en bout
+  dans cet environnement. Le flux PayPal (redirection +
   capture) est implémenté mais **jamais exercé contre PayPal** ; il suppose que `/paypal/return`
   est configuré comme URL de retour côté PayPal (le backend crée la commande sans URL de
   retour), sinon le bouton « J'ai approuvé le paiement » fait la même capture.

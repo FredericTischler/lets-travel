@@ -1,10 +1,12 @@
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { Stripe, StripeElements, StripePaymentElement } from '@stripe/stripe-js';
 
 import { environment } from '../../../environments/environment';
 import { Payment } from '../payments/payment.service';
 import { PendingPaymentComponent, captureErrorMessage } from './pending-payment.component';
 import { PendingPaymentStore } from './pending-payment.store';
+import { StripeCheckoutService } from './stripe-checkout.service';
 import { PaymentCheckout } from './subscription.service';
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -13,6 +15,38 @@ describe('PendingPaymentComponent', () => {
   let component: PendingPaymentComponent;
   let httpMock: HttpTestingController;
   let store: PendingPaymentStore;
+
+  /** A fake Payment Element: records mount/unmount/ready-callback so tests can drive it. */
+  function fakePaymentElement(): StripePaymentElement & { readyCallback: (() => void) | null } {
+    const element = {
+      readyCallback: null as (() => void) | null,
+      mount: vi.fn(),
+      unmount: vi.fn(),
+      on: vi.fn((event: string, cb: () => void) => {
+        if (event === 'ready') {
+          element.readyCallback = cb;
+        }
+        return element;
+      }),
+    };
+    return element as unknown as StripePaymentElement & { readyCallback: (() => void) | null };
+  }
+
+  /** A fake Stripe.js instance; `confirmPaymentResult` controls what confirmPayment() resolves to. */
+  function fakeStripe(
+    element: StripePaymentElement,
+    confirmPaymentResult: unknown = { paymentIntent: { status: 'succeeded' } },
+  ): Stripe {
+    return {
+      elements: vi.fn(() => ({ create: vi.fn(() => element) }) as unknown as StripeElements),
+      confirmPayment: vi.fn(() => Promise.resolve(confirmPaymentResult)) as unknown as Stripe['confirmPayment'],
+    } as unknown as Stripe;
+  }
+
+  /** Lets a pending `mountStripeForm()`/`payWithStripe()` promise chain settle before assertions. */
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
 
   const paymentsUrl = `${environment.paymentApiUrl}/payments`;
   const approveUrl = 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER-1';
@@ -46,6 +80,8 @@ describe('PendingPaymentComponent', () => {
     inputs: { checkout?: PaymentCheckout | null; paymentId?: string | null; expiresAt?: string | null } = {},
     loaded: Payment | 'error' | null = payment(),
   ) {
+    httpMock = TestBed.inject(HttpTestingController);
+    store = TestBed.inject(PendingPaymentStore);
     fixture = TestBed.createComponent(PendingPaymentComponent);
     component = fixture.componentInstance;
     const expiresAt = inputs.expiresAt === undefined ? new Date(Date.now() + 3600_000).toISOString() : inputs.expiresAt;
@@ -70,18 +106,19 @@ describe('PendingPaymentComponent', () => {
     );
   }
 
+  const originalPublishableKey = environment.stripePublishableKey;
+
   beforeEach(async () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [PendingPaymentComponent, HttpClientTestingModule],
     }).compileComponents();
-    httpMock = TestBed.inject(HttpTestingController);
-    store = TestBed.inject(PendingPaymentStore);
   });
 
   afterEach(() => {
     httpMock.verify();
     localStorage.clear();
+    (environment as { stripePublishableKey: string }).stripePublishableKey = originalPublishableKey;
   });
 
   it('says "en attente de paiement" with the amount and a countdown', () => {
@@ -101,18 +138,97 @@ describe('PendingPaymentComponent', () => {
     expect(button('Payer avec PayPal')).toBeUndefined();
   });
 
-  it('is honest about Stripe: reference and status shown, no card form, no client secret displayed', () => {
+  it('is honest about Stripe when no publishable key is configured: reference shown, no card form', () => {
     setup(
       { checkout: checkout({ provider: 'STRIPE', approveUrl: null, clientSecret: 'pi_secret_123' }) },
       payment({ provider: 'STRIPE', externalReference: 'pi_123' }),
     );
 
     expect(fixture.nativeElement.querySelector('[data-testid="stripe-explanation"]').textContent).toContain(
-      "n'intègre",
+      'pas configuré',
     );
+    expect(fixture.nativeElement.querySelector('[data-testid="stripe-elements"]')).toBeNull();
     expect(text()).toContain('pi_123');
     expect(text()).not.toContain('pi_secret_123');
     expect(localStorage.getItem('admin-dashboard.pending-payments') ?? '').not.toContain('pi_secret_123');
+  });
+
+  it('tells a reopened Stripe payment (no client secret known any more) to start over', () => {
+    (environment as { stripePublishableKey: string }).stripePublishableKey = 'pk_test_dummy';
+
+    setup({ checkout: null, paymentId: 'pay-1' }, payment({ provider: 'STRIPE', externalReference: 'pi_123' }));
+
+    expect(fixture.nativeElement.querySelector('[data-testid="stripe-no-secret"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="stripe-elements"]')).toBeNull();
+  });
+
+  it('mounts a Stripe card form when configured, never displaying the client secret', async () => {
+    (environment as { stripePublishableKey: string }).stripePublishableKey = 'pk_test_dummy';
+    const element = fakePaymentElement();
+    const stripe = fakeStripe(element);
+    TestBed.overrideProvider(StripeCheckoutService, { useValue: { load: () => Promise.resolve(stripe) } });
+
+    setup(
+      { checkout: checkout({ provider: 'STRIPE', approveUrl: null, clientSecret: 'pi_secret_123' }) },
+      payment({ provider: 'STRIPE', externalReference: 'pi_123' }),
+    );
+    await flushMicrotasks();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="stripe-elements"]')).not.toBeNull();
+    expect(element.mount).toHaveBeenCalled();
+    expect(text()).not.toContain('pi_secret_123');
+    expect(localStorage.getItem('admin-dashboard.pending-payments') ?? '').not.toContain('pi_secret_123');
+    expect(button('Payer par carte')!.disabled).toBe(true);
+
+    element.readyCallback?.();
+    fixture.detectChanges();
+    expect(button('Payer par carte')!.disabled).toBe(false);
+  });
+
+  it('confirms the PaymentIntent and reports the payment settled once the webhook completes it', async () => {
+    (environment as { stripePublishableKey: string }).stripePublishableKey = 'pk_test_dummy';
+    const element = fakePaymentElement();
+    const stripe = fakeStripe(element);
+    TestBed.overrideProvider(StripeCheckoutService, { useValue: { load: () => Promise.resolve(stripe) } });
+
+    setup(
+      { checkout: checkout({ provider: 'STRIPE', approveUrl: null, clientSecret: 'pi_secret_123' }) },
+      payment({ provider: 'STRIPE', externalReference: 'pi_123' }),
+    );
+    await flushMicrotasks();
+    fixture.detectChanges();
+    element.readyCallback?.();
+    fixture.detectChanges();
+
+    button('Payer par carte')!.click();
+    await flushMicrotasks();
+    fixture.detectChanges();
+
+    expect(stripe.confirmPayment).toHaveBeenCalled();
+    expect(text()).toContain('confirmation en cours');
+  });
+
+  it('shows the Stripe decline message when confirmPayment answers an error', async () => {
+    (environment as { stripePublishableKey: string }).stripePublishableKey = 'pk_test_dummy';
+    const element = fakePaymentElement();
+    const stripe = fakeStripe(element, { error: { message: 'Carte refusée.' } as never });
+    TestBed.overrideProvider(StripeCheckoutService, { useValue: { load: () => Promise.resolve(stripe) } });
+
+    setup(
+      { checkout: checkout({ provider: 'STRIPE', approveUrl: null, clientSecret: 'pi_secret_123' }) },
+      payment({ provider: 'STRIPE', externalReference: 'pi_123' }),
+    );
+    await flushMicrotasks();
+    fixture.detectChanges();
+    element.readyCallback?.();
+    fixture.detectChanges();
+
+    button('Payer par carte')!.click();
+    await flushMicrotasks();
+    fixture.detectChanges();
+
+    expect(text()).toContain('Carte refusée.');
   });
 
   it('remembers the PayPal approval URL of a fresh checkout for the way back', () => {

@@ -1,9 +1,24 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import type { StripeElements, StripePaymentElement } from '@stripe/stripe-js';
 import { interval } from 'rxjs';
 
+import { environment } from '../../../environments/environment';
 import { formatMoney } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
@@ -17,7 +32,12 @@ import {
 } from '../payments/payment.service';
 import { PaymentCheckout } from './subscription.service';
 import { PendingPaymentStore } from './pending-payment.store';
+import { StripeCheckoutService } from './stripe-checkout.service';
 import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payment-rules';
+
+/** How many times to re-poll GET /payments/{id} after a client-side Stripe confirmation. */
+const STRIPE_SETTLE_POLL_ATTEMPTS = 10;
+const STRIPE_SETTLE_POLL_DELAY_MS = 2000;
 
 /**
  * The "en attente de paiement" panel of a PENDING_PAYMENT subscription: what to
@@ -28,11 +48,16 @@ import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payme
  * - **PAYPAL**: redirect to the PayPal approval page, then capture the order
  *   (`POST /payments/paypal/{orderId}/capture`) — automatically on return
  *   (see PaypalReturnComponent) or with the "J'ai approuvé" button here.
- * - **STRIPE**: the backend creates the PaymentIntent and confirms the
- *   subscription through the Stripe webhook, but this front does **not**
- *   integrate Stripe.js (no publishable key, no card form): the panel shows
- *   the payment reference and status and says so honestly. Not testable
- *   without a real Stripe account.
+ * - **STRIPE**: the backend creates the PaymentIntent and returns its
+ *   `clientSecret` once, right after subscribing; this panel uses Stripe.js
+ *   (Payment Element) to collect the card and confirm that PaymentIntent
+ *   client-side, then polls GET /payments/{id} until the webhook flips it to
+ *   COMPLETED. `clientSecret` is deliberately never persisted (see
+ *   PendingPaymentStore), so the card form only appears right after
+ *   subscribing — reopening this panel later (e.g. from "Mes abonnements")
+ *   shows an explicit "start over" message instead, same as an expired
+ *   PayPal approval URL. Also degrades to an explicit "not configured"
+ *   message when no publishable key is set (see environment.ts).
  *
  * `checkout` is only known right after the subscribe call; later the provider
  * is read back from GET /payments/{id}. Cancelling is the parent's job
@@ -43,10 +68,11 @@ import { extractPayPalOrderId, isTrustedPayPalUrl, remainingTime } from './payme
   imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent],
   templateUrl: './pending-payment.component.html',
 })
-export class PendingPaymentComponent implements OnInit {
+export class PendingPaymentComponent implements OnInit, OnDestroy {
   private readonly paymentService = inject(PaymentService);
   private readonly store = inject(PendingPaymentStore);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly stripeCheckout = inject(StripeCheckoutService);
 
   readonly paymentId = input<string | null>(null);
   readonly expiresAt = input<string | null>(null);
@@ -57,11 +83,23 @@ export class PendingPaymentComponent implements OnInit {
   readonly cancelRequested = output<void>();
   readonly settled = output<void>();
 
+  private readonly stripeMount = viewChild<ElementRef<HTMLDivElement>>('stripeMount');
+
   protected readonly payment = signal<Payment | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly info = signal<string | null>(null);
   private readonly now = signal(new Date());
+
+  protected readonly stripeConfigured = environment.stripePublishableKey !== '';
+  protected readonly stripeLoading = signal(false);
+  protected readonly stripeReady = signal(false);
+  protected readonly stripeSubmitting = signal(false);
+  protected readonly stripeError = signal<string | null>(null);
+  private stripeElements: StripeElements | null = null;
+  private stripePaymentElement: StripePaymentElement | null = null;
+  private stripeMounted = false;
+  private destroyed = false;
 
   protected readonly remaining = computed(() => remainingTime(this.expiresAt(), this.now()));
 
@@ -98,10 +136,24 @@ export class PendingPaymentComponent implements OnInit {
     () => this.payment()?.externalReference ?? this.paymentId() ?? null,
   );
 
+  /** Only right after subscribing — see the class doc on why it is never persisted. */
+  protected readonly stripeClientSecret = computed(() =>
+    this.provider() === 'STRIPE' ? this.checkout()?.clientSecret ?? null : null,
+  );
+
   constructor() {
     interval(1000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.now.set(new Date()));
+
+    effect(() => {
+      const mount = this.stripeMount();
+      const clientSecret = this.stripeClientSecret();
+      if (mount && clientSecret && this.stripeConfigured && !this.stripeMounted && !this.remaining().expired) {
+        this.stripeMounted = true;
+        void this.mountStripeForm(mount.nativeElement, clientSecret);
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -174,6 +226,68 @@ export class PendingPaymentComponent implements OnInit {
         this.error.set(captureErrorMessage(err));
       },
     });
+  }
+
+  private async mountStripeForm(container: HTMLDivElement, clientSecret: string): Promise<void> {
+    this.stripeLoading.set(true);
+    const stripe = await this.stripeCheckout.load();
+    if (!stripe) {
+      this.stripeLoading.set(false);
+      this.stripeError.set('Le paiement par carte n’est pas configuré sur ce site (clé Stripe manquante).');
+      return;
+    }
+    this.stripeElements = stripe.elements({ clientSecret });
+    this.stripePaymentElement = this.stripeElements.create('payment');
+    this.stripePaymentElement.on('ready', () => {
+      this.stripeLoading.set(false);
+      this.stripeReady.set(true);
+    });
+    this.stripePaymentElement.mount(container);
+  }
+
+  /** Confirms the PaymentIntent from the mounted card form; the webhook then settles it server-side. */
+  protected async payWithStripe(): Promise<void> {
+    const stripe = await this.stripeCheckout.load();
+    if (!stripe || !this.stripeElements) {
+      return;
+    }
+    this.stripeSubmitting.set(true);
+    this.stripeError.set(null);
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements: this.stripeElements,
+      confirmParams: { return_url: window.location.href },
+      redirect: 'if_required',
+    });
+    this.stripeSubmitting.set(false);
+    if (error) {
+      this.stripeError.set(error.message ?? 'Le paiement a été refusé par Stripe.');
+      return;
+    }
+    if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
+      this.info.set('Paiement transmis à Stripe : confirmation en cours…');
+      this.pollUntilSettled();
+    }
+  }
+
+  /** The client-side confirmation above only tells Stripe; COMPLETED still comes from the webhook. */
+  private pollUntilSettled(attempt = 0): void {
+    if (attempt >= STRIPE_SETTLE_POLL_ATTEMPTS) {
+      return;
+    }
+    setTimeout(() => {
+      if (this.destroyed || this.payment()?.status === 'COMPLETED') {
+        return;
+      }
+      this.refresh(true);
+      if (this.payment()?.status !== 'COMPLETED') {
+        this.pollUntilSettled(attempt + 1);
+      }
+    }, STRIPE_SETTLE_POLL_DELAY_MS);
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    this.stripePaymentElement?.unmount();
   }
 
   private finish(): void {
