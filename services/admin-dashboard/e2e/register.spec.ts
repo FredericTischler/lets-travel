@@ -34,8 +34,12 @@ test.describe('Sign-up', () => {
     const nav = page.getByRole('navigation', { name: 'Navigation principale' });
     await expect(nav.getByRole('link', { name: 'Voyages' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Mes abonnements' })).toBeVisible();
-    await expect(nav.getByRole('link')).toHaveCount(2);
-    await expect(page.getByText('Voyageur', { exact: true })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Mes statistiques' })).toBeVisible();
+    await expect(nav.getByRole('link')).toHaveCount(3);
+    // Scoped to the role badge, not just any "Voyageur" text: the sidebar's
+    // "Voyageur" nav-group header (a collapsible section title, not a role
+    // indicator) also matches a plain text query.
+    await expect(page.locator('app-badge', { hasText: 'Voyageur' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Se déconnecter' }).click();
     await expect(page).toHaveURL(/\/login$/);
