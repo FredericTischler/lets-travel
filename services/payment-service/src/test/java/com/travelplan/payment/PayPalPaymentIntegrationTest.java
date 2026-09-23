@@ -100,6 +100,6 @@ class PayPalPaymentIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).containsKeys("approveUrl", "orderId");
-        assertThat(response.getBody().get("provider")).isEqualTo("PAYPAL");
+        assertThat(response.getBody()).containsEntry("provider", "PAYPAL");
     }
 }

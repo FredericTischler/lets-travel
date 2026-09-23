@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -24,7 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for payment lifecycle management.
@@ -103,7 +103,7 @@ public class PaymentService {
                 : paymentRepository.findAllActiveByUserId(callerId);
         return payments.stream()
                 .map(PaymentResponse::from)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -195,7 +195,7 @@ public class PaymentService {
         Payment payment = paymentRepository.findActiveById(id)
                 .filter(p -> isAdmin || p.getUserId().equals(callerId))
                 .orElseThrow(() -> new PaymentNotFoundException(id));
-        payment.setDeletedAt(OffsetDateTime.now());
+        payment.setDeletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         // the dirty check within the transaction persists the change automatically
     }
 
@@ -210,7 +210,7 @@ public class PaymentService {
     @Transactional
     public int deleteAllByUserId(UUID userId) {
         List<Payment> activePayments = paymentRepository.findAllActiveByUserId(userId);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         for (Payment payment : activePayments) {
             payment.setDeletedAt(now);
         }
