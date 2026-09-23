@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
@@ -5,7 +6,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ROLE_LABELS, isRole } from '../../core/auth/roles';
 import { ThemeService } from '../../core/theme/theme.service';
 import { BadgeComponent } from '../ui/badge/badge.component';
-import { navItemsFor } from './nav-items';
+import { navSectionsFor } from './nav-items';
 
 /**
  * Shared layout for the authenticated area: brand, role-filtered navigation
@@ -19,7 +20,7 @@ import { navItemsFor } from './nav-items';
  */
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, BadgeComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, BadgeComponent],
   templateUrl: './app-shell.component.html',
 })
 export class AppShellComponent {
@@ -29,12 +30,30 @@ export class AppShellComponent {
 
   protected readonly menuOpen = signal(false);
 
-  protected readonly navItems = computed(() => navItemsFor(this.authService.role()));
+  protected readonly navSections = computed(() => navSectionsFor(this.authService.role()));
+  /** Named groups (e.g. "Administration") open by default — collapsible, not hidden. */
+  protected readonly openGroups = signal(new Set(this.navSections().flatMap((s) => (s.label ? [s.label] : []))));
   protected readonly email = this.authService.email;
   protected readonly roleLabel = computed(() => {
     const role = this.authService.role();
     return isRole(role) ? ROLE_LABELS[role] : null;
   });
+
+  protected isGroupOpen(label: string): boolean {
+    return this.openGroups().has(label);
+  }
+
+  protected toggleGroup(label: string): void {
+    this.openGroups.update((open) => {
+      const next = new Set(open);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
 
   toggleMenu(): void {
     this.menuOpen.update((open) => !open);
