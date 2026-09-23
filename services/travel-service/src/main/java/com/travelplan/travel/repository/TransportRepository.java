@@ -49,6 +49,9 @@ public class TransportRepository {
                    target.id AS targetId, target.name AS targetName, target.country AS targetCountry
             """;
 
+    private static final String DEPARTURE_TIME = "departureTime";
+    private static final String ARRIVAL_TIME = "arrivalTime";
+
     private final Neo4jClient neo4jClient;
 
     public TransportRepository(Neo4jClient neo4jClient) {
@@ -67,8 +70,8 @@ public class TransportRepository {
         params.put("toId", toId.toString());
         params.put("mode", mode);
         params.put("durationMinutes", durationMinutes);
-        params.put("departureTime", departureTime);
-        params.put("arrivalTime", arrivalTime);
+        params.put(DEPARTURE_TIME, departureTime);
+        params.put(ARRIVAL_TIME, arrivalTime);
         neo4jClient.query(CREATE_QUERY).bindAll(params).run();
     }
 
@@ -81,14 +84,14 @@ public class TransportRepository {
         return neo4jClient.query(OUTGOING_ACTIVE_QUERY)
                 .bindAll(Map.of("id", id.toString()))
                 .fetchAs(TransportEdge.class)
-                .mappedBy((typeSystem, record) -> new TransportEdge(
-                        record.get("mode").asString(),
-                        record.get("durationMinutes").asInt(),
-                        record.get("departureTime").isNull() ? null : record.get("departureTime").asOffsetDateTime(),
-                        record.get("arrivalTime").isNull() ? null : record.get("arrivalTime").asOffsetDateTime(),
-                        UUID.fromString(record.get("targetId").asString()),
-                        record.get("targetName").asString(),
-                        record.get("targetCountry").asString()))
+                .mappedBy((typeSystem, row) -> new TransportEdge(
+                        row.get("mode").asString(),
+                        row.get("durationMinutes").asInt(),
+                        row.get(DEPARTURE_TIME).isNull() ? null : row.get(DEPARTURE_TIME).asOffsetDateTime(),
+                        row.get(ARRIVAL_TIME).isNull() ? null : row.get(ARRIVAL_TIME).asOffsetDateTime(),
+                        UUID.fromString(row.get("targetId").asString()),
+                        row.get("targetName").asString(),
+                        row.get("targetCountry").asString()))
                 .all()
                 .stream()
                 .toList();
