@@ -38,6 +38,10 @@ public class AccommodationRepository {
             RETURN a.id AS id, a.name AS name, a.type AS type, a.checkIn AS checkIn, a.checkOut AS checkOut
             """;
 
+    private static final String DESTINATION_ID = "destinationId";
+    private static final String CHECK_IN = "checkIn";
+    private static final String CHECK_OUT = "checkOut";
+
     private final Neo4jClient neo4jClient;
 
     public AccommodationRepository(Neo4jClient neo4jClient) {
@@ -51,16 +55,16 @@ public class AccommodationRepository {
      */
     public void replaceForDestination(UUID destinationId, List<AccommodationInput> accommodations) {
         neo4jClient.query(DELETE_EXISTING_QUERY)
-                .bindAll(Map.of("destinationId", destinationId.toString()))
+                .bindAll(Map.of(DESTINATION_ID, destinationId.toString()))
                 .run();
         for (AccommodationInput accommodation : accommodations) {
             Map<String, Object> params = new HashMap<>();
-            params.put("destinationId", destinationId.toString());
+            params.put(DESTINATION_ID, destinationId.toString());
             params.put("id", UUID.randomUUID().toString());
             params.put("name", accommodation.name());
             params.put("type", accommodation.type());
-            params.put("checkIn", accommodation.checkIn());
-            params.put("checkOut", accommodation.checkOut());
+            params.put(CHECK_IN, accommodation.checkIn());
+            params.put(CHECK_OUT, accommodation.checkOut());
             neo4jClient.query(CREATE_ONE_QUERY).bindAll(params).run();
         }
     }
@@ -70,14 +74,14 @@ public class AccommodationRepository {
      */
     public List<AccommodationView> findActiveForDestination(UUID destinationId) {
         return neo4jClient.query(FIND_ACTIVE_QUERY)
-                .bindAll(Map.of("destinationId", destinationId.toString()))
+                .bindAll(Map.of(DESTINATION_ID, destinationId.toString()))
                 .fetchAs(AccommodationView.class)
-                .mappedBy((typeSystem, record) -> new AccommodationView(
-                        UUID.fromString(record.get("id").asString()),
-                        record.get("name").asString(),
-                        record.get("type").asString(),
-                        record.get("checkIn").isNull() ? null : record.get("checkIn").asLocalDate(),
-                        record.get("checkOut").isNull() ? null : record.get("checkOut").asLocalDate()))
+                .mappedBy((typeSystem, row) -> new AccommodationView(
+                        UUID.fromString(row.get("id").asString()),
+                        row.get("name").asString(),
+                        row.get("type").asString(),
+                        row.get(CHECK_IN).isNull() ? null : row.get(CHECK_IN).asLocalDate(),
+                        row.get(CHECK_OUT).isNull() ? null : row.get(CHECK_OUT).asLocalDate()))
                 .all()
                 .stream()
                 .toList();

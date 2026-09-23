@@ -7,6 +7,7 @@ import org.springframework.data.neo4j.core.schema.Relationship;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -129,7 +130,7 @@ public class Destination {
         this.managerId = managerId;
         this.price = price;
         this.capacity = capacity;
-        this.createdAt = OffsetDateTime.now();
+        this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
     public UUID getId() {

@@ -45,6 +45,8 @@ public class ActivityRepository {
             RETURN a.id AS id, a.name AS name
             """;
 
+    private static final String DESTINATION_ID = "destinationId";
+
     private final Neo4jClient neo4jClient;
 
     public ActivityRepository(Neo4jClient neo4jClient) {
@@ -58,11 +60,11 @@ public class ActivityRepository {
      */
     public void replaceForDestination(UUID destinationId, List<String> names) {
         neo4jClient.query(DELETE_EXISTING_QUERY)
-                .bindAll(Map.of("destinationId", destinationId.toString()))
+                .bindAll(Map.of(DESTINATION_ID, destinationId.toString()))
                 .run();
         for (String name : names) {
             Map<String, Object> params = new HashMap<>();
-            params.put("destinationId", destinationId.toString());
+            params.put(DESTINATION_ID, destinationId.toString());
             params.put("id", UUID.randomUUID().toString());
             params.put("name", name);
             neo4jClient.query(CREATE_ONE_QUERY).bindAll(params).run();
@@ -74,11 +76,11 @@ public class ActivityRepository {
      */
     public List<ActivityView> findActiveForDestination(UUID destinationId) {
         return neo4jClient.query(FIND_ACTIVE_QUERY)
-                .bindAll(Map.of("destinationId", destinationId.toString()))
+                .bindAll(Map.of(DESTINATION_ID, destinationId.toString()))
                 .fetchAs(ActivityView.class)
-                .mappedBy((typeSystem, record) -> new ActivityView(
-                        UUID.fromString(record.get("id").asString()),
-                        record.get("name").asString()))
+                .mappedBy((typeSystem, row) -> new ActivityView(
+                        UUID.fromString(row.get("id").asString()),
+                        row.get("name").asString()))
                 .all()
                 .stream()
                 .toList();

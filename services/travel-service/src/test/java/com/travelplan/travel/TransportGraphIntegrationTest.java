@@ -121,8 +121,8 @@ class TransportGraphIntegrationTest {
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         @SuppressWarnings("unchecked")
         Map<String, Object> hop = (Map<String, Object>) listResponse.getBody().get(0);
-        assertThat(hop).containsEntry("departureTime", "2026-05-01T08:30:00Z");
-        assertThat(hop).containsEntry("arrivalTime", "2026-05-01T09:45:00Z");
+        assertThat(hop).containsEntry("departureTime", "2026-05-01T08:30:00Z")
+                .containsEntry("arrivalTime", "2026-05-01T09:45:00Z");
     }
 
     @Test
