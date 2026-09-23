@@ -51,12 +51,19 @@ describe('navSectionsFor()', () => {
     expect(itemLabels('TRAVELER', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
   });
 
-  it('splits an ADMIN\'s entries into the flat section and one "Administration" group', () => {
-    expect(sectionLabels('ADMIN')).toEqual([null, 'Administration']);
-    expect(itemLabels('ADMIN', null)).toEqual([
-      'Voyages',
-      'Mes abonnements',
-      'Mes statistiques',
+  it('groups a TRAVEL_MANAGER\'s own entries under "Organisateur", leaving the traveler ones flat', () => {
+    expect(sectionLabels('TRAVEL_MANAGER')).toEqual([null, 'Organisateur']);
+    expect(itemLabels('TRAVEL_MANAGER', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+    expect(itemLabels('TRAVEL_MANAGER', 'Organisateur')).toEqual([
+      'Tableau de bord organisateur',
+      'Mes voyages organisés',
+    ]);
+  });
+
+  it('splits an ADMIN\'s entries into the flat section and the "Organisateur"/"Administration" groups', () => {
+    expect(sectionLabels('ADMIN')).toEqual([null, 'Organisateur', 'Administration']);
+    expect(itemLabels('ADMIN', null)).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+    expect(itemLabels('ADMIN', 'Organisateur')).toEqual([
       'Tableau de bord organisateur',
       'Mes voyages organisés',
     ]);
