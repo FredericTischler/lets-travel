@@ -9,6 +9,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -94,7 +95,7 @@ public class SubscriptionPaymentNotifier {
     }
 
     private void markNotified(UUID paymentId) {
-        paymentRepository.markTravelNotified(paymentId, OffsetDateTime.now());
+        paymentRepository.markTravelNotified(paymentId, OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     public record ReconciliationResult(int attempted, int notified) {
