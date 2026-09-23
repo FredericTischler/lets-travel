@@ -10,7 +10,7 @@ que le statut réel et le point d'entrée.
 |---|---|---|---|
 | [`identity-service/`](identity-service/README.md) | Comptes + authentification : création de compte, login, JWT HS256, CRUD users, cascade de suppression vers `payment-service` | PostgreSQL `identity_db` | **Implémenté** : `POST /users`, `GET /users`, `GET /users/{id}`, `PATCH /users/{id}`, `DELETE /users/{id}`, `POST /login`, `GET /me`. Schéma Flyway, 7 classes de tests d'intégration Testcontainers. |
 | [`payment-service/`](payment-service/README.md) | Transactions de paiement (montant, devise, statut), rattachées à un `user_id` | PostgreSQL `payment_db` | **Implémenté** : `POST /payments`, `GET /payments`, `GET /payments/{id}`, `PATCH /payments/{id}/status`, `DELETE /payments/{id}`, `DELETE /payments/by-user/{userId}` (accepté aussi pour le token de service `service:identity`). Schéma Flyway, 3 classes de tests d'intégration Testcontainers. |
-| [`travel-service/`](travel-service/README.md) | Graphe de destinations et relations `TRANSPORT` dirigées | Neo4j (Community Edition) | **Partiel** : CRUD `Destination` complet (`POST`, `GET` liste et unitaire, `PUT`, `DELETE`) + `POST`/`GET /destinations/{id}/transports` (traversée 1-hop). **Aucune entité `Travel`**, ni activité, ni hébergement, ni dates. 3 classes de tests d'intégration Testcontainers. |
+| [`travel-service/`](travel-service/README.md) | Graphe de destinations (doublant l'entité « Travel » du sujet — ADR §2), abonnements, avis, recherche et recommandations | Neo4j (Community Edition) | **Implémenté** : CRUD `Destination` complet (dates, prix, capacité, activités, hébergements), abonnements avec paiement Stripe/PayPal/manuel, avis, recherche Elasticsearch + autocomplete, recommandations personnalisées. **Écart restant** : `TRANSPORT` sans mise à jour/suppression/anti-doublon, traversée limitée à 1 saut. |
 | [`admin-dashboard/`](admin-dashboard/README.md) | Front d'administration Angular | — | **Implémenté, non conteneurisé** : front par rôle (Admin / Travel Manager / Voyageur) — connexion, inscription, catalogue + recherche Elasticsearch, abonnements, mes voyages, abonnés, file de signalements, et les écrans admin `/users`, `/payments`, `/destinations` — câblés aux 3 APIs via la gateway (voir le README du front pour la table des routes et ce qui manque : paiement, feedback, stats, PWA, i18n). Tourne via `ng serve` uniquement. |
 
 ## Socle commun aux 3 services Spring Boot
@@ -34,17 +34,25 @@ Spring Boot `3.4.3`, Java, build Maven (`./mvnw`), image construite depuis le
 
 ## Non implémenté
 
-- **Aucune intégration Stripe ni PayPal** : aucun SDK, aucun appel HTTP sortant vers
-  un fournisseur de paiement. Tous les paiements sont créés manuellement ; la colonne
-  `external_reference` existe mais reste inutilisée.
-- **Pas de « méthode de paiement »** au sens du sujet : l'entité modélisée est une
-  transaction, pas un moyen de paiement enregistré.
-- **Pas d'entité `Travel`** (dates, durée, activités, hébergement) côté
-  `travel-service` : uniquement `Destination` et la relation `TRANSPORT`.
 - **Pas de CRUD complet sur `TRANSPORT`** : ni mise à jour, ni suppression, ni
-  anti-doublon ; traversée limitée à 1 saut.
-- **Pas de RBAC** : le JWT ne porte aucune claim de rôle, aucun profil « Admin »
-  n'existe ; toute route protégée est ouverte à n'importe quel token valide, et aucune
-  route n'est *ownership-aware*.
+  anti-doublon ; traversée limitée à 1 saut (pas de pathfinding multi-hop).
 - **`admin-dashboard` non conteneurisé** : pas de `Dockerfile`, pas de fragment
-  Compose, pas de route Traefik.
+  Compose, pas de route Traefik ; tourne uniquement via `ng serve`.
+- **Aucune CI/CD pour cette phase** : `ci/jenkins/README.md` et
+  `ci/sonarqube/README.md` restent des placeholders Phase 0 ; aucun pipeline
+  n'exécute les tests ni n'analyse la qualité du code automatiquement.
+
+~~Aucune intégration Stripe ni PayPal~~ — **corrigé** : `payment-service` intègre
+Stripe (PaymentIntent + webhook) et PayPal (Order + capture) ; voir son README pour
+le détail. Le formulaire de carte Stripe côté front reste à intégrer (voir le README
+de `admin-dashboard`).
+
+~~Pas d'entité `Travel`~~ — **corrigé, par un choix assumé** : `Destination` porte
+désormais dates, prix, capacité, activités et hébergements — c'est l'entité
+« Travel » du sujet, sans nœud Neo4j séparé (voir
+`docs/lets-travel-architecture-decisions.md` §2).
+
+~~Pas de RBAC~~ — **corrigé** : trois rôles (`ADMIN` / `TRAVEL_MANAGER` /
+`TRAVELER`) portés par chaque JWT et vérifiés côté service (`requireAdmin` /
+`requireAnyRole` / vérifications *ownership-aware*), voir le README de chaque
+service.

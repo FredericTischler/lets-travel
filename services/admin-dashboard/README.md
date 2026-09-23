@@ -74,15 +74,20 @@ backend (403), un front modifié n'obtient aucun droit supplémentaire.
 ### Shell (`shared/layout/`)
 
 `AppShellComponent` est piloté par les données : `nav-items.ts` liste
-`{label, route, roles}` et le shell n'affiche que les entrées permises au rôle courant
-(même fonction `hasAccess` que les guards). Il affiche aussi l'email (claim `email`),
-un badge de rôle, la bascule de thème et le bouton **Se déconnecter**
-(`AuthService.logout()` puis `/login`). Ajouter un écran = une route gardée + une
-entrée dans `nav-items.ts`.
+`{label, route, roles, group?}` et le shell n'affiche que les entrées permises au rôle
+courant (même fonction `hasAccess` que les guards). Les entrées qui partagent un
+`group` (« Voyageur », « Organisateur », « Administration ») s'affichent sous une
+section repliable — utile pour un ADMIN, qui hérite de toutes les entrées par
+hiérarchie de rôle et verrait sinon 11 liens à plat (`navSectionsFor()`, ouvert par
+défaut, état par groupe en signal, générique sur le nombre de groupes). Le shell
+affiche aussi l'email (claim `email`), un badge de rôle, la bascule de thème et le
+bouton **Se déconnecter** (`AuthService.logout()` puis `/login`). Ajouter un écran =
+une route gardée + une entrée dans `nav-items.ts` (avec ou sans `group`).
 
-**Responsive** : sous le breakpoint `lg` (1024 px) la navigation et les contrôles se
-replient derrière un bouton « Menu » (`aria-expanded`), refermé au clic sur un lien.
-Il n'y a qu'**un seul** `<nav>` dans le DOM (le CSS décide barre ou liste déroulante).
+**Responsive** : sous le breakpoint `lg` (1024 px) la navigation en sidebar et les
+contrôles se replient derrière un bouton « Menu » (`aria-expanded`), refermé au clic
+sur un lien. Il n'y a qu'**un seul** `<nav>` dans le DOM (le CSS décide sidebar ou
+liste déroulante).
 Les listes de données sont des tableaux à défilement horizontal (`table-shell`) ou des
 grilles de cartes `1 / 2 / 3` colonnes ; les formulaires passent en une colonne sur mobile.
 Vérifié visuellement à 375 px (menu mobile) sur le dev server ; pas de test automatisé
