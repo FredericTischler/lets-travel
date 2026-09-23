@@ -1,4 +1,4 @@
-import { Component, forwardRef, input } from '@angular/core';
+import { Component, forwardRef, input, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
 export type InputType = 'text' | 'email' | 'password' | 'number';
@@ -38,14 +38,14 @@ export class InputComponent implements ControlValueAccessor {
   readonly autocomplete = input<string>('off');
   readonly error = input<string | null>(null);
 
-  protected displayValue = '';
-  protected disabled = false;
+  protected readonly displayValue = signal('');
+  protected readonly disabled = signal(false);
 
   private onChange: (value: string | number | null) => void = () => {};
   private onTouched: () => void = () => {};
 
   writeValue(value: string | number | null): void {
-    this.displayValue = value === null || value === undefined ? '' : String(value);
+    this.displayValue.set(value === null || value === undefined ? '' : String(value));
   }
 
   registerOnChange(fn: (value: string | number | null) => void): void {
@@ -57,11 +57,11 @@ export class InputComponent implements ControlValueAccessor {
   }
 
   setDisabledState(isDisabled: boolean): void {
-    this.disabled = isDisabled;
+    this.disabled.set(isDisabled);
   }
 
   protected handleInput(rawValue: string): void {
-    this.displayValue = rawValue;
+    this.displayValue.set(rawValue);
     if (this.type() === 'number') {
       this.onChange(rawValue === '' ? null : parseFloat(rawValue));
     } else {

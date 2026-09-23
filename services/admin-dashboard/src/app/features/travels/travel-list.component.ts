@@ -4,7 +4,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Subject, catchError, debounceTime, distinctUntilChanged, map, of, switchMap } from 'rxjs';
+import { Subject, catchError, debounceTime, map, of, switchMap } from 'rxjs';
 
 import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
@@ -73,9 +73,16 @@ export class TravelListComponent implements OnInit {
   constructor() {
     this.typed$
       .pipe(
+        // No distinctUntilChanged() here: debounceTime already coalesces rapid
+        // keystrokes down to the last value in each quiet window, so
+        // distinctUntilChanged would only ever compare *emitted* (post-debounce)
+        // values — it can't see whatever was typed in between two debounce
+        // windows. That silently drops a legitimate re-search: type "ab", type
+        // more, clear, retype "ab" — the second "ab" never reaches here as
+        // "distinct" from the first, because everything typed in between was
+        // coalesced away before distinctUntilChanged ever saw it.
         debounceTime(AUTOCOMPLETE_DEBOUNCE_MS),
         map((value) => value.trim()),
-        distinctUntilChanged(),
         switchMap((prefix) => {
           if (prefix.length < AUTOCOMPLETE_MIN_CHARS) {
             return of<AutocompleteSuggestion[]>([]);
