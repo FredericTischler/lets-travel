@@ -232,8 +232,8 @@ class RecommendationIntegrationTest {
 
         // isNotEmpty() first (java:S5841): allSatisfy vacuously passes on an empty list, which would let this
         // test claim "pending/cancelled subscriptions are not history" without ever inspecting a real reason.
-        assertThat(list).isNotEmpty();
-        assertThat(list).allSatisfy(r -> assertThat(reasons(r)).singleElement().asString().startsWith("No history yet"));
+        assertThat(list).isNotEmpty()
+                .allSatisfy(r -> assertThat(reasons(r)).singleElement().asString().startsWith("No history yet"));
     }
 
     // ------------------------------------------------------------------ who is eligible
