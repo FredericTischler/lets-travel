@@ -28,7 +28,6 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -156,9 +155,10 @@ class SecurityEvidenceIntegrationTest {
         String hashA = storedHash("hash-a@example.com");
         String hashB = storedHash("hash-b@example.com");
 
-        assertThat(hashA).matches("^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$");
-        assertThat(hashA).doesNotContain(password);
-        assertThat(hashA).as("same password, different salt").isNotEqualTo(hashB);
+        assertThat(hashA)
+                .matches("^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$")
+                .doesNotContain(password)
+                .as("same password, different salt").isNotEqualTo(hashB);
         assertThat(passwordEncoder.matches(password, hashA)).isTrue();
         // No column of the users table other than password_hash holds the plaintext.
         assertThat(jdbcTemplate.queryForObject(

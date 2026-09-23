@@ -14,6 +14,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Base64;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -99,10 +101,13 @@ class RoleAssignmentIntegrationTest {
         assertThat(decodeRoleClaim(token)).isEqualTo("TRAVELER");
     }
 
+    private static final Pattern ROLE_CLAIM = Pattern.compile("\"role\":\"([^\"]+)\"");
+
     /** Decodes the unsigned JWT payload just enough to read the {@code role} claim — test-only, no signature check. */
     private static String decodeRoleClaim(String jwt) {
         String payloadSegment = jwt.split("\\.")[1];
         String json = new String(Base64.getUrlDecoder().decode(payloadSegment));
-        return json.replaceAll(".*\"role\":\"([^\"]+)\".*", "$1");
+        Matcher matcher = ROLE_CLAIM.matcher(json);
+        return matcher.find() ? matcher.group(1) : json;
     }
 }

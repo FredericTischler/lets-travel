@@ -106,7 +106,7 @@ class ReportsIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).containsEntry("reportedUserId", reportedId);
         assertThat(response.getBody()).containsEntry("status", "OPEN");
-        assertThat(response.getBody().get("reporterId")).isNotEqualTo(reportedId);
+        assertThat(response.getBody()).doesNotContainEntry("reporterId", reportedId);
     }
 
     @Test
@@ -251,7 +251,7 @@ class ReportsIntegrationTest {
                 "/reports/count/" + UUID.randomUUID(), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Number) response.getBody().get("count")).longValue()).isEqualTo(0L);
+        assertThat(((Number) response.getBody().get("count")).longValue()).isZero();
     }
 
     // --- helpers ---
