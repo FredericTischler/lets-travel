@@ -135,13 +135,13 @@ class PaymentRbacOwnershipIntegrationTest {
 
         ResponseEntity<List> travelerListResponse = restTemplate.exchange(
                 "/payments", HttpMethod.GET, new HttpEntity<>(headersFor(travelerToken)), List.class);
-        assertThat(travelerListResponse.getBody()).allSatisfy(
-                p -> assertThat(((Map<?, ?>) p).get("userId")).isEqualTo(travelerId.toString()));
+        assertThat(travelerListResponse.getBody()).isNotEmpty().allSatisfy(
+                p -> assertThat((Map<String, Object>) p).containsEntry("userId", travelerId.toString()));
 
         String adminToken = TestJwtTokens.tokenFor(UUID.randomUUID(), "ADMIN");
         ResponseEntity<List> adminListResponse = restTemplate.exchange(
                 "/payments", HttpMethod.GET, new HttpEntity<>(headersFor(adminToken)), List.class);
-        assertThat(adminListResponse.getBody().size()).isGreaterThanOrEqualTo(2);
+        assertThat(adminListResponse.getBody()).hasSizeGreaterThanOrEqualTo(2);
     }
 
     @Test
