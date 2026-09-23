@@ -96,6 +96,24 @@ describe('AppShellComponent', () => {
     expect(navigate).toHaveBeenCalledWith(['/login']);
   });
 
+  it('groups a TRAVEL_MANAGER\'s own entries under a collapsible "Organisateur" section, open by default', () => {
+    setup('TRAVEL_MANAGER');
+
+    const toggle = fixture.nativeElement.querySelector(
+      '[aria-controls="nav-group-Organisateur"]',
+    ) as HTMLButtonElement;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(linkLabels()).toEqual(
+      expect.arrayContaining(['Tableau de bord organisateur', 'Mes voyages organisés']),
+    );
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(linkLabels()).toEqual(['Voyages', 'Mes abonnements', 'Mes statistiques']);
+  });
+
   it('groups the admin-only entries under a collapsible "Administration" section, open by default', () => {
     setup('ADMIN');
 

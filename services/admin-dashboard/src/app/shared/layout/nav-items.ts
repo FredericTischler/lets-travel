@@ -13,8 +13,8 @@ export interface NavItem {
    * Optional group label. An ADMIN inherits every Traveler/Manager entry on
    * top of their own ({@link hasAccess}'s hierarchy), which otherwise mixes
    * eleven links in one flat list — grouped entries render under a single
-   * collapsible "Administration" section instead, so the two audiences stay
-   * visually separated when logged in as ADMIN.
+   * collapsible section instead ("Organisateur", "Administration"), so each
+   * audience stays visually separated when a role inherits more than its own.
    */
   group?: string;
 }
@@ -28,8 +28,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Voyages', route: '/travels', roles: [ROLES.TRAVELER] },
   { label: 'Mes abonnements', route: '/my-subscriptions', roles: [ROLES.TRAVELER] },
   { label: 'Mes statistiques', route: '/my-stats', roles: [ROLES.TRAVELER] },
-  { label: 'Tableau de bord organisateur', route: '/manager/dashboard', roles: [ROLES.TRAVEL_MANAGER] },
-  { label: 'Mes voyages organisés', route: '/manager/travels', roles: [ROLES.TRAVEL_MANAGER] },
+  {
+    label: 'Tableau de bord organisateur',
+    route: '/manager/dashboard',
+    roles: [ROLES.TRAVEL_MANAGER],
+    group: 'Organisateur',
+  },
+  {
+    label: 'Mes voyages organisés',
+    route: '/manager/travels',
+    roles: [ROLES.TRAVEL_MANAGER],
+    group: 'Organisateur',
+  },
   { label: 'Tableau de bord admin', route: '/admin/dashboard', roles: [ROLES.ADMIN], group: 'Administration' },
   { label: 'Avis', route: '/admin/feedback', roles: [ROLES.ADMIN], group: 'Administration' },
   { label: 'Signalements', route: '/admin/reports', roles: [ROLES.ADMIN], group: 'Administration' },
