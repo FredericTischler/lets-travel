@@ -134,34 +134,41 @@ public class RecommendationRepository {
         return neo4jClient.query(CANDIDATE_ROWS_QUERY)
                 .bindAll(params)
                 .fetchAs(RecommendationRow.class)
-                .mappedBy((typeSystem, record) -> toRow(record))
+                .mappedBy((typeSystem, row) -> toRow(row))
                 .all()
                 .stream()
                 .toList();
     }
 
-    private static RecommendationRow toRow(Record record) {
-        RecommendationRow.HistoryMatch history = record.get("hId").isNull() ? null
-                : new RecommendationRow.HistoryMatch(
-                        UUID.fromString(record.get("hId").asString()),
-                        record.get("hName").asString(),
-                        record.get("hCountry").isNull() ? null : record.get("hCountry").asString(),
-                        price(record.get("hPrice")),
-                        record.get("rating").isNull() ? null : record.get("rating").asInt(),
-                        record.get("participated").asBoolean(),
-                        record.get("sameCountry").asBoolean(),
-                        record.get("sharedActivities").asList(Value::asString),
-                        record.get("sharedTypes").asList(Value::asString),
-                        record.get("similarPrice").asBoolean());
+    private static RecommendationRow toRow(Record row) {
+        RecommendationRow.HistoryMatch history = historyMatch(row);
         return new RecommendationRow(
-                UUID.fromString(record.get("id").asString()),
-                record.get("name").asString(),
-                record.get("country").isNull() ? null : record.get("country").asString(),
-                record.get("startDate").isNull() ? null : record.get("startDate").asLocalDate(),
-                record.get("endDate").isNull() ? null : record.get("endDate").asLocalDate(),
-                price(record.get("price")),
-                record.get("activeSubscribers").asLong(),
+                UUID.fromString(row.get("id").asString()),
+                row.get("name").asString(),
+                row.get("country").isNull() ? null : row.get("country").asString(),
+                row.get("startDate").isNull() ? null : row.get("startDate").asLocalDate(),
+                row.get("endDate").isNull() ? null : row.get("endDate").asLocalDate(),
+                price(row.get("price")),
+                row.get("activeSubscribers").asLong(),
                 history);
+    }
+
+    /** {@code null} when the traveler has no history for this candidate (cold start). */
+    private static RecommendationRow.HistoryMatch historyMatch(Record row) {
+        if (row.get("hId").isNull()) {
+            return null;
+        }
+        return new RecommendationRow.HistoryMatch(
+                UUID.fromString(row.get("hId").asString()),
+                row.get("hName").asString(),
+                row.get("hCountry").isNull() ? null : row.get("hCountry").asString(),
+                price(row.get("hPrice")),
+                row.get("rating").isNull() ? null : row.get("rating").asInt(),
+                row.get("participated").asBoolean(),
+                row.get("sameCountry").asBoolean(),
+                row.get("sharedActivities").asList(Value::asString),
+                row.get("sharedTypes").asList(Value::asString),
+                row.get("similarPrice").asBoolean());
     }
 
     /** Spring Data Neo4j stores a {@code BigDecimal} as a string; tolerate a native number too. */

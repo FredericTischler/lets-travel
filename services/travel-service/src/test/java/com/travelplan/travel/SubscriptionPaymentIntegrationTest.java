@@ -166,8 +166,8 @@ class SubscriptionPaymentIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         Map<String, Object> body = response.getBody();
-        assertThat(body).containsEntry("status", "PENDING_PAYMENT");
-        assertThat(body).containsEntry("travelerId", travelerId.toString());
+        assertThat(body).containsEntry("status", "PENDING_PAYMENT")
+                .containsEntry("travelerId", travelerId.toString());
         assertThat(body.get("expiresAt")).isNotNull();
         String subscriptionId = (String) body.get("id");
         @SuppressWarnings("unchecked")
@@ -190,9 +190,9 @@ class SubscriptionPaymentIntegrationTest {
 
         // ...and it shows in the traveler's own history as pending, with the payment attached.
         Map<String, Object> mine = mySubscriptions(travelerToken).get(0);
-        assertThat(mine).containsEntry("status", "PENDING_PAYMENT");
-        assertThat(mine).containsEntry("subscriptionId", subscriptionId);
-        assertThat(mine).containsEntry("paymentId", payment.get("paymentId"));
+        assertThat(mine).containsEntry("status", "PENDING_PAYMENT")
+                .containsEntry("subscriptionId", subscriptionId)
+                .containsEntry("paymentId", payment.get("paymentId"));
     }
 
     @Test

@@ -163,8 +163,8 @@ class SubscriptionIntegrationTest {
         assertThat(response.getBody()).hasSize(1);
         @SuppressWarnings("unchecked")
         Map<String, Object> row = (Map<String, Object>) response.getBody().get(0);
-        assertThat(row).containsEntry("travelerId", travelerId.toString());
-        assertThat(row).containsEntry("status", "ACTIVE");
+        assertThat(row).containsEntry("travelerId", travelerId.toString())
+                .containsEntry("status", "ACTIVE");
     }
 
     @Test
@@ -234,8 +234,8 @@ class SubscriptionIntegrationTest {
         assertThat(response.getBody()).hasSize(1);
         @SuppressWarnings("unchecked")
         Map<String, Object> row = (Map<String, Object>) response.getBody().get(0);
-        assertThat(row).containsEntry("destinationId", destinationId.toString());
-        assertThat(row).containsEntry("status", "ACTIVE");
+        assertThat(row).containsEntry("destinationId", destinationId.toString())
+                .containsEntry("status", "ACTIVE");
     }
 
     /**

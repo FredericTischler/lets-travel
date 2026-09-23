@@ -148,8 +148,9 @@ class PayPalPaymentServiceTest {
         String orderId = "ORDER-5";
         Payment payment = pendingPayment(orderId);
         when(paymentRepository.findActiveByExternalReference(orderId)).thenReturn(Optional.of(payment));
+        UUID otherUser = UUID.randomUUID();
 
-        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, UUID.randomUUID(), false))
+        assertThatThrownBy(() -> payPalPaymentService.captureOrder(orderId, otherUser, false))
                 .isInstanceOf(PaymentNotFoundException.class);
 
         verifyNoInteractions(paypalServerSdkClient);

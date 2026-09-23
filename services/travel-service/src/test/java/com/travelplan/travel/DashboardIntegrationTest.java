@@ -27,7 +27,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
@@ -216,22 +215,46 @@ class DashboardIntegrationTest {
 
     // ============================================================ manager dashboard
 
-    @Test
-    void managerDashboardReportsIncomeTripsTravelersAndRatingOfTheSeededScenario() {
+    private record ManagerDashboardFixture(Scenario s, Map<String, Object> dashboard) {
+    }
+
+    /**
+     * Seeds the shared scenario and fetches M1's dashboard once. Split out so the
+     * former single mega-test below (41 assertions, java:S5961) can be broken into
+     * several focused tests, each reseeding its own scenario like every other test
+     * in this class, and each still asserting on a coherent slice of the response.
+     */
+    private ManagerDashboardFixture managerDashboardFixture() {
         Scenario s = seedScenario();
-
         Map<String, Object> dashboard = getOk("/managers/me/dashboard", manager(s.m1()));
+        return new ManagerDashboardFixture(s, dashboard);
+    }
 
-        assertThat(dashboard).containsEntry("managerId", s.m1().toString()).containsEntry("partial", false);
-        assertThat(map(dashboard, "trips")).containsEntry("organized", 3).containsEntry("past", 2)
+    @Test
+    void managerDashboardReportsTripsAndTravelerCounts() {
+        ManagerDashboardFixture f = managerDashboardFixture();
+
+        assertThat(f.dashboard()).containsEntry("managerId", f.s().m1().toString()).containsEntry("partial", false);
+        assertThat(map(f.dashboard(), "trips")).containsEntry("organized", 3).containsEntry("past", 2)
                 .containsEntry("ongoing", 0).containsEntry("upcoming", 1);
         // Distinct ACTIVE travelers: t1 t2 t3 t4 t5 (t3 is on two travels, the PENDING/CANCELLED do not count).
-        assertThat(dashboard).containsEntry("travelers", 5);
-        Map<String, Object> rating = map(dashboard, "rating");
+        assertThat(f.dashboard()).containsEntry("travelers", 5);
+    }
+
+    @Test
+    void managerDashboardReportsRating() {
+        ManagerDashboardFixture f = managerDashboardFixture();
+
+        Map<String, Object> rating = map(f.dashboard(), "rating");
         assertThat(rating).containsEntry("feedbackCount", 3);
         assertThat(num(rating.get("average"))).isCloseTo(3.67, within(0.005));
+    }
 
-        Map<String, Object> income = map(dashboard, "income");
+    @Test
+    void managerDashboardReportsIncomeTotalsAndByMonthBreakdown() {
+        ManagerDashboardFixture f = managerDashboardFixture();
+
+        Map<String, Object> income = map(f.dashboard(), "income");
         assertThat(income).containsEntry("referenceCurrency", "EUR").containsEntry("months", 6);
         assertThat(totals(income, "totals")).containsEntry("EUR", 190.0).containsEntry("USD", 20.0);
         assertThat(num(income.get("amount"))).isEqualTo(190.0);
@@ -247,28 +270,38 @@ class DashboardIntegrationTest {
         assertThat(monthAmount(byMonth, THIS_MONTH)).isEqualTo(80.0);          // 50 + 30 (EUR only)
         assertThat(totals(monthOf(byMonth, THIS_MONTH), "totals")).containsEntry("EUR", 80.0).containsEntry("USD", 20.0);
         assertThat(monthAmount(byMonth, THIS_MONTH.minusMonths(5))).isZero();   // empty months are kept
+    }
 
-        List<Map<String, Object>> travels = list(dashboard, "travels");
+    @Test
+    void managerDashboardReportsPerTravelRows() {
+        ManagerDashboardFixture f = managerDashboardFixture();
+
+        List<Map<String, Object>> travels = list(f.dashboard(), "travels");
         assertThat(travels).hasSize(3);
-        Map<String, Object> a = travelRow(travels, s.a());
+        Map<String, Object> a = travelRow(travels, f.s().a());
         assertThat(a).containsEntry("status", "PAST").containsEntry("subscribers", 3).containsEntry("feedbackCount", 2)
                 .containsEntry("capacity", 10);
         assertThat(num(a.get("averageRating"))).isEqualTo(4.5);
         assertThat(totals(a, "income")).containsEntry("EUR", 150.0);
         assertThat(num(a.get("incomeAmount"))).isEqualTo(150.0);
-        Map<String, Object> b = travelRow(travels, s.b());
+        Map<String, Object> b = travelRow(travels, f.s().b());
         assertThat(b).containsEntry("subscribers", 1);
         assertThat(totals(b, "income")).containsEntry("EUR", 30.0).containsEntry("USD", 20.0);
-        Map<String, Object> c = travelRow(travels, s.c());
+        Map<String, Object> c = travelRow(travels, f.s().c());
         assertThat(c).containsEntry("status", "UPCOMING").containsEntry("subscribers", 2).containsEntry("feedbackCount", 0);
         assertThat(c.get("averageRating")).isNull();
         assertThat(totals(c, "income")).containsEntry("EUR", 10.0);
+    }
+
+    @Test
+    void managerDashboardReportsRecentFeedback() {
+        ManagerDashboardFixture f = managerDashboardFixture();
 
         // Recent feedback: this manager's three, newest first, none of M2's.
-        List<Map<String, Object>> recent = list(dashboard, "recentFeedback");
-        assertThat(recent).extracting(f -> f.get("rating")).containsExactly(2, 4, 5);
-        assertThat(recent).extracting(f -> f.get("destinationId"))
-                .containsExactly(s.b().toString(), s.a().toString(), s.a().toString());
+        List<Map<String, Object>> recent = list(f.dashboard(), "recentFeedback");
+        assertThat(recent).extracting(fb -> fb.get("rating")).containsExactly(2, 4, 5);
+        assertThat(recent).extracting(fb -> fb.get("destinationId"))
+                .containsExactly(f.s().b().toString(), f.s().a().toString(), f.s().a().toString());
     }
 
     @Test
@@ -381,34 +414,58 @@ class DashboardIntegrationTest {
 
     // ============================================================ admin dashboard
 
-    @Test
-    void adminDashboardComposesTopListsIncomeTotalsHistoryAndFeedbacks() {
+    private record AdminDashboardFixture(Scenario s, Map<String, Object> dashboard) {
+    }
+
+    /**
+     * Seeds the shared scenario and fetches the admin dashboard once. Split out so
+     * the former single mega-test below (37 assertions, java:S5961) can be broken
+     * into several focused tests, each reseeding its own scenario like every other
+     * test in this class, and each still asserting on a coherent slice of the response.
+     */
+    private AdminDashboardFixture adminDashboardFixture() {
         Scenario s = seedScenario();
-
         Map<String, Object> dashboard = getOk("/admin/dashboard", TestJwtTokens.tokenWithRole("ADMIN"));
+        return new AdminDashboardFixture(s, dashboard);
+    }
 
-        assertThat(dashboard).containsEntry("partial", false).containsEntry("referenceCurrency", "EUR")
+    @Test
+    void adminDashboardReportsPartialFlagAndTotals() {
+        AdminDashboardFixture f = adminDashboardFixture();
+
+        assertThat(f.dashboard()).containsEntry("partial", false).containsEntry("referenceCurrency", "EUR")
                 .containsEntry("months", 6);
 
         // Number of organised travels + satisfaction.
-        Map<String, Object> totals = map(dashboard, "totals");
+        Map<String, Object> totals = map(f.dashboard(), "totals");
         assertThat(totals).containsEntry("managers", 3).containsEntry("organizedTravels", 5)
                 .containsEntry("pastTravels", 3).containsEntry("ongoingTravels", 0)
                 .containsEntry("upcomingTravels", 2).containsEntry("activeTravelers", 6)
                 .containsEntry("feedbackCount", 4);
         assertThat(num(totals.get("averageRating"))).isEqualTo(4.0);            // (5+4+2+5)/4
+    }
+
+    @Test
+    void adminDashboardReportsIncomeByMonth() {
+        AdminDashboardFixture f = adminDashboardFixture();
 
         // Income of the last months, platform-wide.
-        Map<String, Object> income = map(dashboard, "income");
+        Map<String, Object> income = map(f.dashboard(), "income");
         assertThat(totals(income, "totals")).containsEntry("EUR", 390.0).containsEntry("USD", 20.0);
         List<Map<String, Object>> byMonth = list(income, "byMonth");
         assertThat(byMonth).hasSize(6);
         assertThat(monthAmount(byMonth, THIS_MONTH)).isEqualTo(280.0);          // 50 + 30 + 200
         assertThat(monthAmount(byMonth, LAST_MONTH)).isEqualTo(100.0);
         assertThat(monthAmount(byMonth, TWO_MONTHS_AGO)).isEqualTo(10.0);
+    }
+
+    @Test
+    void adminDashboardReportsTopManagers() {
+        AdminDashboardFixture f = adminDashboardFixture();
+        Scenario s = f.s();
 
         // Top managers: score, income, rating.
-        List<Map<String, Object>> byScore = list(dashboard, "topManagersByScore");
+        List<Map<String, Object>> byScore = list(f.dashboard(), "topManagersByScore");
         assertThat(byScore).extracting(m -> m.get("managerId"))
                 .containsExactly(s.m1().toString(), s.m2().toString(), s.m3().toString());
         assertThat(byScore).extracting(m -> m.get("rank")).containsExactly(1, 2, 3);
@@ -416,24 +473,35 @@ class DashboardIntegrationTest {
         assertThat(num(byScore.get(1).get("score"))).isCloseTo(63.17, within(0.011));
         assertThat(num(byScore.get(2).get("score"))).isCloseTo(25.0, within(0.011));
 
-        List<Map<String, Object>> byIncome = list(dashboard, "topManagersByIncome");
+        List<Map<String, Object>> byIncome = list(f.dashboard(), "topManagersByIncome");
         assertThat(byIncome).extracting(m -> m.get("managerId"))
                 .containsExactly(s.m2().toString(), s.m1().toString());         // M3 earned nothing: absent
         assertThat(byIncome).extracting(m -> m.get("rank")).containsExactly(1, 2);
         assertThat(num(byIncome.get(0).get("incomeAmount"))).isEqualTo(200.0);
 
-        List<Map<String, Object>> byRating = list(dashboard, "topManagersByRating");
+        List<Map<String, Object>> byRating = list(f.dashboard(), "topManagersByRating");
         assertThat(byRating).extracting(m -> m.get("managerId"))
                 .containsExactly(s.m2().toString(), s.m1().toString());         // M2 damped 3.33 > M1 3.25; M3 unrated: absent
+    }
 
-        // Top travels.
-        assertThat(list(dashboard, "topTravelsByIncome")).extracting(t -> t.get("destinationId"))
+    @Test
+    void adminDashboardReportsTopTravels() {
+        AdminDashboardFixture f = adminDashboardFixture();
+        Scenario s = f.s();
+
+        assertThat(list(f.dashboard(), "topTravelsByIncome")).extracting(t -> t.get("destinationId"))
                 .containsExactly(s.d().toString(), s.a().toString(), s.b().toString(), s.c().toString());
-        assertThat(list(dashboard, "topTravelsByRating")).extracting(t -> t.get("destinationId"))
+        assertThat(list(f.dashboard(), "topTravelsByRating")).extracting(t -> t.get("destinationId"))
                 .containsExactly(s.a().toString(), s.d().toString(), s.b().toString());
+    }
+
+    @Test
+    void adminDashboardReportsTravelHistory() {
+        AdminDashboardFixture f = adminDashboardFixture();
+        Scenario s = f.s();
 
         // Detailed history: past travels only, latest end first, with subscribers, income, rating.
-        List<Map<String, Object>> history = list(dashboard, "travelHistory");
+        List<Map<String, Object>> history = list(f.dashboard(), "travelHistory");
         assertThat(history).extracting(t -> t.get("destinationId"))
                 .containsExactly(s.d().toString(), s.a().toString(), s.b().toString());
         Map<String, Object> historyA = travelRow(history, s.a());
@@ -441,9 +509,15 @@ class DashboardIntegrationTest {
                 .containsEntry("managerId", s.m1().toString());
         assertThat(num(historyA.get("averageRating"))).isEqualTo(4.5);
         assertThat(num(historyA.get("incomeAmount"))).isEqualTo(150.0);
+    }
+
+    @Test
+    void adminDashboardReportsRecentFeedback() {
+        AdminDashboardFixture f = adminDashboardFixture();
 
         // Feedbacks to assess satisfaction: all four, newest first.
-        assertThat(list(dashboard, "recentFeedback")).extracting(f -> f.get("rating")).containsExactly(5, 2, 4, 5);
+        assertThat(list(f.dashboard(), "recentFeedback")).extracting(fb -> fb.get("rating"))
+                .containsExactly(5, 2, 4, 5);
     }
 
     @Test

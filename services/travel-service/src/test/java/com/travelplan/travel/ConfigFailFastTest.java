@@ -71,14 +71,23 @@ class ConfigFailFastTest {
             Map<String, Object> partial = new HashMap<>(all);
             partial.remove(missing);
             StandardEnvironment env = environmentWith(partial);
-            assertThatThrownBy(() -> {
-                env.getProperty("spring.neo4j.uri");
-                env.getProperty("spring.neo4j.authentication.username");
-                env.getProperty("spring.neo4j.authentication.password");
-            }).as("missing %s must abort", missing)
+            assertThatThrownBy(() -> resolveNeo4jProperties(env))
+                    .as("missing %s must abort", missing)
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Could not resolve placeholder '" + missing + "'");
         }
+    }
+
+    /**
+     * Resolves the three Neo4j properties in turn: whichever one depends on
+     * the currently-missing variable throws first, the others are never
+     * reached. Extracted so the {@code assertThatThrownBy} lambda above calls
+     * a single method rather than several that could each throw (java:S5778).
+     */
+    private static void resolveNeo4jProperties(StandardEnvironment env) {
+        env.getProperty("spring.neo4j.uri");
+        env.getProperty("spring.neo4j.authentication.username");
+        env.getProperty("spring.neo4j.authentication.password");
     }
 
     @Test

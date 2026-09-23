@@ -14,11 +14,9 @@ import com.travelplan.identity.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for report (signalement) lifecycle management —
@@ -97,7 +95,7 @@ public class ReportService {
     public List<ReportResponse> findAll() {
         return reportRepository.findAllActive().stream()
                 .map(ReportResponse::from)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

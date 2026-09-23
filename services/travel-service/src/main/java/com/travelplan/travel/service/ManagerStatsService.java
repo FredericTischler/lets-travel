@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -54,7 +55,7 @@ public class ManagerStatsService {
      * indistinguishable here.
      */
     public ManagerStatsResponse statsFor(UUID managerId) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         List<ManagerDestinationRatingView> destinations = managerStatsRepository.findDestinationRatings(managerId);
 
         long feedbackCount = 0;

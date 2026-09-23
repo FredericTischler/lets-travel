@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -44,19 +45,27 @@ class BootstrapAdminInitializerTest {
 
     @Test
     void onlyOneOfTheTwoVariablesRefusesToStart() {
-        assertThatThrownBy(() -> new BootstrapAdminInitializer(userService, "admin@example.com", "").run(null))
+        BootstrapAdminInitializer emailOnly = new BootstrapAdminInitializer(userService, "admin@example.com", "");
+        assertThatThrownBy(() -> emailOnly.run(null))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("must be set together");
-        assertThatThrownBy(() -> new BootstrapAdminInitializer(userService, "", GOOD_PASSWORD).run(null))
+
+        BootstrapAdminInitializer passwordOnly = new BootstrapAdminInitializer(userService, "", GOOD_PASSWORD);
+        assertThatThrownBy(() -> passwordOnly.run(null))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("must be set together");
     }
 
     @Test
     void aWeakPasswordOrABadEmailRefusesToStartWithoutEchoingTheSecret() {
-        assertThatThrownBy(() -> new BootstrapAdminInitializer(userService, "admin@example.com", "short-pw").run(null))
+        BootstrapAdminInitializer weakPassword =
+                new BootstrapAdminInitializer(userService, "admin@example.com", "short-pw");
+        assertThatThrownBy(() -> weakPassword.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("at least 12")
                 .hasMessageNotContaining("short-pw");
-        assertThatThrownBy(() -> new BootstrapAdminInitializer(userService, "not-an-email", GOOD_PASSWORD).run(null))
+
+        BootstrapAdminInitializer badEmail =
+                new BootstrapAdminInitializer(userService, "not-an-email", GOOD_PASSWORD);
+        assertThatThrownBy(() -> badEmail.run(null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageNotContaining(GOOD_PASSWORD);
 
@@ -69,7 +78,9 @@ class BootstrapAdminInitializerTest {
                 .thenThrow(new DataIntegrityViolationException("uq_users_email_active"));
         when(userService.hasActiveAdmin()).thenReturn(true);
 
-        new BootstrapAdminInitializer(userService, "admin@example.com", GOOD_PASSWORD).run(null);
+        assertThatCode(() -> new BootstrapAdminInitializer(userService, "admin@example.com", GOOD_PASSWORD).run(null))
+                .doesNotThrowAnyException();
+        verify(userService).hasActiveAdmin();
     }
 
     @Test
@@ -78,7 +89,9 @@ class BootstrapAdminInitializerTest {
                 .thenThrow(new DataIntegrityViolationException("something else"));
         when(userService.hasActiveAdmin()).thenReturn(false);
 
-        assertThatThrownBy(() -> new BootstrapAdminInitializer(userService, "admin@example.com", GOOD_PASSWORD).run(null))
+        BootstrapAdminInitializer initializer =
+                new BootstrapAdminInitializer(userService, "admin@example.com", GOOD_PASSWORD);
+        assertThatThrownBy(() -> initializer.run(null))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 

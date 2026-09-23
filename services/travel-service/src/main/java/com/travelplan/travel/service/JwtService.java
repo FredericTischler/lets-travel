@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
@@ -74,7 +75,7 @@ public class JwtService {
      * shared HS256 secret, mirroring {@code service:payment} in the other direction.
      */
     public String generateServiceToken() {
-        Instant now = Instant.now();
+        Instant now = Instant.now(Clock.systemUTC());
         return Jwts.builder()
                 .subject(SERVICE_TRAVEL_SUBJECT)
                 .issuedAt(Date.from(now))

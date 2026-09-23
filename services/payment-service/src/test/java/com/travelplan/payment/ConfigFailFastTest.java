@@ -77,11 +77,13 @@ class ConfigFailFastTest {
             Map<String, Object> partial = new HashMap<>(ALL);
             partial.remove(missing);
             StandardEnvironment env = environmentWith(partial);
-            assertThatThrownBy(() -> {
-                env.getProperty("spring.datasource.url");
-                env.getProperty("spring.datasource.username");
-                env.getProperty("spring.datasource.password");
-            }).as("missing %s must abort", missing)
+            String property = switch (missing) {
+                case "DB_USERNAME" -> "spring.datasource.username";
+                case "DB_PASSWORD" -> "spring.datasource.password";
+                default -> "spring.datasource.url";
+            };
+            assertThatThrownBy(() -> env.getProperty(property))
+                    .as("missing %s must abort", missing)
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Could not resolve placeholder '" + missing + "'");
         }

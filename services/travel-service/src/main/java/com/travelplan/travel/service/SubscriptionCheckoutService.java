@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 /**
@@ -105,10 +106,10 @@ public class SubscriptionCheckoutService {
                                            String authorizationHeader) {
         Destination destination = destinationRepository.findActiveById(destinationId)
                 .orElseThrow(() -> new DestinationNotFoundException(destinationId));
-        if (destination.getStartDate() != null && destination.getStartDate().isBefore(LocalDate.now())) {
+        if (destination.getStartDate() != null && destination.getStartDate().isBefore(LocalDate.now(ZoneOffset.UTC))) {
             throw SubscriptionConflictException.travelAlreadyStarted(destinationId);
         }
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         if (subscriptionRepository.findLiveStatus(travelerId, destinationId, now).isPresent()) {
             throw SubscriptionConflictException.alreadySubscribed(travelerId, destinationId);
         }
@@ -141,7 +142,7 @@ public class SubscriptionCheckoutService {
                     authorizationHeader, provider, travelerId, amount, currency, destinationId, subscriptionId);
         } catch (PaymentUnavailableException ex) {
             // Compensation: no payment exists, so nothing could ever confirm this hold — free the seat now.
-            subscriptionRepository.cancelPending(subscriptionId, null, OffsetDateTime.now());
+            subscriptionRepository.cancelPending(subscriptionId, null, OffsetDateTime.now(ZoneOffset.UTC));
             throw ex;
         }
         try {
