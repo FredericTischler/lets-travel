@@ -15,10 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for user lifecycle management.
@@ -125,7 +125,7 @@ public class UserService {
     public List<UserResponse> findAll() {
         return userRepository.findAllActive().stream()
                 .map(UserResponse::from)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -137,7 +137,7 @@ public class UserService {
     public void delete(UUID id) {
         User user = userRepository.findActiveById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
-        user.setDeletedAt(OffsetDateTime.now());
+        user.setDeletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         // the dirty check within the transaction persists the change automatically
     }
 
