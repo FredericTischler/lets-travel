@@ -217,4 +217,10 @@ export const EN_DICTIONARY: Record<string, string> = {
   Annulée: 'Cancelled',
   'Impossible de charger vos abonnements.': 'Unable to load your subscriptions.',
   'Annuler la réservation en attente pour {{name}} ?': 'Cancel the pending reservation for {{name}}?',
+
+  // --- Traveler badges (features/badges, bonus feature) ---
+  'Vos badges': 'Your badges',
+  Explorateur: 'Explorer',
+  'Globe-trotter': 'Globetrotter',
+  Critique: 'Critic',
 };

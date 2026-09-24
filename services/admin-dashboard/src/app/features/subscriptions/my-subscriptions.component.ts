@@ -2,6 +2,7 @@ import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { TravelerBadgesComponent } from '../badges/traveler-badges.component';
 import { extractErrorMessage } from '../../shared/http-error';
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { TranslateService } from '../../shared/i18n/translate.service';
@@ -44,6 +45,7 @@ const STATUS_TONES: Record<SubscriptionStatus, BadgeTone> = {
     CardComponent,
     PendingPaymentComponent,
     TranslatePipe,
+    TravelerBadgesComponent,
   ],
   templateUrl: './my-subscriptions.component.html',
 })

@@ -134,6 +134,15 @@ managers/admins, and manager statistics/ranking built from it.
   candidate by the same rules as a single recommendation and scored by the
   same `RecommendationScorer` (no new scoring, only the sum across a chain).
   Any known role, self only.
+- **Traveler badges** (bonus feature, gamification,
+  docs/lets-travel-architecture-decisions.md §12):
+  `GET /travelers/me/badges` — countries/destinations actually visited
+  (`ACTIVE` subscription on a destination whose `endDate` is past, same
+  "participated" rule as giving feedback) and reviews given, plus three
+  fixed tiers (`EXPLORER` ≥ 1 country, `GLOBETROTTER` ≥ 5 countries,
+  `CRITIC` ≥ 5 reviews) each with its threshold/progress/earned flag. Never
+  persisted, recalculated on every call like a recommendation score. Any
+  known role, self only.
 
 `Destination.id` is application-assigned (a plain UUID), not Neo4j's
 internal (opaque) element id.
