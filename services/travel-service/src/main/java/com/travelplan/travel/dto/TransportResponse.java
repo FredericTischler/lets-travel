@@ -19,26 +19,25 @@ import java.util.UUID;
  */
 public class TransportResponse {
 
+    /** The reachable target's public fields, grouped only to keep the constructor under 8 parameters. */
+    public record Target(UUID id, String name, String country) {
+    }
+
     private final UUID id;
     private final String mode;
     private final int durationMinutes;
     private final OffsetDateTime departureTime;
     private final OffsetDateTime arrivalTime;
-    private final UUID destinationId;
-    private final String destinationName;
-    private final String destinationCountry;
+    private final Target destination;
 
     public TransportResponse(UUID id, String mode, int durationMinutes, OffsetDateTime departureTime,
-                              OffsetDateTime arrivalTime, UUID destinationId,
-                              String destinationName, String destinationCountry) {
+                              OffsetDateTime arrivalTime, Target destination) {
         this.id = id;
         this.mode = mode;
         this.durationMinutes = durationMinutes;
         this.departureTime = departureTime;
         this.arrivalTime = arrivalTime;
-        this.destinationId = destinationId;
-        this.destinationName = destinationName;
-        this.destinationCountry = destinationCountry;
+        this.destination = destination;
     }
 
     public UUID getId() {
@@ -62,14 +61,14 @@ public class TransportResponse {
     }
 
     public UUID getDestinationId() {
-        return destinationId;
+        return destination.id();
     }
 
     public String getDestinationName() {
-        return destinationName;
+        return destination.name();
     }
 
     public String getDestinationCountry() {
-        return destinationCountry;
+        return destination.country();
     }
 }

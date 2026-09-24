@@ -418,7 +418,7 @@ class FeedbackIntegrationTest {
 
         List<Object> firstIds = firstContent.stream().map(r -> r.get("id")).toList();
         List<Object> secondIds = secondContent.stream().map(r -> r.get("id")).toList();
-        assertThat(firstIds).doesNotContainAnyElementsOf(secondIds);
+        assertThat(firstIds).isNotEmpty().doesNotContainAnyElementsOf(secondIds);
     }
 
     @Test
