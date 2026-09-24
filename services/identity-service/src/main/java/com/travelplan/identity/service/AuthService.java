@@ -2,6 +2,8 @@ package com.travelplan.identity.service;
 
 import com.travelplan.identity.dto.LoginRequest;
 import com.travelplan.identity.dto.LoginResponse;
+import com.travelplan.identity.dto.RefreshRequest;
+import com.travelplan.identity.dto.RefreshResponse;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.entity.User;
 import com.travelplan.identity.exception.InsufficientRoleException;
@@ -54,6 +56,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
 
     // Fixed dummy password, hashed once at construction time (i.e. once per
     // application startup, not per request). Used to run a BCrypt comparison
@@ -65,10 +68,12 @@ public class AuthService {
     private final LoginThrottle loginThrottle;
 
     public AuthService(UserRepository userRepository, BCryptPasswordEncoder passwordEncoder,
-                        JwtService jwtService, LoginThrottle loginThrottle) {
+                        JwtService jwtService, RefreshTokenService refreshTokenService,
+                        LoginThrottle loginThrottle) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.refreshTokenService = refreshTokenService;
         this.loginThrottle = loginThrottle;
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing-safety");
     }
@@ -85,6 +90,7 @@ public class AuthService {
      * @throws TooManyLoginAttemptsException if the email or the client IP is
      *         currently locked out
      */
+    @Transactional
     public LoginResponse login(LoginRequest request, String clientIp) {
         loginThrottle.retryAfterSeconds(request.getEmail(), clientIp).ifPresent(seconds -> {
             throw new TooManyLoginAttemptsException(seconds);
@@ -101,7 +107,37 @@ public class AuthService {
         loginThrottle.recordSuccess(request.getEmail());
 
         String token = jwtService.generateToken(user);
-        return new LoginResponse(user.getId(), user.getEmail(), token);
+        String refreshToken = refreshTokenService.issue(user);
+        return new LoginResponse(user.getId(), user.getEmail(), token, refreshToken);
+    }
+
+    /**
+     * Exchange a valid, not-yet-used refresh token for a fresh access token
+     * and a fresh refresh token (rotation — the one just redeemed no longer
+     * works, see {@link RefreshTokenService#redeem}).
+     *
+     * @throws InvalidTokenException if the refresh token is blank, unknown,
+     *         already revoked/redeemed, expired, or its user is no longer
+     *         active — all indistinguishable to the caller, same philosophy
+     *         as {@link #getCurrentUser}
+     */
+    @Transactional
+    public RefreshResponse refresh(RefreshRequest request) {
+        User user = refreshTokenService.redeem(request.getRefreshToken());
+        String token = jwtService.generateToken(user);
+        String refreshToken = refreshTokenService.issue(user);
+        return new RefreshResponse(token, refreshToken);
+    }
+
+    /**
+     * Revoke a refresh token so it can no longer be redeemed. Always
+     * succeeds, even for an unknown/already-revoked token — logout must not
+     * leak which of those is the case (same non-disclosure principle as
+     * every credential check in this service).
+     */
+    @Transactional
+    public void logout(RefreshRequest request) {
+        refreshTokenService.revoke(request.getRefreshToken());
     }
 
     /**

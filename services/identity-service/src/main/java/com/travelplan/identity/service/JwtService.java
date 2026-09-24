@@ -37,8 +37,10 @@ import java.util.Set;
  * model already used elsewhere). This mirrors the Neo4j Vault wiring deferred
  * in Phase 1: an explicit, assumed gap, not a silent shortcut.</p>
  *
- * <p>No refresh token, no revocation/blacklist — out of scope for this
- * increment. The token does carry a single {@code role} claim (see
+ * <p>Refresh tokens exist ({@link RefreshTokenService}) but are deliberately
+ * a separate, opaque, DB-backed mechanism, not a longer-lived JWT — this
+ * class only ever issues the 15-minute access token. This token does carry
+ * a single {@code role} claim (see
  * {@link #CLAIM_ROLE}, one of {@link #KNOWN_ROLES}); every protected endpoint
  * checks this claim explicitly instead of merely trusting token validity, per
  * the least-privilege requirement in docs/sujet.md §4.</p>

@@ -2,6 +2,8 @@ package com.travelplan.identity.controller;
 
 import com.travelplan.identity.dto.LoginRequest;
 import com.travelplan.identity.dto.LoginResponse;
+import com.travelplan.identity.dto.RefreshRequest;
+import com.travelplan.identity.dto.RefreshResponse;
 import com.travelplan.identity.dto.UserResponse;
 import com.travelplan.identity.service.AuthService;
 import com.travelplan.identity.service.ClientIp;
@@ -56,6 +58,35 @@ public class AuthController {
         String clientIp = ClientIp.resolve(
                 httpRequest.getRemoteAddr(), httpRequest.getHeader("X-Forwarded-For"), trustForwardedFor);
         return ResponseEntity.ok(authService.login(request, clientIp));
+    }
+
+    /**
+     * Exchange a refresh token (from a prior {@code POST /login} or
+     * {@code POST /refresh}) for a fresh access token and a fresh refresh
+     * token. The token in the request body is the sole credential — no
+     * {@code Authorization} header is read or required.
+     *
+     * @return 200 with a fresh token pair, 400 if {@code refreshToken} is
+     *         blank, 401 with a generic message if it is unknown, already
+     *         used, expired, or its user is no longer active
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return ResponseEntity.ok(authService.refresh(request));
+    }
+
+    /**
+     * Revoke a refresh token so it can no longer be redeemed. Always 204,
+     * even for an unknown/already-revoked token (see
+     * {@link AuthService#logout}) — logging out is not a way to probe which
+     * tokens exist.
+     *
+     * @return 204 No Content, 400 if {@code refreshToken} is blank
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
+        authService.logout(request);
+        return ResponseEntity.noContent().build();
     }
 
     /**

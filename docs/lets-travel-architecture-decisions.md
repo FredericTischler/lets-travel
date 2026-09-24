@@ -143,6 +143,84 @@ dans le dépôt : un secret commité, identique sur tous les environnements. (c)
 `POST /users` créer un ADMIN si la table `users` est vide : même défaut que (a), et
 dépend de l'ordre d'arrivée des requêtes.
 
+### Addendum — Refresh token (nice-to-have, gap comblé)
+
+#### Constat de code
+
+Le JWT d'accès dure 15 minutes (`JwtService.TOKEN_VALIDITY`) et, jusqu'ici,
+son expiration renvoyait sèchement l'utilisateur sur `/login` — le README des
+deux services listait explicitement « pas de refresh token, pas de
+révocation » comme un manque assumé.
+
+#### Décision
+
+- **Un refresh token opaque, pas un second JWT** : 256 bits générés par
+  `SecureRandom`, encodés base64url. Seul son hash SHA-256 est persisté
+  (`refresh_tokens`, `V7__add_refresh_tokens.sql`, identity-service) — même
+  principe que `password_hash` : une lecture de la base ne rend aucun
+  identifiant réutilisable. Le mot de passe justifie un hachage lent/salé
+  (faible entropie côté humain) ; un token à 256 bits d'entropie ne le
+  justifie pas — SHA-256 suffit face à une compromission de la base, c'est le
+  seul scénario pertinent ici.
+- **Usage unique, rotation à chaque `POST /refresh`** : `redeem()` révoque le
+  token présenté et en émet un nouveau dans le même appel ; rejouer un token
+  déjà consommé produit exactement le même 401 générique qu'un token inconnu
+  (`AuthService`/`RefreshTokenService`, même philosophie de non-divulgation
+  que `POST /login`/`GET /me`). Durée de vie 7 jours, constante en dur (même
+  choix que les 15 minutes de l'access token — pas configurable par variable
+  d'env).
+- **`POST /refresh` et `POST /logout` sont publics** (pas d'en-tête
+  `Authorization`) : le refresh token lui-même est l'unique justificatif,
+  comme tout endpoint OAuth2 `grant_type=refresh_token` — aucun cookie
+  ambiant à protéger contre le CSRF ici, le token doit être lu explicitement
+  depuis le storage client et placé dans le corps JSON.
+- **Front** : `AuthService.refreshAccessToken()` (nouveau) est appelé par
+  `authInterceptor` sur un 401 (hors `/login`/`/refresh`/`/logout`
+  eux-mêmes) ; en cas de succès, la requête d'origine est rejouée avec le
+  nouveau token — l'utilisateur ne voit rien. Les 401 concurrents partagent
+  un seul appel `/refresh` (`shareReplay`), le refresh token étant à usage
+  unique. Seul un refresh en échec (expiré/révoqué) déclenche encore la purge
+  + redirection `/login`.
+
+#### Justification
+
+Ferme un vrai gap UX (perte de contexte toutes les 15 minutes) sans toucher
+au choix déjà acté d'un access token court-vécu et sans état côté serveur
+pour l'autorisation courante (§1) — seul le renouvellement gagne un état
+persistant, isolé dans sa propre table.
+
+#### Ce que je sacrifie
+
+- **Pas de détection de réutilisation de famille** : si un refresh token
+  volé est rejoué par un attaquant avant le client légitime, ce dernier
+  reçoit un 401 générique indiscernable d'un token inconnu — la lignée
+  entière n'est pas invalidée pour autant (ce que ferait une détection de
+  réutilisation OAuth2 complète). Gap explicitement accepté vu l'échelle du
+  projet, pas un oubli.
+- **Pas de limitation de débit sur `/refresh`/`/logout`** (contrairement à
+  `/login` et son `LoginThrottle`) : non pertinent ici — un token à 256 bits
+  d'entropie n'est pas devinable, une protection anti-brute-force n'a pas de
+  sens face à un espace de recherche de cette taille.
+- **Trouvé et corrigé en relecture de sécurité avant fusion** : la première
+  version de `redeem()` révoquait le token **avant** de vérifier
+  expiration/utilisateur actif, dans la même méthode `@Transactional` que
+  `AuthService.refresh()` — lever `InvalidTokenException` (non contrôlée)
+  après cette écriture marquait toute la transaction en rollback-only, donc
+  l'écriture de révocation était silencieusement annulée sur ces deux chemins
+  d'échec, à l'exact opposé de ce que le commentaire du code affirmait.
+  Corrigé en réordonnant : toutes les vérifications d'abord, la révocation
+  seulement sur le chemin qui retourne effectivement un utilisateur. Test de
+  régression dédié (`RefreshTokenIntegrationTest`).
+
+#### Alternative rejetée
+
+Un second JWT longue durée comme refresh token : rejeté, un JWT est
+auto-porteur et non révocable individuellement sans état côté serveur — soit
+on ajoute une liste de révocation (autant utiliser une table dédiée
+directement, comme fait ici), soit le JWT « longue durée » ne peut jamais
+être révoqué avant son expiration naturelle, bien pire que le refresh token
+actuel qui, lui, est une ligne qu'on peut supprimer.
+
 ---
 
 ## 2. Domaine `Travel` (Neo4j, travel-service)
