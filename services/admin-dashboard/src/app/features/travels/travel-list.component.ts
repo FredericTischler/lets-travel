@@ -11,6 +11,7 @@ import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { ItinerarySuggestionsComponent } from '../itineraries/itinerary-suggestions.component';
 import { RecommendationsComponent } from '../recommendations/recommendations.component';
 import {
   AutocompleteSuggestion,
@@ -48,6 +49,7 @@ const SEARCH_UNAVAILABLE_NOTICE =
     AlertComponent,
     ButtonComponent,
     CardComponent,
+    ItinerarySuggestionsComponent,
     RecommendationsComponent,
     TranslatePipe,
   ],

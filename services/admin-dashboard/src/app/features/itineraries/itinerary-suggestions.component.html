@@ -1,0 +1,47 @@
+<app-card title="Itinéraires suggérés">
+  @if (loading()) {
+    <p class="text-sm text-ink-dim">Chargement des itinéraires suggérés…</p>
+  } @else if (error()) {
+    <app-alert variant="error">{{ error() }}</app-alert>
+  } @else {
+    <p class="mb-3 text-sm text-ink-dim">
+      Des enchaînements de 2 à 3 voyages reliés par un trajet existant, classés par la somme des scores
+      de chaque étape.
+    </p>
+    <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="itinerary-list">
+      @for (item of items(); track $index) {
+        <li>
+          <article class="flex h-full flex-col gap-2 border border-line-strong p-3" data-testid="itinerary">
+            <h3 class="font-semibold text-ink">
+              @for (stop of item.stops; track stop.destinationId; let last = $last) {
+                <a [routerLink]="['/travels', stop.destinationId]" class="hover:text-teal hover:underline">{{
+                  stop.name
+                }}</a>
+                @if (!last) {
+                  <span class="text-ink-dim"> → </span>
+                }
+              }
+            </h3>
+            <p class="text-sm text-ink-dim">
+              {{ item.stops.length }} étapes · {{ item.totalDurationMinutes }} min de trajet
+            </p>
+            <p class="text-sm text-ink-dim" data-testid="score">score total {{ formatScore(item.score) }}</p>
+            <details class="mt-auto text-sm" data-testid="reasons">
+              <summary class="cursor-pointer text-teal hover:underline">Pourquoi ?</summary>
+              <ul class="mt-2 list-inside list-disc text-ink">
+                @for (reason of item.reasons; track $index) {
+                  <li>{{ reason }}</li>
+                }
+              </ul>
+            </details>
+          </article>
+        </li>
+      } @empty {
+        <li class="col-span-full text-sm text-ink-dim" data-testid="itinerary-empty">
+          Aucun itinéraire combiné pour le moment : il n'y a pas encore de trajet reliant des voyages
+          disponibles.
+        </li>
+      }
+    </ul>
+  }
+</app-card>

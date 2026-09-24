@@ -48,9 +48,13 @@ describe('TravelListComponent', () => {
   });
 
   afterEach(() => {
-    // The recommendations block (its own spec covers it) asks for the caller's suggestions on init.
+    // The recommendations and itinerary-suggestions blocks (their own specs cover them) ask
+    // for the caller's data on init.
     httpMock
       .match(`${environment.travelApiUrl}/travelers/me/recommendations?limit=6`)
+      .forEach((request) => request.flush([]));
+    httpMock
+      .match(`${environment.travelApiUrl}/travelers/me/itinerary-suggestions`)
       .forEach((request) => request.flush([]));
     httpMock.verify();
     vi.useRealTimers();

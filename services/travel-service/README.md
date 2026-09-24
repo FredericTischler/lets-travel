@@ -128,6 +128,12 @@ managers/admins, and manager statistics/ranking built from it.
   and reasons, from the caller's participation and feedback history (see
   "Recommendations" below). Any known role, self only (`?travelerId=` is
   `ADMIN`-only).
+- **Itinerary suggestions** (bonus feature, docs/lets-travel-architecture-decisions.md §12):
+  `GET /travelers/me/itinerary-suggestions` — up to 3 chains of 2 to 3
+  destinations connected by active `TRANSPORT` edges, each stop an eligible
+  candidate by the same rules as a single recommendation and scored by the
+  same `RecommendationScorer` (no new scoring, only the sum across a chain).
+  Any known role, self only.
 
 `Destination.id` is application-assigned (a plain UUID), not Neo4j's
 internal (opaque) element id.
