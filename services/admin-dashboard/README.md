@@ -400,9 +400,24 @@ message explicite s'ils manquent.
   session : le navigateur intégré à l'outil de développement bloque l'API
   Service Worker (`register()` échoue même en pur JS, hors tout code Angular
   — limite de l'environnement de test, pas du code).
-- **i18n** (bonus du sujet) : non fait. Les libellés sont en français,
-  codés en dur dans les templates, sans infrastructure de traduction ; les **raisons des
-  suggestions** viennent du backend en **anglais**.
+- **i18n** (bonus du sujet) : infrastructure FR/EN complète et fonctionnelle
+  (`shared/i18n/` — `TranslateService` signal-based, `TranslatePipe`,
+  persistance `localStorage`, sélecteur de langue dans le shell). La clé de
+  traduction est le texte français lui-même (`EN_DICTIONARY: Record<string,
+  string>`) : pas d'identifiants arbitraires à inventer/maintenir, et le
+  français reste le passage identité par défaut. Écrans **entièrement
+  traduits** : navigation (shell + menus par rôle), login, inscription,
+  catalogue voyageur, fiche voyage (inscription/désinscription, choix du
+  moyen de paiement, avis, signalement d'un organisateur), panneau de
+  paiement en attente (MANUAL/PayPal/Stripe) et « Mes abonnements » — soit le
+  parcours voyageur le plus visible. Les **~40 autres écrans** (dashboards
+  admin/organisateur, gestion des utilisateurs/paiements/destinations,
+  signalements, avis, statistiques) restent **entièrement en français codé
+  en dur** — jamais de mélange FR/EN sur un même écran, c'est un périmètre
+  restant assumé, pas un oubli. Les **raisons des suggestions** viennent
+  toujours du backend en **anglais**. Voir
+  `docs/lets-travel-architecture-decisions.md` pour le choix
+  "clé = texte français" et la justification du scope.
 - **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
   depuis l'écran organisateur). Création, édition inline et suppression désormais
   possibles, plus une recherche d'itinéraire multi-saut (fewest-hops) entre deux

@@ -1,23 +1,23 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Mes abonnements</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Mes abonnements' | translate }}</h1>
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement…</p>
+    <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else {
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <app-card title="Voyages à venir">
+      <app-card [title]="'Voyages à venir' | translate">
         <p class="text-3xl font-semibold text-ink" data-testid="count-upcoming">
           {{ upcoming().length }}
         </p>
       </app-card>
-      <app-card title="Voyages effectués">
+      <app-card [title]="'Voyages effectués' | translate">
         <p class="text-3xl font-semibold text-ink" data-testid="count-past">
           {{ past().length }}
         </p>
       </app-card>
-      <app-card title="Annulations">
+      <app-card [title]="'Annulations' | translate">
         <p class="text-3xl font-semibold text-ink" data-testid="count-cancelled">
           {{ cancelled().length }}
         </p>
@@ -25,11 +25,11 @@
     </div>
 
     @if (actionError()) {
-      <app-alert variant="error">{{ actionError() }}</app-alert>
+      <app-alert variant="error">{{ actionError() | translate }}</app-alert>
     }
 
     @if (pending().length > 0) {
-      <app-card title="Paiement en attente">
+      <app-card [title]="'Paiement en attente' | translate">
         <ul class="flex flex-col gap-4" data-testid="pending-list">
           @for (row of pending(); track row.destinationId + row.subscribedAt) {
             <li class="flex flex-col gap-2">
@@ -55,14 +55,14 @@
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Voyage</th>
-              <th class="table-head-cell">Pays</th>
-              <th class="table-head-cell">Départ</th>
-              <th class="table-head-cell">Statut</th>
-              <th class="table-head-cell">Inscrit le</th>
-              <th class="table-head-cell">Annulé le</th>
+              <th class="table-head-cell">{{ 'Voyage' | translate }}</th>
+              <th class="table-head-cell">{{ 'Pays' | translate }}</th>
+              <th class="table-head-cell">{{ 'Départ' | translate }}</th>
+              <th class="table-head-cell">{{ 'Statut' | translate }}</th>
+              <th class="table-head-cell">{{ 'Inscrit le' | translate }}</th>
+              <th class="table-head-cell">{{ 'Annulé le' | translate }}</th>
               @if (review) {
-                <th class="table-head-cell">Avis</th>
+                <th class="table-head-cell">{{ 'Mon avis' | translate }}</th>
               }
             </tr>
           </thead>
@@ -79,7 +79,7 @@
                 <td class="table-cell">{{ row.destinationCountry }}</td>
                 <td class="table-cell">{{ row.destinationStartDate | date: 'dd/MM/yyyy' }}</td>
                 <td class="table-cell">
-                  <app-badge [tone]="statusTone(row.status)">{{ statusLabel(row.status) }}</app-badge>
+                  <app-badge [tone]="statusTone(row.status)">{{ statusLabel(row.status) | translate }}</app-badge>
                 </td>
                 <td class="table-cell">{{ row.subscribedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
                 <td class="table-cell">
@@ -90,14 +90,14 @@
                     <a
                       [routerLink]="['/travels', row.destinationId]"
                       class="text-teal hover:underline"
-                      >Donner / voir mon avis</a
+                      >{{ 'Donner / voir mon avis' | translate }}</a
                     >
                   </td>
                 }
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="7">Aucun voyage.</td>
+                <td class="table-empty-cell" colspan="7">{{ 'Aucun voyage.' | translate }}</td>
               </tr>
             }
           </tbody>
@@ -105,23 +105,23 @@
       </div>
     </ng-template>
 
-    <app-card title="À venir">
+    <app-card [title]="'À venir' | translate">
       <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: upcoming() }" />
     </app-card>
 
-    <app-card title="Voyages effectués">
+    <app-card [title]="'Voyages effectués' | translate">
       <ng-container
         [ngTemplateOutlet]="table"
         [ngTemplateOutletContext]="{ $implicit: past(), review: true }"
       />
     </app-card>
 
-    <app-card title="Abonnements annulés">
+    <app-card [title]="'Abonnements annulés' | translate">
       <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: cancelled() }" />
     </app-card>
 
     @if (expired().length > 0) {
-      <app-card title="Réservations expirées (jamais payées)">
+      <app-card [title]="'Réservations expirées (jamais payées)' | translate">
         <ng-container [ngTemplateOutlet]="table" [ngTemplateOutletContext]="{ $implicit: expired() }" />
       </app-card>
     }

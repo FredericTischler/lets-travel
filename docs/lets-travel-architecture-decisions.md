@@ -1600,6 +1600,102 @@ donnée qui ne sert qu'à l'affichage.
 
 ---
 
+## 11. i18n FR/EN — infra + traduction scopée au parcours voyageur
+
+### Constat de code
+
+`README.md` du dashboard listait l'i18n comme bonus **non fait** : libellés
+français codés en dur dans les templates, sans infrastructure de traduction.
+Le document "Points ouverts" ci-dessus supposait `@angular/localize` comme
+mécanisme (« ajout mécanique, à faire en fin de phase »). En pratique,
+`@angular/localize` exige une build par locale (extraction des chaînes,
+fichiers XLIFF, sortie préfixée par langue) — incompatible avec ce projet :
+un seul build statique servi par un unique conteneur nginx
+(`services/admin-dashboard/README.md`, section déploiement), et l'exigence
+d'un bascule de langue **dans la même session**, sans recharger une build
+différente.
+
+### Décision
+
+- **Service maison, pas `@angular/localize`.** `shared/i18n/translate.service.ts`
+  porte un signal `locale: Signal<'fr'|'en'>`, persisté dans `localStorage`
+  (clé `admin-dashboard.locale`, même convention que `ThemeService` et sa
+  clé `admin-dashboard.theme`). `shared/i18n/translate.pipe.ts` expose
+  `{{ '...' | translate }}` / `{{ '...' | translate: { n: 3 } }}` ; pipe pur
+  (`pure: true`, le défaut) — lire le signal de locale dans `transform()`
+  suffit à la réactivité zoneless d'Angular, pas besoin de `pure: false`.
+- **La clé de traduction est le texte français source lui-même**
+  (`EN_DICTIONARY: Record<string, string>`, `shared/i18n/en.dictionary.ts`),
+  pas un identifiant arbitraire (`nav.travels`). Seul l'anglais a besoin
+  d'une entrée : le français est le cas de passage identité de
+  `TranslateService#translate` (locale `fr` → texte renvoyé tel quel). Ça
+  évite une classe entière de bugs de dérive clé/texte de référence et rend
+  la conversion mécanique d'un gabarit existant (englober la chaîne, pas
+  inventer/suivre un nom de clé).
+- **Scope volontairement partiel, jamais un mélange FR/EN sur un même
+  écran.** Traduits intégralement : navigation (shell + groupes par rôle),
+  login, inscription, catalogue voyageur, fiche voyage (inscription,
+  désinscription, choix du moyen de paiement, avis, signalement d'un
+  organisateur), panneau de paiement en attente (MANUAL/PayPal/Stripe) et
+  « Mes abonnements » — le parcours voyageur le plus visible. Les ~40 autres
+  écrans (dashboards admin/organisateur, gestion utilisateurs/paiements/
+  destinations, signalements, avis, statistiques) restent **entièrement**
+  en français codé en dur, documenté comme périmètre restant dans
+  `services/admin-dashboard/README.md`, pas comme un oubli.
+- **`NavItem.label`/`NavItem.group` (`nav-items.ts`) ne changent pas.** Ces
+  champs servent aussi de suffixe d'`id`/`aria-controls` et de matcher dans
+  les tests Playwright existants (`getByRole('link', { name: 'Voyages' })`).
+  Comme la locale par défaut est `fr` et que le dictionnaire y est un
+  passage identité, envelopper seulement l'affichage
+  (`{{ item.label | translate }}`) rend le texte accessible rendu, en
+  locale par défaut, strictement identique à avant — zéro modification de
+  `nav-items.ts`, zéro régression e2e.
+- **Les messages dynamiques du `.ts`** (erreurs/succès posés dans un
+  `signal<string|null>`, ex. `actionError.set('Impossible de charger…')`)
+  sont traduits **à l'affichage** (`{{ error() | translate }}`), pas à
+  l'écriture : le signal continue de porter du texte français brut, la vue
+  seule le traduit. Les `confirm()` natifs (une poignée, ex.
+  `unsubscribe()`/`cancelPending()`) sont l'exception : ils n'ont pas de
+  template, donc `TranslateService.translate(...)` y est appelé
+  directement depuis le composant.
+
+### Ce que je sacrifie
+
+- Le compte à rebours de paiement (`payment-rules.ts#remainingTime`, ex.
+  `"3 j 04 h"`) garde ses unités abrégées françaises (`j`/`h`/`min`/`s`) même
+  en anglais : rendre cette fonction pure sensible à la locale casserait sa
+  testabilité/pureté actuelle pour un gain mineur sur une étiquette de
+  minuterie. Gap documenté dans le README, pas un oubli.
+- Les raisons de recommandation venant du backend restent en anglais (déjà
+  documenté avant cette phase, non lié à ce chantier).
+- Deux mots français identiques dans des contextes différents ne peuvent
+  pas avoir deux traductions (une seule clé par texte) : la colonne « Avis »
+  de `my-subscriptions` a dû être renommée « Mon avis » pour ne pas entrer
+  en collision avec le lien de nav « Avis » (liste des retours, pluriel) —
+  changement mineur mais réel du texte français affiché, tracé ici plutôt
+  que silencieux.
+- Pas de détection automatique de la langue du navigateur : la langue
+  démarre toujours en français (comportement identique à avant pour un
+  nouvel utilisateur), le choix explicite via le sélecteur du shell est
+  requis pour passer en anglais.
+
+### Alternative rejetée
+
+`@angular/localize` (i18n officiel Angular). Rejeté : nécessite une build
+par locale (extraction `xi18n`, fichiers XLIFF, sortie `dist/fr/`,
+`dist/en/`) et un routing/serveur par préfixe de langue — incompatible avec
+le déploiement actuel (un seul conteneur nginx statique, un seul
+`docker-compose` service, Traefik ne route pas par sous-chemin de langue)
+et avec l'exigence d'un bascule de langue en cours de session sans recharger
+une build différente. Des clés de traduction arbitraires (`nav.travels`)
+plutôt que le texte français lui-même : rejeté, ça double le travail de
+conversion (inventer/nommer/suivre une clé pour chaque chaîne) sans
+bénéfice ici — le seul risque qu'évitent des clés arbitraires (un texte
+source qui change et invalide la clé) ne se pose pas quand la clé *est* le
+texte source.
+
+---
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |
@@ -1612,15 +1708,20 @@ donnée qui ne sert qu'à l'affichage.
 | Recommandation par requête de contenu (3 champs pondérés) | Pas de ML/filtrage collaboratif |
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
+| i18n FR/EN maison (clé = texte français), scope volontairement partiel (§11) | ~40 écrans restent en français codé en dur ; minuterie de paiement garde ses unités françaises |
 
 ## Points ouverts
 
 **Un seul, volontairement laissé ouvert** : la feature bonus "innovante" du
 sujet (§ Bonus). Pas d'arbitrage par défaut ici — c'est la seule partie
 créative de cette phase, à discuter avec l'utilisateur au moment voulu plutôt
-que figée à l'avance. PWA (`ng add @angular/pwa`) et i18n (`@angular/localize`)
-n'ont pas besoin de ce débat : ce sont des ajouts mécaniques, à faire en fin de
-phase une fois le cœur fonctionnel validé.
+que figée à l'avance.
+
+PWA et i18n sont **faits** (voir §11 pour i18n ; PWA documentée dans
+`services/admin-dashboard/README.md`). Correctif a posteriori : ce document
+supposait `@angular/localize` pour l'i18n — rejeté à l'implémentation (§11,
+« Alternative rejetée ») au profit d'un service de traduction maison,
+incompatible qu'il était avec le déploiement mono-build de ce projet.
 
 > **STOP — chaque section ci-dessus est une phase séparée.** Ne pas
 > implémenter tout ce document d'un coup : `/adr` sert à confirmer le détail

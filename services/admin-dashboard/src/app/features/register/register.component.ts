@@ -6,6 +6,7 @@ import { switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { ROLES, ROLE_LABELS, Role, SIGN_UP_ROLES, homeRouteFor } from '../../core/auth/roles';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 
@@ -24,7 +25,7 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 @Component({
   selector: 'app-register',
-  imports: [FormsModule, RouterLink, AlertComponent, InputComponent],
+  imports: [FormsModule, RouterLink, AlertComponent, InputComponent, TranslatePipe],
   templateUrl: './register.component.html',
 })
 export class RegisterComponent {

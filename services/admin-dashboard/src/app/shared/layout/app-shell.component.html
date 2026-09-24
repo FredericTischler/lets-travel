@@ -14,7 +14,7 @@
         [attr.aria-expanded]="menuOpen()"
         (click)="toggleMenu()"
       >
-        {{ menuOpen() ? 'Fermer' : 'Menu' }}
+        {{ (menuOpen() ? 'Fermer' : 'Menu') | translate }}
       </button>
     </div>
 
@@ -38,7 +38,7 @@
               [attr.aria-controls]="'nav-group-' + section.label"
               (click)="toggleGroup(section.label!)"
             >
-              <span>{{ section.label }}</span>
+              <span>{{ section.label! | translate }}</span>
               <span aria-hidden="true">{{ isGroupOpen(section.label!) ? '−' : '+' }}</span>
             </button>
             @if (isGroupOpen(section.label!)) {
@@ -60,7 +60,7 @@
           class="border-l-2 px-4 py-2 font-mono text-xs tracking-wide whitespace-nowrap uppercase transition-colors"
           [class]="rla.isActive ? '' : 'border-transparent text-ink-dim hover:text-ink'"
           (click)="closeMenu()"
-          >{{ item.label }}</a
+          >{{ item.label | translate }}</a
         >
       </ng-template>
 
@@ -73,7 +73,7 @@
           }}</span>
         }
         @if (roleLabel()) {
-          <app-badge tone="info">{{ roleLabel() }}</app-badge>
+          <app-badge tone="info">{{ roleLabel()! | translate }}</app-badge>
         }
 
         <div class="flex flex-wrap gap-2">
@@ -82,7 +82,15 @@
             (click)="themeService.toggle()"
             class="border border-line-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase hover:bg-surface"
           >
-            {{ themeService.theme() === 'dark' ? 'Mode clair' : 'Mode sombre' }}
+            {{ (themeService.theme() === 'dark' ? 'Mode clair' : 'Mode sombre') | translate }}
+          </button>
+
+          <button
+            type="button"
+            (click)="toggleLocale()"
+            class="border border-line-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase hover:bg-surface"
+          >
+            {{ translateService.locale() === 'fr' ? 'English' : 'Français' }}
           </button>
 
           <button
@@ -90,7 +98,7 @@
             (click)="logout()"
             class="border border-line-strong px-3 py-1.5 font-mono text-xs tracking-wide text-ink uppercase hover:bg-surface"
           >
-            Se déconnecter
+            {{ 'Se déconnecter' | translate }}
           </button>
         </div>
       </div>

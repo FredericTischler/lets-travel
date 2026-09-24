@@ -2,57 +2,62 @@
   <a
     routerLink="/travels"
     class="text-sm font-medium text-teal hover:underline"
-    >← Retour aux voyages</a
+    >← {{ 'Retour aux voyages' | translate }}</a
   >
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement…</p>
+    <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
   } @else if (loadError()) {
-    <app-alert variant="error">{{ loadError() }}</app-alert>
+    <app-alert variant="error">{{ loadError() | translate }}</app-alert>
   } @else if (travel(); as t) {
     <div>
       <h1 class="font-display text-2xl font-bold text-ink">{{ t.name }}</h1>
       <p class="text-sm text-ink-dim">{{ t.country }}</p>
     </div>
 
-    <app-card title="Informations">
+    <app-card [title]="'Informations' | translate">
       <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <dt class="font-medium text-ink-dim">Dates</dt>
+          <dt class="font-medium text-ink-dim">{{ 'Dates' | translate }}</dt>
           <dd class="text-ink">{{ t.startDate }} → {{ t.endDate }}</dd>
         </div>
         <div>
-          <dt class="font-medium text-ink-dim">Durée</dt>
-          <dd class="text-ink">{{ t.durationDays }} jour(s)</dd>
+          <dt class="font-medium text-ink-dim">{{ 'Durée' | translate }}</dt>
+          <dd class="text-ink">{{ '{{n}} jour(s)' | translate: { n: t.durationDays } }}</dd>
         </div>
         <div>
-          <dt class="font-medium text-ink-dim">Prix</dt>
+          <dt class="font-medium text-ink-dim">{{ 'Prix' | translate }}</dt>
           <dd class="text-ink">
             {{ t.price === null ? '—' : (t.price | number: '1.2-2') + ' €' }}
           </dd>
         </div>
         <div>
-          <dt class="font-medium text-ink-dim">Capacité</dt>
-          <dd class="text-ink">{{ t.capacity ?? '—' }} place(s)</dd>
+          <dt class="font-medium text-ink-dim">{{ 'Capacité' | translate }}</dt>
+          <dd class="text-ink">{{ '{{n}} place(s)' | translate: { n: t.capacity ?? '—' } }}</dd>
         </div>
       </dl>
     </app-card>
 
-    <app-card title="Inscription">
+    <app-card [title]="'Inscription' | translate">
       <div class="flex flex-col gap-3">
         @if (subscribed()) {
           <p class="text-sm text-ink">
-            Vous êtes inscrit à ce voyage.
+            {{ 'Vous êtes inscrit à ce voyage.' | translate }}
             @if (pastCutoff()) {
-              Le délai d'annulation ({{ cutoffDays }} jours avant le départ) est dépassé : une
-              désinscription sera refusée.
+              {{
+                "Le délai d'annulation ({{n}} jours avant le départ) est dépassé : une désinscription sera refusée."
+                  | translate: { n: cutoffDays }
+              }}
             } @else {
-              Vous pouvez annuler jusqu'au {{ deadline() }} ({{ cutoffDays }} jours avant le départ).
+              {{
+                "Vous pouvez annuler jusqu'au {{date}} ({{n}} jours avant le départ)."
+                  | translate: { date: deadline() ?? '', n: cutoffDays }
+              }}
             }
           </p>
           <div>
             <app-button variant="danger" [disabled]="busy()" (clicked)="unsubscribe()">
-              {{ busy() ? 'Annulation…' : 'Se désinscrire' }}
+              {{ (busy() ? 'Annulation…' : 'Se désinscrire') | translate }}
             </app-button>
           </div>
         } @else if (pending(); as p) {
@@ -68,18 +73,18 @@
         } @else {
           @if (started()) {
             <p class="text-sm text-ink">
-              Ce voyage a déjà commencé : l'inscription n'est plus possible.
+              {{ "Ce voyage a déjà commencé : l'inscription n'est plus possible." | translate }}
             </p>
           } @else {
             <p class="text-sm text-ink">
-              Vous pourrez annuler jusqu'à {{ cutoffDays }} jours avant le départ.
+              {{ "Vous pourrez annuler jusqu'à {{n}} jours avant le départ." | translate: { n: cutoffDays } }}
             </p>
           }
 
           @if (priced() && !started()) {
             <fieldset class="flex flex-col gap-1" data-testid="provider-choice">
               <legend class="font-mono text-xs tracking-wide text-ink-dim uppercase">
-                Moyen de paiement
+                {{ 'Moyen de paiement' | translate }}
               </legend>
               @for (option of providers; track option) {
                 <label class="inline-flex items-center gap-2 text-sm text-ink">
@@ -91,19 +96,23 @@
                     (ngModelChange)="provider.set($event)"
                     [attr.data-testid]="'provider-' + option"
                   />
-                  {{ providerLabels[option] }}
+                  {{ providerLabels[option] | translate }}
                 </label>
               }
               @if (provider() === 'MANUAL') {
                 <p class="text-xs text-ink-dim">
-                  Un administrateur confirmera votre règlement (virement, espèces…) : votre place
-                  est retenue 72 h en attendant.
+                  {{
+                    'Un administrateur confirmera votre règlement (virement, espèces…) : votre place est retenue 72 h en attendant.'
+                      | translate
+                  }}
                 </p>
               }
               @if (provider() === 'STRIPE') {
                 <p class="text-xs text-ink-dim">
-                  Vous saisirez votre carte bancaire à l'étape suivante (paiement sécurisé, géré
-                  par Stripe).
+                  {{
+                    "Vous saisirez votre carte bancaire à l'étape suivante (paiement sécurisé, géré par Stripe)."
+                      | translate
+                  }}
                 </p>
               }
             </fieldset>
@@ -111,22 +120,22 @@
 
           <div>
             <app-button [disabled]="busy() || started()" (clicked)="subscribe()">
-              {{ busy() ? 'Inscription…' : "S'inscrire" }}
+              {{ (busy() ? 'Inscription…' : "S'inscrire") | translate }}
             </app-button>
           </div>
         }
 
         @if (actionSuccess()) {
-          <app-alert variant="success">{{ actionSuccess() }}</app-alert>
+          <app-alert variant="success">{{ actionSuccess() | translate }}</app-alert>
         }
         @if (actionError()) {
-          <app-alert variant="error">{{ actionError() }}</app-alert>
+          <app-alert variant="error">{{ actionError() | translate }}</app-alert>
         }
       </div>
     </app-card>
 
     @if (ended() && subscribed()) {
-      <app-card title="Votre avis">
+      <app-card [title]="'Votre avis' | translate">
         @if (myFeedback(); as mine) {
           <app-feedback-list
             [items]="[mine]"
@@ -135,26 +144,29 @@
           />
         } @else if (canGiveFeedback()) {
           <p class="mb-3 text-sm text-ink">
-            Ce voyage est terminé : donnez votre avis (un seul avis par voyage, non modifiable).
+            {{
+              'Ce voyage est terminé : donnez votre avis (un seul avis par voyage, non modifiable).'
+                | translate
+            }}
           </p>
           <app-feedback-form [destinationId]="id()" (saved)="onFeedbackSaved($event)" />
         } @else {
-          <p class="text-sm text-ink-dim">Chargement…</p>
+          <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
         }
       </app-card>
     }
 
-    <app-card title="Activités">
+    <app-card [title]="'Activités' | translate">
       <ul class="list-inside list-disc text-sm text-ink">
         @for (activity of t.activities; track activity.id) {
           <li>{{ activity.name }}</li>
         } @empty {
-          <li class="list-none text-ink-dim">Aucune activité renseignée.</li>
+          <li class="list-none text-ink-dim">{{ 'Aucune activité renseignée.' | translate }}</li>
         }
       </ul>
     </app-card>
 
-    <app-card title="Hébergements">
+    <app-card [title]="'Hébergements' | translate">
       <ul class="flex flex-col gap-2 text-sm text-ink">
         @for (accommodation of t.accommodations; track accommodation.id) {
           <li>
@@ -166,37 +178,40 @@
             }
           </li>
         } @empty {
-          <li class="text-ink-dim">Aucun hébergement renseigné.</li>
+          <li class="text-ink-dim">{{ 'Aucun hébergement renseigné.' | translate }}</li>
         }
       </ul>
     </app-card>
 
     @if (t.managerId) {
-      <app-card title="Organisateur">
+      <app-card [title]="'Organisateur' | translate">
         <div class="flex flex-col gap-3 text-sm text-ink">
           <p>
             <a
               [routerLink]="['/managers', t.managerId]"
               class="font-medium text-teal hover:underline"
               data-testid="manager-link"
-              >Voir la page de l'organisateur (statistiques, notes)</a
+              >{{ "Voir la page de l'organisateur (statistiques, notes)" | translate }}</a
             >
           </p>
 
           @if (reportCount() !== null) {
             <p data-testid="report-count">
-              Signalements reçus par cet organisateur : <strong>{{ reportCount() }}</strong>
+              {{ 'Signalements reçus par cet organisateur :' | translate }}
+              <strong>{{ reportCount() }}</strong>
             </p>
           }
 
           @if (reportSent()) {
-            <app-alert variant="success">Votre signalement a été transmis à l'équipe de modération.</app-alert>
+            <app-alert variant="success">{{
+              "Votre signalement a été transmis à l'équipe de modération." | translate
+            }}</app-alert>
           }
 
           @if (canReportManager()) {
             @if (reportOpen()) {
               <form class="flex flex-col gap-2" (ngSubmit)="submitReport()">
-                <label for="reportReason" class="font-medium">Motif du signalement</label>
+                <label for="reportReason" class="font-medium">{{ 'Motif du signalement' | translate }}</label>
                 <textarea
                   id="reportReason"
                   name="reportReason"
@@ -208,20 +223,20 @@
                 ></textarea>
                 <div class="flex gap-2">
                   <app-button type="submit" [disabled]="reporting()">
-                    {{ reporting() ? 'Envoi…' : 'Envoyer le signalement' }}
+                    {{ (reporting() ? 'Envoi…' : 'Envoyer le signalement') | translate }}
                   </app-button>
                   <app-button type="button" variant="secondary" (clicked)="toggleReport()">
-                    Annuler
+                    {{ 'Annuler' | translate }}
                   </app-button>
                 </div>
               </form>
               @if (reportError()) {
-                <app-alert variant="error">{{ reportError() }}</app-alert>
+                <app-alert variant="error">{{ reportError() | translate }}</app-alert>
               }
             } @else {
               <div>
                 <app-button variant="secondary" (clicked)="toggleReport()">
-                  Signaler l'organisateur
+                  {{ "Signaler l'organisateur" | translate }}
                 </app-button>
               </div>
             }

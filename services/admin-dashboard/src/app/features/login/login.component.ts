@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { homeRouteFor } from '../../core/auth/roles';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 
@@ -14,7 +15,7 @@ import { InputComponent } from '../../shared/ui/input/input.component';
  */
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, RouterLink, AlertComponent, InputComponent],
+  imports: [FormsModule, RouterLink, AlertComponent, InputComponent, TranslatePipe],
   templateUrl: './login.component.html',
 })
 export class LoginComponent {
