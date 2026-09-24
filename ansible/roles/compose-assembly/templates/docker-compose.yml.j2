@@ -83,6 +83,14 @@ include:
   # prouvée bout-en-bout) — activé via assembly_travel_enabled=true.
   - path: {{ assembly_travel_fragment }}
 {% endif %}
+{% if assembly_admin_dashboard_enabled %}
+  # admin-dashboard : fragment STATIQUE du dépôt (build depuis les sources),
+  # référencé par CHEMIN ABSOLU (co-localisé avec Dockerfile + nginx.conf +
+  # src/), pas rendu sous {{ assembly_compose_dir }}. DÉFAUT désactivé
+  # (intégration pas encore prouvée bout-en-bout) — activé via
+  # assembly_admin_dashboard_enabled=true.
+  - path: {{ assembly_admin_dashboard_fragment }}
+{% endif %}
 
 services:
   # Profils appliqués par merge sur les services inclus (Compose spec : les attributs
@@ -147,6 +155,16 @@ services:
   # Bloc émis uniquement si assembly_travel_enabled=true. Profils appliqués par merge
   # sur le service inclus (même mécanisme que postgres/vault/neo4j ci-dessus).
   travel-service:
+    profiles: [full]
+{% endif %}
+{% if assembly_admin_dashboard_enabled %}
+
+  # admin-dashboard : profil [full] uniquement (pas core), même raisonnement
+  # qu'identity/payment/travel-service — c'est l'écran d'accueil du projet, il
+  # a besoin des 3 services pour être utile. Bloc émis uniquement si
+  # assembly_admin_dashboard_enabled=true. Profils appliqués par merge sur le
+  # service inclus (même mécanisme que postgres/vault/neo4j ci-dessus).
+  admin-dashboard:
     profiles: [full]
 {% endif %}
 {% if assembly_jenkins_enabled %}

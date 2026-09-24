@@ -379,8 +379,19 @@ message explicite s'ils manquent.
 - **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
   depuis l'écran organisateur), création et liste sortante seulement — le backend n'expose
   ni mise à jour ni suppression.
-- **Pas de conteneurisation** de ce front (aucun `Dockerfile`, fragment Compose ni route
-  Traefik) : il ne tourne que via `ng serve` sur `http://localhost:4200`.
+- ~~Pas de conteneurisation de ce front~~ — **corrigé** : `Dockerfile` (build Node 22 +
+  runtime `nginx-unprivileged:1.27-alpine` non-root par défaut, image inhabituelle par
+  rapport aux 3 services Spring Boot mais nécessaire — pas de JVM ici) et fragment
+  Compose statique `docker-compose.admin-dashboard.yml`, même mécanisme d'inclusion
+  que les 3 services (chemin absolu, rôle `compose-assembly`). Seul le navigateur
+  appelle identity/payment/travel-service (pas de SSR) : ce conteneur n'a donc besoin
+  que de `backend-net` pour être routé par Traefik (`Host(\`localhost\`)`), pas de
+  `data-net`. Les URLs d'API restent figées à la compilation dans `environment.ts`
+  (voir Authentification/Configuration ci-dessus) : changer de déploiement suppose de
+  reconstruire l'image, il n'existe pas de substitution d'env au démarrage du
+  conteneur. Vérifié manuellement bout-en-bout (build, 2 replicas healthy, routage
+  TLS via Traefik, fallback SPA, cache immuable des assets hashés) ; `ng serve` sur
+  `http://localhost:4200` reste disponible pour le développement au quotidien.
 - Pas de refresh token (voir Authentification) ; pas de vérification de signature du JWT
   côté front (voulu).
 - Accessibilité : rôles/labels ARIA soignés (graphiques focalisables au clavier avec table
