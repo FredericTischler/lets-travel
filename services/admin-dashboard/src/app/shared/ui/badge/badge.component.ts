@@ -21,7 +21,7 @@ export class BadgeComponent {
       neutral: 'border-line-strong text-ink-dim',
       info: 'border-ink text-ink',
       success: 'border-teal text-teal',
-      warning: 'border-amber text-amber',
+      warning: 'border-amber text-amber-text',
       danger: 'border-red text-red',
     };
     return `${base} ${tones[this.tone()]}`;

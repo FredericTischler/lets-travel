@@ -26,11 +26,32 @@
   --app-surface: #fffdf8;
   --app-surface-2: #eae2d2;
   --app-ink: #1c2622;
-  --app-ink-dim: #5c6b64;
+  /* Darkened from #5c6b64 (4.36:1 on --app-surface-2, below WCAG AA's 4.5:1 for
+     small text — caught by the automated axe-core sweep, e2e/accessibility.spec.ts)
+     to #556059 (5.09:1 on the same background). */
+  --app-ink-dim: #556059;
   --app-amber: #c97a1a;
-  --app-amber-ink: #3a2408;
-  --app-teal: #0f7a5c;
-  --app-red: #b8382a;
+  /* Darkened from #3a2408 (4.38:1 as button text on --app-amber, same axe finding)
+     to #331f07 (4.69:1). */
+  --app-amber-ink: #331f07;
+  /* Amber used as TEXT on a light surface (badge "warning" tone, the bar-chart
+     table-toggle link) needs a much darker value than --app-amber itself: the
+     button pairing above needs a bright amber background with dark text on
+     it, but that same bright amber as plain text on --app-surface-2 (the
+     darkest of the three light backgrounds it appears on) is only 3.28:1 —
+     the two pairings pull in opposite directions, hence a separate token
+     rather than reusing --app-amber. #8a520c clears 4.5:1 against all three
+     light backgrounds (surface/surface-2/bg). */
+  --app-amber-text: #8a520c;
+  /* Darkened from #0f7a5c (4.12:1 as plain text — links, the "success" badge —
+     on --app-surface-2, same axe-adjacent finding caught while auditing the
+     other tokens above) to #0a5f47 (5.95:1). Never used as a button
+     background (grep confirmed), so unlike amber there's no opposing pairing
+     to balance against. */
+  --app-teal: #0a5f47;
+  /* Darkened from #b8382a (4.48:1 as the "danger" button's text on --app-surface-2,
+     same axe finding) to #a83322 (5.16:1). */
+  --app-red: #a83322;
   --app-line: #c9bfa8;
   --app-line-strong: #8f8367;
 }
@@ -42,6 +63,9 @@
   --app-ink-dim: #8fa39a;
   --app-amber: #f0a83e;
   --app-amber-ink: #26170a;
+  /* No tension here: --app-amber is already bright-on-dark (7-9:1 as text on
+     every dark surface), so the dark theme's amber-text is the same value. */
+  --app-amber-text: #f0a83e;
   --app-teal: #3ddc97;
   --app-red: #ff6b5b;
   --app-line: #2a3b34;
@@ -56,6 +80,7 @@
   --color-ink-dim: var(--app-ink-dim);
   --color-amber: var(--app-amber);
   --color-amber-ink: var(--app-amber-ink);
+  --color-amber-text: var(--app-amber-text);
   --color-teal: var(--app-teal);
   --color-red: var(--app-red);
   --color-line: var(--app-line);

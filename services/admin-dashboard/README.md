@@ -423,5 +423,13 @@ message explicite s'ils manquent.
 - ~~Pas de refresh token~~ — **corrigé**, voir Authentification. Pas de
   vérification de signature du JWT côté front (voulu).
 - Accessibilité : rôles/labels ARIA soignés (graphiques focalisables au clavier avec table
-  équivalente, étoiles décoratives + texte), mais **aucun audit** (lecteur d'écran, contrastes
-  mesurés) n'a été mené.
+  équivalente, étoiles décoratives + texte). ~~Aucun audit~~ — **corrigé pour le contraste** :
+  `e2e/accessibility.spec.ts` fait tourner axe-core (règles WCAG 2 A/AA) sur chaque écran
+  principal de chaque rôle, en clair et en sombre. A trouvé et corrigé 4 tokens de couleur
+  insuffisamment contrastés (`--app-ink-dim`, `--app-amber-ink`, `--app-red`, `--app-teal`
+  en thème clair) et révélé une tension de design : `--app-amber` sert à la fois de fond de
+  bouton (texte foncé dessus) et de couleur de texte pur (lien, badge « warning ») — deux
+  usages aux besoins de contraste opposés, impossibles à satisfaire avec un seul token ;
+  résolu en ajoutant `--app-amber-text`, plus foncé, réservé au texte. **Reste non fait** :
+  test réel avec un lecteur d'écran (axe ne détecte que les violations mécaniques —
+  contraste, labels manquants, ARIA invalide —, pas l'utilisabilité réelle).
