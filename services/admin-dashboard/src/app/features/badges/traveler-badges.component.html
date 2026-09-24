@@ -1,0 +1,24 @@
+@if (!loading() && !failed() && badges().length > 0) {
+  <div class="flex flex-col gap-2" data-testid="traveler-badges">
+    <p class="font-mono text-xs tracking-wide text-ink-dim uppercase">{{ 'Vos badges' | translate }}</p>
+    <ul class="flex flex-wrap gap-3">
+      @for (badge of badges(); track badge.code) {
+        <li
+          class="flex items-center gap-2 border px-3 py-1.5 text-sm"
+          [class.border-amber]="badge.earned"
+          [class.text-ink]="badge.earned"
+          [class.border-line]="!badge.earned"
+          [class.text-ink-dim]="!badge.earned"
+          [class.opacity-60]="!badge.earned"
+          data-testid="badge"
+        >
+          <span aria-hidden="true">{{ labels[badge.code].icon }}</span>
+          <span>{{ labels[badge.code].label | translate }}</span>
+          @if (!badge.earned) {
+            <span class="text-xs" data-testid="badge-progress">({{ badge.progress }}/{{ badge.threshold }})</span>
+          }
+        </li>
+      }
+    </ul>
+  </div>
+}

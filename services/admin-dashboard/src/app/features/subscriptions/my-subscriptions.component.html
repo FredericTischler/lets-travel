@@ -1,6 +1,8 @@
 <div class="flex flex-col gap-6">
   <h1 class="font-display text-2xl font-bold text-ink">{{ 'Mes abonnements' | translate }}</h1>
 
+  <app-traveler-badges />
+
   @if (loading()) {
     <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
   } @else if (error()) {

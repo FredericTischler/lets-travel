@@ -41,7 +41,13 @@ describe('MySubscriptionsComponent', () => {
     httpMock = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => httpMock.verify());
+  afterEach(() => {
+    // The traveler-badges block (its own spec covers it) asks for the caller's badges on init.
+    httpMock
+      .match(`${environment.travelApiUrl}/travelers/me/badges`)
+      .forEach((request) => request.flush({ destinationsVisited: 0, countriesVisited: 0, reviewsGiven: 0, badges: [] }));
+    httpMock.verify();
+  });
 
   function count(testId: string): string {
     return fixture.nativeElement.querySelector(`[data-testid="${testId}"]`).textContent.trim();
