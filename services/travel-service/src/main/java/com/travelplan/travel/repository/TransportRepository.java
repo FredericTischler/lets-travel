@@ -4,6 +4,7 @@ import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,9 @@ import java.util.UUID;
 public class TransportRepository {
 
     private static final int MAX_ROUTE_HOPS = 5;
+
+    /** Itinerary suggestions (docs/lets-travel-architecture-decisions.md §12): up to 3 stops. */
+    private static final int MAX_ITINERARY_HOPS = 2;
 
     // Plain CREATE — no MERGE, no prior-existence check for an identical
     // trip. Creating the same A->B transport twice is an accepted, documented
@@ -124,6 +128,26 @@ public class TransportRepository {
                    pathNodes[i + 1].id AS targetId, pathNodes[i + 1].name AS targetName,
                    pathNodes[i + 1].country AS targetCountry
             """.formatted(MAX_ROUTE_HOPS);
+
+    // Itinerary suggestions (docs/lets-travel-architecture-decisions.md §12):
+    // every chain of 1 to MAX_ITINERARY_HOPS active TRANSPORT edges starting
+    // from one of $originIds (already the eligible-candidate set the caller
+    // computed via RecommendationRepository — same criteria as a single-stop
+    // recommendation: active, not full, not already live for the traveler).
+    // Only origin/target/relationship soft-delete is filtered here, same as
+    // PATH_QUERY; whether an intermediate/target stop is itself eligible is
+    // checked by the caller against that same candidate set, since re-deriving
+    // capacity/ownership per node here would duplicate
+    // RecommendationRepository's query instead of reusing it.
+    private static final String CHAINS_QUERY = """
+            MATCH path = (origin:Destination)-[:TRANSPORT*1..%d]->(:Destination)
+            WHERE origin.id IN $originIds
+              AND ALL(n IN nodes(path) WHERE n.deletedAt IS NULL)
+              AND ALL(r IN relationships(path) WHERE r.deletedAt IS NULL)
+              AND ALL(n IN nodes(path) WHERE single(x IN nodes(path) WHERE x = n))
+            RETURN [n IN nodes(path) | n.id] AS stopIds,
+                   reduce(total = 0, r IN relationships(path) | total + r.durationMinutes) AS totalDurationMinutes
+            """.formatted(MAX_ITINERARY_HOPS);
 
     private static final String DEPARTURE_TIME = "departureTime";
     private static final String ARRIVAL_TIME = "arrivalTime";
@@ -217,6 +241,30 @@ public class TransportRepository {
      */
     public List<TransportEdge> findPath(UUID fromId, UUID toId) {
         return runEdgeQuery(PATH_QUERY, Map.of(FROM_ID, fromId.toString(), "toId", toId.toString()));
+    }
+
+    /**
+     * Every chain of 2 to {@link #MAX_ITINERARY_HOPS} + 1 destinations,
+     * starting from one of {@code originIds}, connected end to end by active
+     * {@code TRANSPORT} edges, visiting no destination twice
+     * (docs/lets-travel-architecture-decisions.md §12). Whether each stop is
+     * itself eligible (dates, capacity, not already live for the traveler) is
+     * the caller's responsibility — see {@link #CHAINS_QUERY}'s Javadoc.
+     */
+    public List<DestinationChain> findChains(Collection<UUID> originIds) {
+        if (originIds.isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = originIds.stream().map(UUID::toString).toList();
+        return neo4jClient.query(CHAINS_QUERY)
+                .bindAll(Map.of("originIds", ids))
+                .fetchAs(DestinationChain.class)
+                .mappedBy((typeSystem, row) -> new DestinationChain(
+                        row.get("stopIds").asList(v -> UUID.fromString(v.asString())),
+                        row.get("totalDurationMinutes").asInt()))
+                .all()
+                .stream()
+                .toList();
     }
 
     private List<TransportEdge> runEdgeQuery(String query, Map<String, Object> params) {
