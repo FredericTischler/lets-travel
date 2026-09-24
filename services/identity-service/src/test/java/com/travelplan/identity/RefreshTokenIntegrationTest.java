@@ -73,7 +73,7 @@ class RefreshTokenIntegrationTest {
 
         assertThat((String) body.get("token")).isNotBlank();
         assertThat((String) body.get("refreshToken")).isNotBlank();
-        assertThat(body.get("refreshToken")).isNotEqualTo(body.get("token"));
+        assertThat(body).doesNotContainEntry("refreshToken", body.get("token"));
     }
 
     @Test

@@ -83,7 +83,7 @@ public class TransportService {
 
         return new TransportResponse(transportId, request.getMode(), request.getDurationMinutes(),
                 request.getDepartureTime(), request.getArrivalTime(),
-                target.getId(), target.getName(), target.getCountry());
+                new TransportResponse.Target(target.getId(), target.getName(), target.getCountry()));
     }
 
     /**
@@ -203,6 +203,6 @@ public class TransportService {
     private TransportResponse toResponse(TransportEdge edge) {
         return new TransportResponse(edge.id(), edge.mode(), edge.durationMinutes(),
                 edge.departureTime(), edge.arrivalTime(),
-                edge.targetId(), edge.targetName(), edge.targetCountry());
+                new TransportResponse.Target(edge.targetId(), edge.targetName(), edge.targetCountry()));
     }
 }

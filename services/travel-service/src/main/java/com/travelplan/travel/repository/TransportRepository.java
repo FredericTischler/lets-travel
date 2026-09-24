@@ -127,6 +127,9 @@ public class TransportRepository {
 
     private static final String DEPARTURE_TIME = "departureTime";
     private static final String ARRIVAL_TIME = "arrivalTime";
+    private static final String FROM_ID = "fromId";
+    private static final String TRANSPORT_ID = "transportId";
+    private static final String DURATION_MINUTES = "durationMinutes";
 
     private final Neo4jClient neo4jClient;
 
@@ -145,11 +148,11 @@ public class TransportRepository {
                         OffsetDateTime departureTime, OffsetDateTime arrivalTime) {
         UUID transportId = UUID.randomUUID();
         Map<String, Object> params = new HashMap<>();
-        params.put("fromId", fromId.toString());
+        params.put(FROM_ID, fromId.toString());
         params.put("toId", toId.toString());
-        params.put("transportId", transportId.toString());
+        params.put(TRANSPORT_ID, transportId.toString());
         params.put("mode", mode);
-        params.put("durationMinutes", durationMinutes);
+        params.put(DURATION_MINUTES, durationMinutes);
         params.put(DEPARTURE_TIME, departureTime);
         params.put(ARRIVAL_TIME, arrivalTime);
         neo4jClient.query(CREATE_QUERY).bindAll(params).run();
@@ -178,10 +181,10 @@ public class TransportRepository {
     public Optional<TransportEdge> update(UUID fromId, UUID transportId, String mode, int durationMinutes,
                                            OffsetDateTime departureTime, OffsetDateTime arrivalTime) {
         Map<String, Object> params = new HashMap<>();
-        params.put("fromId", fromId.toString());
-        params.put("transportId", transportId.toString());
+        params.put(FROM_ID, fromId.toString());
+        params.put(TRANSPORT_ID, transportId.toString());
         params.put("mode", mode);
-        params.put("durationMinutes", durationMinutes);
+        params.put(DURATION_MINUTES, durationMinutes);
         params.put(DEPARTURE_TIME, departureTime);
         params.put(ARRIVAL_TIME, arrivalTime);
         return runEdgeQuery(UPDATE_QUERY, params).stream().findFirst();
@@ -196,8 +199,8 @@ public class TransportRepository {
      */
     public boolean softDelete(UUID fromId, UUID transportId, OffsetDateTime now) {
         Map<String, Object> params = new HashMap<>();
-        params.put("fromId", fromId.toString());
-        params.put("transportId", transportId.toString());
+        params.put(FROM_ID, fromId.toString());
+        params.put(TRANSPORT_ID, transportId.toString());
         params.put("now", now);
         return neo4jClient.query(SOFT_DELETE_QUERY)
                 .bindAll(params)
@@ -213,7 +216,7 @@ public class TransportRepository {
      * {@link #PATH_QUERY} for why this is not built on {@code shortestPath()}.
      */
     public List<TransportEdge> findPath(UUID fromId, UUID toId) {
-        return runEdgeQuery(PATH_QUERY, Map.of("fromId", fromId.toString(), "toId", toId.toString()));
+        return runEdgeQuery(PATH_QUERY, Map.of(FROM_ID, fromId.toString(), "toId", toId.toString()));
     }
 
     private List<TransportEdge> runEdgeQuery(String query, Map<String, Object> params) {
@@ -221,9 +224,9 @@ public class TransportRepository {
                 .bindAll(params)
                 .fetchAs(TransportEdge.class)
                 .mappedBy((typeSystem, row) -> new TransportEdge(
-                        UUID.fromString(row.get("transportId").asString()),
+                        UUID.fromString(row.get(TRANSPORT_ID).asString()),
                         row.get("mode").asString(),
-                        row.get("durationMinutes").asInt(),
+                        row.get(DURATION_MINUTES).asInt(),
                         row.get(DEPARTURE_TIME).isNull() ? null : row.get(DEPARTURE_TIME).asOffsetDateTime(),
                         row.get(ARRIVAL_TIME).isNull() ? null : row.get(ARRIVAL_TIME).asOffsetDateTime(),
                         UUID.fromString(row.get("targetId").asString()),
