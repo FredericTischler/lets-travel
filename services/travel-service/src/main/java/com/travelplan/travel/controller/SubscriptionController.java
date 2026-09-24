@@ -1,5 +1,7 @@
 package com.travelplan.travel.controller;
 
+import com.travelplan.travel.dto.BuddyResponse;
+import com.travelplan.travel.dto.BuddyVisibilityRequest;
 import com.travelplan.travel.dto.SubscribeRequest;
 import com.travelplan.travel.dto.SubscriptionResponse;
 import com.travelplan.travel.dto.TravelerSubscriptionResponse;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -167,5 +170,46 @@ public class SubscriptionController {
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
         return ResponseEntity.ok(subscriptionService.findMySubscriptions(tokenValidationService.callerId(claims)));
+    }
+
+    /**
+     * Travel Buddies (docs/lets-travel-architecture-decisions.md §12):
+     * flip the caller's own opt-in "visible to other travelers on this
+     * destination" flag. Off by default; this is the only way it turns on.
+     *
+     * @return 204 No Content on success,
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the token carries no recognized role,
+     *         404 if the destination does not exist/is soft-deleted, or the
+     *         caller has no live subscription there
+     */
+    @PatchMapping("/destinations/{id}/subscriptions/buddy-visibility")
+    public ResponseEntity<Void> setBuddyVisibility(
+            @PathVariable UUID id,
+            @Valid @RequestBody BuddyVisibilityRequest request,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
+        subscriptionService.setBuddyVisible(id, tokenValidationService.callerId(claims), request.getVisible());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Travel Buddies (docs/lets-travel-architecture-decisions.md §12): the
+     * other travelers, live on this destination, who opted into visibility.
+     * Restricted to a caller who is themselves live there — never exposed to
+     * a non-subscriber, and never carries a name or email (UUID only).
+     *
+     * @return 200 with the list (empty list if none),
+     *         401 with a generic message if the Authorization header is missing/invalid/expired,
+     *         403 if the token carries no recognized role,
+     *         404 if the destination does not exist/is soft-deleted, or the
+     *         caller has no live subscription there
+     */
+    @GetMapping("/destinations/{id}/buddies")
+    public ResponseEntity<List<BuddyResponse>> buddies(
+            @PathVariable UUID id,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
+        return ResponseEntity.ok(subscriptionService.findBuddies(id, tokenValidationService.callerId(claims)));
     }
 }

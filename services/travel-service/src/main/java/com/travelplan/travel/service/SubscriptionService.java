@@ -1,5 +1,6 @@
 package com.travelplan.travel.service;
 
+import com.travelplan.travel.dto.BuddyResponse;
 import com.travelplan.travel.dto.PaymentResultRequest;
 import com.travelplan.travel.dto.SubscriptionResponse;
 import com.travelplan.travel.dto.TravelerSubscriptionResponse;
@@ -238,6 +239,44 @@ public class SubscriptionService {
     public List<TravelerSubscriptionResponse> findMySubscriptions(UUID travelerId) {
         return subscriptionRepository.findForTraveler(travelerId, OffsetDateTime.now(ZoneOffset.UTC)).stream()
                 .map(TravelerSubscriptionResponse::from)
+                .toList();
+    }
+
+    /**
+     * Travel Buddies (docs/lets-travel-architecture-decisions.md §12): flip
+     * the caller's own opt-in visibility flag on their live subscription to
+     * {@code destinationId}. Off by default — this is the only way it turns on.
+     *
+     * @throws DestinationNotFoundException if the destination does not exist or is soft-deleted
+     * @throws SubscriptionNotFoundException if the caller has no live subscription there
+     */
+    @Transactional
+    public void setBuddyVisible(UUID destinationId, UUID travelerId, boolean visible) {
+        requireActiveDestination(destinationId);
+        boolean updated = subscriptionRepository.setBuddyVisible(
+                travelerId, destinationId, visible, OffsetDateTime.now(ZoneOffset.UTC));
+        if (!updated) {
+            throw new SubscriptionNotFoundException(travelerId, destinationId);
+        }
+    }
+
+    /**
+     * Travel Buddies (docs/lets-travel-architecture-decisions.md §12): the
+     * other travelers, live on {@code destinationId}, who opted into
+     * visibility. Restricted to a caller who is themselves live on that
+     * destination — never exposed to a non-subscriber.
+     *
+     * @throws DestinationNotFoundException if the destination does not exist or is soft-deleted
+     * @throws SubscriptionNotFoundException if the caller has no live subscription there
+     */
+    public List<BuddyResponse> findBuddies(UUID destinationId, UUID travelerId) {
+        requireActiveDestination(destinationId);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        if (subscriptionRepository.findLiveStatus(travelerId, destinationId, now).isEmpty()) {
+            throw new SubscriptionNotFoundException(travelerId, destinationId);
+        }
+        return subscriptionRepository.findBuddies(travelerId, destinationId, now).stream()
+                .map(BuddyResponse::new)
                 .toList();
     }
 

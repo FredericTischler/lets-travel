@@ -89,6 +89,15 @@ enforced.
   user token — `ADMIN` included). 200 with the subscription as it is afterwards;
   404 unknown `subscriptionRef`; 409 if the payment does not match the
   subscription or completed for a cancelled one. Idempotent.
+- **Travel Buddies** (bonus feature, docs/lets-travel-architecture-decisions.md §12):
+  `PATCH /destinations/{id}/subscriptions/buddy-visibility` (`{visible: boolean}`)
+  flips the caller's own opt-in flag on their live subscription; off by
+  default. `GET /destinations/{id}/buddies` lists the other travelers (UUID
+  only, never name/email) who are live on the same destination and opted in —
+  the caller's own id is always excluded, and the caller must themselves hold
+  a live subscription there (404 otherwise, same as any subscription
+  self-action). Both are a property on the existing `SUBSCRIBED` relation, no
+  new relation type.
 
 Increment 5 (docs/lets-travel-architecture-decisions.md §5, §5ter): feedback
 on participated destinations, its quality-control visibility for

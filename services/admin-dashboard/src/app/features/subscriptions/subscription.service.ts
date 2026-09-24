@@ -113,4 +113,24 @@ export class SubscriptionService {
   forceUnsubscribe(destinationId: string, travelerId: string): Observable<void> {
     return this.http.delete<void>(`${this.url(destinationId)}/${travelerId}`);
   }
+
+  /**
+   * Travel Buddies (docs/lets-travel-architecture-decisions.md §12): flip the
+   * caller's own opt-in visibility flag. Off by default; 404 if the caller has
+   * no live subscription on this destination.
+   */
+  setBuddyVisible(destinationId: string, visible: boolean): Observable<void> {
+    return this.http.patch<void>(`${this.url(destinationId)}/buddy-visibility`, { visible });
+  }
+
+  /**
+   * The other travelers, live on this destination, who opted into visibility
+   * (UUID only — never a name/email, travel-service has no access to those).
+   * 404 if the caller has no live subscription on this destination.
+   */
+  buddies(destinationId: string): Observable<{ travelerId: string }[]> {
+    return this.http.get<{ travelerId: string }[]>(
+      `${environment.travelApiUrl}/destinations/${destinationId}/buddies`,
+    );
+  }
 }

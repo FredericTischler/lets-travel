@@ -143,6 +143,32 @@ public class SubscriptionRepository {
             ORDER BY s.subscribedAt DESC
             """;
 
+    /**
+     * Opt-in flag behind Travel Buddies (docs/lets-travel-architecture-decisions.md
+     * §12): only the caller's own live relation on that destination can be
+     * flipped, same ownership shape as {@link #cancelLive}.
+     */
+    private static final String SET_BUDDY_VISIBLE_QUERY = """
+            MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND\s""" + IS_LIVE + """
+
+            SET s.buddyVisible = $visible
+            RETURN count(s) AS updated
+            """;
+
+    /**
+     * Other travelers, live on the same destination, who opted in — never the
+     * caller themselves. {@code s.buddyVisible = true} excludes both an
+     * unset property (default off) and an explicit {@code false}.
+     */
+    private static final String FIND_BUDDIES_QUERY = """
+            MATCH (t:TravelerRef)-[s:SUBSCRIBED]->(d:Destination)
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND t.userId <> $travelerId
+              AND s.buddyVisible = true AND\s""" + IS_LIVE + """
+
+            RETURN DISTINCT t.userId AS travelerId
+            """;
+
     private static final String FIND_FOR_TRAVELER_QUERY = """
             MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
             WHERE d.deletedAt IS NULL
@@ -226,6 +252,35 @@ public class SubscriptionRepository {
         Map<String, Object> params = idParams(travelerId, destinationId);
         params.put("now", now);
         return updatedCount(CANCEL_LIVE_QUERY, params) > 0;
+    }
+
+    /**
+     * Flip the caller's own opt-in "visible as a Travel Buddy" flag
+     * (docs/lets-travel-architecture-decisions.md §12) on their live
+     * subscription to {@code destinationId}. Returns {@code false} (no-op) if
+     * they hold no live subscription there — same shape as {@link #cancelLive}.
+     */
+    public boolean setBuddyVisible(UUID travelerId, UUID destinationId, boolean visible, OffsetDateTime now) {
+        Map<String, Object> params = idParams(travelerId, destinationId);
+        params.put("visible", visible);
+        params.put("now", now);
+        return updatedCount(SET_BUDDY_VISIBLE_QUERY, params) > 0;
+    }
+
+    /**
+     * The other travelers, live on {@code destinationId}, who opted into
+     * {@link #setBuddyVisible}. Never includes {@code travelerId} itself.
+     */
+    public List<UUID> findBuddies(UUID travelerId, UUID destinationId, OffsetDateTime now) {
+        Map<String, Object> params = idParams(travelerId, destinationId);
+        params.put("now", now);
+        return neo4jClient.query(FIND_BUDDIES_QUERY)
+                .bindAll(params)
+                .fetchAs(UUID.class)
+                .mappedBy((typeSystem, row) -> UUID.fromString(row.get(TRAVELER_ID).asString()))
+                .all()
+                .stream()
+                .toList();
     }
 
     /**

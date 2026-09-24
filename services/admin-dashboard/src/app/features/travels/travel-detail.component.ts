@@ -9,6 +9,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
+import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { Destination, DestinationService } from '../destinations/destination.service';
@@ -65,6 +66,7 @@ export interface PendingInfo {
     RouterLink,
     DecimalPipe,
     AlertComponent,
+    BadgeComponent,
     ButtonComponent,
     CardComponent,
     FeedbackFormComponent,
@@ -96,6 +98,18 @@ export class TravelDetailComponent implements OnInit {
   protected readonly busy = signal(false);
   protected readonly actionError = signal<string | null>(null);
   protected readonly actionSuccess = signal<string | null>(null);
+
+  // Travel Buddies (docs/lets-travel-architecture-decisions.md §12): opt-in,
+  // off by default. There is no endpoint to read the caller's own current
+  // flag back, so `buddyVisible` only reflects a toggle made in this session
+  // — it resets to "off" on reload even if the backend still has it set from
+  // a previous visit (a documented rough edge, not a bug: the buddy list
+  // itself is always read fresh from the backend, only the switch's initial
+  // position is approximate).
+  protected readonly buddyVisible = signal(false);
+  protected readonly buddyVisibleBusy = signal(false);
+  protected readonly buddies = signal<string[]>([]);
+  protected readonly buddiesLoading = signal(false);
 
   // Payment choice (paid travels only).
   protected readonly providers: readonly PaymentProvider[] = ['PAYPAL', 'STRIPE', 'MANUAL'];
@@ -172,7 +186,11 @@ export class TravelDetailComponent implements OnInit {
     this.subscriptionService.mine().subscribe({
       next: (rows) => {
         const current = currentSubscription(rows, this.id());
-        this.subscribed.set(current?.status === 'ACTIVE');
+        const isActive = current?.status === 'ACTIVE';
+        this.subscribed.set(isActive);
+        if (isActive) {
+          this.loadBuddies();
+        }
         if (current?.status === 'PENDING_PAYMENT') {
           const price = this.travel()?.price ?? null;
           this.pending.set({
@@ -283,6 +301,41 @@ export class TravelDetailComponent implements OnInit {
   protected onPaymentSettled(): void {
     this.actionSuccess.set('Paiement reçu. Votre inscription est confirmée.');
     this.loadHistory();
+  }
+
+  /** Travel Buddies: the other opted-in travelers live on this destination. */
+  protected loadBuddies(): void {
+    this.buddiesLoading.set(true);
+    this.subscriptionService.buddies(this.id()).subscribe({
+      next: (rows) => {
+        this.buddies.set(rows.map((r) => r.travelerId));
+        this.buddiesLoading.set(false);
+      },
+      // Non-fatal: the opt-in toggle stays usable even if the list fails to load.
+      error: () => this.buddiesLoading.set(false),
+    });
+  }
+
+  /** Flip the caller's own "visible to other travelers here" flag. */
+  protected toggleBuddyVisible(): void {
+    const next = !this.buddyVisible();
+    this.buddyVisibleBusy.set(true);
+    this.subscriptionService.setBuddyVisible(this.id(), next).subscribe({
+      next: () => {
+        this.buddyVisible.set(next);
+        this.buddyVisibleBusy.set(false);
+        this.loadBuddies();
+      },
+      error: (err: unknown) => {
+        this.buddyVisibleBusy.set(false);
+        this.actionError.set(extractErrorMessage(err, 'Impossible de mettre à jour votre visibilité.'));
+      },
+    });
+  }
+
+  /** A short, non-identifying label for a buddy's UUID — never a name or email. */
+  protected buddyLabel(travelerId: string): string {
+    return 'Voyageur ' + travelerId.slice(-4).toUpperCase();
   }
 
   protected onFeedbackSaved(feedback: Feedback): void {

@@ -1696,6 +1696,133 @@ texte source.
 
 ---
 
+## 12. Feature bonus innovante — Travel Buddies, itinéraires combinés, badges voyageur
+
+### Constat de code
+
+Le sujet demande (§ Bonus) *"develop any innovative feature that significantly
+boosts user engagement, platform functionality, or overall value"* — laissé
+ouvert jusqu'ici (voir "Points ouverts" ci-dessous, maintenant tranché avec
+l'utilisateur). Trois briques existantes s'y prêtent sans rien ajouter à
+l'infrastructure :
+
+- `SubscriptionRepository` (`(TravelerRef {userId})-[:SUBSCRIBED
+  {status, subscribedAt, ...}]->(Destination)`) sait déjà distinguer un
+  abonnement "live" (`ACTIVE` ou `PENDING_PAYMENT` non expiré) — §3/§4.
+- `TransportRepository#PATH_QUERY` sait déjà chaîner jusqu'à
+  `MAX_ROUTE_HOPS` (5) arêtes `TRANSPORT` actives, filtrées
+  `deletedAt IS NULL` à chaque hop (`GET /destinations/{fromId}/routes/{toId}`,
+  `TransportController`, `RouteResponse`).
+- `RecommendationRepository`/`RecommendationScorer` savent déjà comparer une
+  destination candidate à l'historique d'un traveler (pays, activités,
+  prix) et en tirer un score + des raisons (§7).
+- `ManagerStatsRepository` est le pattern déjà en place pour une
+  agrégation en lecture seule sur `SUBSCRIBED`/`GAVE_FEEDBACK`, sans jamais
+  les écrire (§5 addendum).
+- Nulle part dans le projet travel-service n'expose autre chose qu'un
+  `userId` (UUID) d'un traveler à un autre acteur — jamais nom/email, qui
+  restent dans identity-service (§5ter.4 : "le manager voit l'identifiant du
+  traveler, un UUID, pas d'identité").
+
+### Décision A — Travel Buddies
+
+- **Nouvelle propriété, pas de nouvelle relation** : `SUBSCRIBED` gagne un
+  booléen optionnel `buddyVisible` (défaut absent = `false` en lecture),
+  posé par le traveler lui-même via
+  `PATCH /destinations/{id}/subscriptions/me/buddy-visibility`
+  (`{ "visible": true|false" }`) — *opt-in*, jamais activé par défaut.
+- **Lecture** : `GET /destinations/{id}/buddies` renvoie les `userId` (UUID
+  seuls, jamais nom/email — cohérent avec §5ter.4) des autres travelers dont
+  l'abonnement est **live** sur cette destination et `buddyVisible = true`,
+  **à l'exclusion de l'appelant lui-même**. Réservé à un appelant qui a
+  lui-même un abonnement live sur cette destination (`TokenValidationService
+  .requireValidToken` + vérification d'ownership dans le service, même
+  pattern que `SubscriptionService`) : pas de fuite de "qui part où" à un
+  simple curieux non-inscrit.
+- Implémentation dans `SubscriptionRepository` (propriétaire de la relation,
+  pas un nouveau repository) : une méthode `setBuddyVisible` (un `SET`
+  ciblé sur la relation identifiée par son `id`) et une `findBuddies` (même
+  clause `IS_LIVE` que l'existant, `+ s.buddyVisible = true AND
+  t.userId <> $callerId`).
+
+### Décision B — Itinéraire combiné auto-suggéré
+
+- **Nouvel endpoint** `GET /travelers/me/itinerary-suggestions` (any rôle
+  connu, comme `GET /travelers/me/recommendations`) : construit jusqu'à 3
+  chaînes de 2 à 3 destinations reliées par `TRANSPORT`, chacune scorée par
+  la **somme** des scores `RecommendationScorer` de chaque étape par
+  rapport à l'historique de l'appelant, triées décroissant.
+- **Nouvelle méthode dans `TransportRepository`**, pas un nouveau
+  repository : `findChains(fromCandidateIds, maxHops=2)` — même structure
+  Cypher que `PATH_QUERY` (bornée, `ALL(... deletedAt IS NULL)` à chaque
+  hop) mais sans destination cible fixée : elle énumère les chaînes sortant
+  de chaque destination éligible (mêmes critères d'éligibilité que
+  `RecommendationRepository` : active, `startDate >= today`, pas déjà live
+  pour l'appelant, pas complète).
+- Le scoring réutilise `RecommendationScorer` tel quel, une fois par étape
+  de la chaîne — aucune nouvelle logique de score, seulement leur
+  agrégation dans un nouveau `ItinerarySuggestionService`.
+
+### Décision C — Badges voyageur (gamification)
+
+- **`GET /travelers/me/badges`** (travel-service, any rôle connu, comme
+  `GET /travelers/me/recommendations`/`GET /travelers/me/subscriptions`) :
+  calcule en Java (jamais persisté, comme les scores de `RecommendationScorer`
+  et de `ManagerStatsService`) trois compteurs à partir de
+  `SubscriptionRepository`/`FeedbackRepository` déjà en place — pays
+  distincts visités (abonnement `ACTIVE` sur une destination dont
+  `endDate` est passée), destinations visitées, avis laissés (`GAVE_FEEDBACK`)
+  — puis les mappe à des paliers fixes en dur (ex. Explorateur ≥ 1 pays,
+  Globe-trotter ≥ 5, Critique ≥ 5 avis). Aucune table/propriété de badge
+  stockée : recalculé à chaque appel, exactement comme le score de
+  recommandation n'est jamais persisté.
+- **Front** : affichés sur "Mes abonnements" (`my-subscriptions.component`),
+  avec `app-badge` (déjà utilisé pour les statuts d'abonnement), au-dessus
+  des trois compteurs existants (à venir/effectués/annulations).
+
+### Ce que je sacrifie
+
+- **Travel Buddies** reste une liste passive d'UUID, pas une messagerie :
+  se coordonner "en vrai" (échanger un contact) reste hors de l'app,
+  cohérent avec le fait que travel-service n'a et ne doit pas avoir accès
+  aux emails (identity-service seul les détient). L'engagement réel dépend
+  donc de l'usage, la feature ne le garantit pas seule.
+- **Itinéraires combinés** restent bornés à 3 hops et scorés par somme
+  simple (pas de pondération "distance totale minimisée" — même limite
+  déjà actée pour `PATH_QUERY`, pas d'APOC installé). Le calcul énumère
+  plus de chaînes candidates qu'un vrai algorithme de plus-court-chemin
+  pondéré ne le ferait ; acceptable à l'échelle de données de ce projet
+  (même arbitrage que §6bis sur `PATH_QUERY`).
+- **Badges** n'ont aucune notion de progression sauvegardée (pas de
+  notification "nouveau badge débloqué") : recalculés à froid à chaque
+  visite de l'écran, comme tout le reste des agrégats de ce service — pas
+  de nouvel état à maintenir, mais pas de moment de célébration côté UX
+  non plus.
+
+### Alternative rejetée
+
+- **Travel Buddies** : une vraie relation `(Traveler)-[:BUDDY_WITH]-(Traveler)`
+  bidirectionnelle avec système de demande/acceptation. Rejetée pour ce
+  tour : ça duplique la mécanique de `SUBSCRIBED`/`GAVE_FEEDBACK` (créer,
+  filtrer, soft-delete) pour un besoin que l'opt-in simple couvre déjà — à
+  reconsidérer si l'usage réel demande plus qu'une visibilité passive.
+- **Itinéraires combinés** : un vrai algorithme de plus court chemin pondéré
+  (durée totale) via APOC. Rejetée : introduirait une dépendance (plugin
+  Neo4j non installé, §6bis) pour un gain marginal à l'échelle de données
+  de ce projet, alors que la somme de scores de recommandation répond
+  directement au besoin ("quel enchaînement me correspond le mieux"), pas
+  "quel est le plus court en durée".
+- **Badges** : les stocker et les mettre à jour par un event/job à chaque
+  `SUBSCRIBED`/`GAVE_FEEDBACK`. Rejetée : introduirait un état dérivé à
+  synchroniser (première brique de ce genre dans travel-service) pour un
+  calcul qui reste bon marché à faire à la volée sur les volumes de ce
+  projet — même raisonnement que "pas de compteur de revenus mis en cache"
+  côté §8bis.
+
+STOP — en attente de validation avant d'écrire du code pour cette phase.
+
+---
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |
@@ -1712,10 +1839,9 @@ texte source.
 
 ## Points ouverts
 
-**Un seul, volontairement laissé ouvert** : la feature bonus "innovante" du
-sujet (§ Bonus). Pas d'arbitrage par défaut ici — c'est la seule partie
-créative de cette phase, à discuter avec l'utilisateur au moment voulu plutôt
-que figée à l'avance.
+**Plus aucun.** La feature bonus "innovante" du sujet (§ Bonus), seule partie
+laissée ouverte jusqu'ici, est tranchée en §12 (Travel Buddies, itinéraires
+combinés, badges voyageur).
 
 PWA et i18n sont **faits** (voir §11 pour i18n ; PWA documentée dans
 `services/admin-dashboard/README.md`). Correctif a posteriori : ce document
