@@ -379,7 +379,21 @@ message explicite s'ils manquent.
   d'agrégat dédié) — assumé et affiché explicitement.
 - **Page d'accueil par rôle** inchangée (`/users` pour l'admin, `/manager/travels` pour
   l'organisateur) : les dashboards sont dans la navigation, pas la page d'atterrissage.
-- **PWA** et **i18n** (bonus du sujet) : non faits. Les libellés sont en français,
+- ~~PWA~~ (bonus du sujet) — **fait** : `@angular/service-worker`
+  (`provideServiceWorker`, actif uniquement hors `ng serve`), manifeste
+  (`public/manifest.webmanifest`, icônes `public/icons/`), app installable.
+  Le service worker met en cache le *shell* applicatif (JS/CSS/HTML/icônes)
+  pour un chargement rapide et l'installabilité — **pas** les réponses API
+  (`ngsw-config.json` n'a aucun `dataGroups`) : l'app reste en ligne
+  uniquement, jamais de données périmées affichées comme fraîches. Vérifié :
+  build de prod génère bien `ngsw-worker.js`/`ngsw.json`, manifeste et icônes
+  servis avec les bons en-têtes (`Cache-Control: no-cache` sur le service
+  worker lui-même, contrairement aux fichiers hashés). L'enregistrement réel
+  du service worker par le navigateur n'a **pas** pu être vérifié dans cette
+  session : le navigateur intégré à l'outil de développement bloque l'API
+  Service Worker (`register()` échoue même en pur JS, hors tout code Angular
+  — limite de l'environnement de test, pas du code).
+- **i18n** (bonus du sujet) : non fait. Les libellés sont en français,
   codés en dur dans les templates, sans infrastructure de traduction ; les **raisons des
   suggestions** viennent du backend en **anglais**.
 - **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
