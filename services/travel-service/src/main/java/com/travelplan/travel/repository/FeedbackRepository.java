@@ -88,6 +88,16 @@ public class FeedbackRepository {
             WHERE d.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
+    private static final String FIND_ALL_PAGE_QUERY = FIND_ALL_QUERY + """
+            SKIP $skip LIMIT $limit
+            """;
+
+    private static final String COUNT_ALL_QUERY = """
+            MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
+            WHERE d.deletedAt IS NULL
+            RETURN count(f) AS total
+            """;
+
     /**
      * The newest feedbacks on active destinations — all of them, or only those
      * of {@code $managerId}'s destinations when given. Backs the "recent
@@ -181,14 +191,24 @@ public class FeedbackRepository {
                 .toList();
     }
 
-    /** Every feedback on every active destination, newest first (admin history). */
-    public List<FeedbackView> findAll() {
-        return neo4jClient.query(FIND_ALL_QUERY)
+    /** One page of every feedback on every active destination, newest first (admin history). */
+    public List<FeedbackView> findAllPage(int skip, int limit) {
+        return neo4jClient.query(FIND_ALL_PAGE_QUERY)
+                .bindAll(Map.of("skip", skip, "limit", limit))
                 .fetchAs(FeedbackView.class)
                 .mappedBy((typeSystem, row) -> toView(row))
                 .all()
                 .stream()
                 .toList();
+    }
+
+    /** How many rows {@link #findAllPage} would return across every page. */
+    public long countAll() {
+        return neo4jClient.query(COUNT_ALL_QUERY)
+                .fetchAs(Long.class)
+                .mappedBy((typeSystem, row) -> row.get("total").asLong())
+                .one()
+                .orElse(0L);
     }
 
     /**

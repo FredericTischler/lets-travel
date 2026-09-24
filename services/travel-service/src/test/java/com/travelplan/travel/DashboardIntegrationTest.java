@@ -830,11 +830,12 @@ class DashboardIntegrationTest {
         return (Map<String, Object>) response.getBody();
     }
 
+    /** {@code path} is expected to answer a {@code PageResponse} (e.g. /managers/ranking): unwraps "content". */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getList(String path, String token) {
-        ResponseEntity<List> response = restTemplate.exchange(path, HttpMethod.GET, authorized(token), List.class);
+        ResponseEntity<Map> response = restTemplate.exchange(path, HttpMethod.GET, authorized(token), Map.class);
         assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.OK);
-        return (List<Map<String, Object>>) response.getBody();
+        return (List<Map<String, Object>>) response.getBody().get("content");
     }
 
     @SuppressWarnings("unchecked")

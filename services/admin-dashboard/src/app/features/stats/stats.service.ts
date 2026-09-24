@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { Page } from '../../shared/pagination';
 import { Feedback } from '../feedback/feedback.service';
 import { PaymentProvider } from '../payments/payment.service';
 
@@ -173,9 +174,9 @@ export class StatsService {
     return this.http.get<ManagerDashboard>(`${this.base}/managers/me/dashboard`, { params });
   }
 
-  /** Every manager ordered by performance score (admin only). */
-  ranking(): Observable<RankingEntry[]> {
-    return this.http.get<RankingEntry[]>(`${this.base}/managers/ranking`);
+  /** One page of every manager ordered by performance score (admin only). `page` is 0-based. */
+  ranking(page: number, size: number): Observable<Page<RankingEntry>> {
+    return this.http.get<Page<RankingEntry>>(`${this.base}/managers/ranking`, { params: { page, size } });
   }
 
   adminDashboard(months?: number): Observable<AdminDashboard> {

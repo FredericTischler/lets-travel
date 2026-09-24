@@ -1,0 +1,21 @@
+<div class="flex flex-wrap items-center justify-between gap-2 border-t border-line-strong pt-3 text-sm text-ink-dim">
+  <span data-testid="paginator-summary">
+    Page {{ page() + 1 }} sur {{ totalPages() }} ({{ totalElements() }} au total)
+  </span>
+  <div class="flex gap-2">
+    <app-button
+      variant="secondary"
+      [disabled]="disabled() || !hasPrevious()"
+      (clicked)="previous()"
+    >
+      Précédent
+    </app-button>
+    <app-button
+      variant="secondary"
+      [disabled]="disabled() || !hasNext()"
+      (clicked)="next()"
+    >
+      Suivant
+    </app-button>
+  </div>
+</div>

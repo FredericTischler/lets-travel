@@ -375,10 +375,12 @@ class FeedbackIntegrationTest {
         UUID travelerId = participant(destinationId, "ACTIVE");
         postFeedback(destinationId, travelerId, feedbackBody(4, "for the admin list"));
 
-        ResponseEntity<List> asAdmin = restTemplate.exchange(
-                "/feedback", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), List.class);
+        // Newest first (ORDER BY createdAt DESC): the row this test just created always lands
+        // on the default first page, however much other tests' data the shared database holds.
+        ResponseEntity<Map> asAdmin = restTemplate.exchange(
+                "/feedback", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
         assertThat(asAdmin.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(asAdmin.getBody()).anySatisfy(row ->
+        assertThat((List<?>) asAdmin.getBody().get("content")).anySatisfy(row ->
                 assertThat(asMap(row)).containsEntry("travelerId", travelerId.toString()));
 
         for (String role : List.of("TRAVEL_MANAGER", "TRAVELER")) {
@@ -389,6 +391,41 @@ class FeedbackIntegrationTest {
         ResponseEntity<Map> anonymous = restTemplate.exchange(
                 "/feedback", HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), Map.class);
         assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void listAllFeedbackIsPaginatedWithDistinctNonOverlappingPages() {
+        // Baseline first: the database is shared with other tests, so the exact total varies —
+        // this only checks the *increment* our own 5 rows add, and that consecutive pages never
+        // repeat a row.
+        long before = totalFeedbackCount();
+        UUID destinationId = createPastDestination(UUID.randomUUID());
+        for (int i = 0; i < 5; i++) {
+            postFeedback(destinationId, participant(destinationId, "ACTIVE"), feedbackBody(3, "page-test-" + i));
+        }
+
+        Map<String, Object> firstPage = feedbackPage(0, 2);
+        assertThat(firstPage).containsEntry("page", 0).containsEntry("size", 2)
+                .containsEntry("totalElements", (int) (before + 5));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> firstContent = (List<Map<String, Object>>) firstPage.get("content");
+        assertThat(firstContent).hasSize(2);
+
+        Map<String, Object> secondPage = feedbackPage(1, 2);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> secondContent = (List<Map<String, Object>>) secondPage.get("content");
+        assertThat(secondContent).hasSize(2);
+
+        List<Object> firstIds = firstContent.stream().map(r -> r.get("id")).toList();
+        List<Object> secondIds = secondContent.stream().map(r -> r.get("id")).toList();
+        assertThat(firstIds).doesNotContainAnyElementsOf(secondIds);
+    }
+
+    @Test
+    void feedbackPageAndSizeAreClampedRatherThanRejected() {
+        assertThat(feedbackPage(-1, 20)).containsEntry("page", 0);
+        assertThat(feedbackPage(0, 0)).containsEntry("size", 1);
+        assertThat(feedbackPage(0, 5000)).containsEntry("size", 100);
     }
 
     @Test
@@ -420,9 +457,9 @@ class FeedbackIntegrationTest {
                 authorized(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", travelerId)), List.class);
         assertThat(mine.getBody()).isEmpty();
         // The admin's global list no longer shows it.
-        ResponseEntity<List> all = restTemplate.exchange(
-                "/feedback", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), List.class);
-        assertThat(all.getBody()).noneSatisfy(row ->
+        ResponseEntity<Map> all = restTemplate.exchange(
+                "/feedback", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
+        assertThat((List<?>) all.getBody().get("content")).noneSatisfy(row ->
                 assertThat(asMap(row)).containsEntry("comment", "will vanish"));
         // Stats count only the survivor: 1 travel, 1 feedback, average 4.0 (not 3.0).
         Map<String, Object> stats = stats(managerId);
@@ -534,12 +571,15 @@ class FeedbackIntegrationTest {
         seedSubscription(UUID.randomUUID(), unratedDest, "ACTIVE");
         seedSubscription(UUID.randomUUID(), unratedDest, "ACTIVE");
 
-        ResponseEntity<List> response = restTemplate.exchange(
-                "/managers/ranking", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), List.class);
+        // size=1000: the database is shared with other tests (no @BeforeEach cleanup in this
+        // class), so the default page (20) could miss our managers behind others' higher-scored
+        // ones — requesting everything keeps this test's relative-order assertion meaningful.
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/managers/ranking?size=1000", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> ranking = (List<Map<String, Object>>) response.getBody();
+        List<Map<String, Object>> ranking = (List<Map<String, Object>>) response.getBody().get("content");
         // The database is shared with other tests: check the relative order of our four managers.
         List<String> ours = ranking.stream()
                 .map(r -> (String) r.get("managerId"))
@@ -573,6 +613,47 @@ class FeedbackIntegrationTest {
     }
 
     @Test
+    void rankingIsPaginatedWithRankPreservingAbsolutePositionAcrossPages() {
+        UUID mine = UUID.randomUUID();
+        UUID myDest = createPastDestination(mine);
+        postFeedback(myDest, participant(myDest, "ACTIVE"), Map.of("rating", 5));
+
+        // size=1000: locate this manager's ABSOLUTE rank in the whole (shared-database) ranking
+        // first — other tests' managers may score higher, so this manager is not assumed to be #1.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> whole = (List<Map<String, Object>>) rankingPage(0, 1000).get("content");
+        Map<String, Object> mineInWhole = whole.stream()
+                .filter(r -> mine.toString().equals(r.get("managerId"))).findFirst().orElseThrow();
+        int myRank = (int) mineInWhole.get("rank");
+
+        // A one-item page landing exactly on that rank must show the SAME manager at the SAME
+        // rank — paging slices the one full ranking, it does not re-rank each page in isolation.
+        Map<String, Object> onlyMyPage = rankingPage(myRank - 1, 1);
+        assertThat(onlyMyPage).containsEntry("page", myRank - 1).containsEntry("size", 1);
+        assertThat(((Number) onlyMyPage.get("totalElements")).intValue()).isEqualTo(whole.size());
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) onlyMyPage.get("content");
+        assertThat(content).hasSize(1);
+        assertThat(content.get(0)).containsEntry("rank", myRank).containsEntry("managerId", mine.toString());
+    }
+
+    @Test
+    void rankingPageAndSizeAreClampedRatherThanRejected() {
+        assertThat(rankingPage(-1, 20)).containsEntry("page", 0);
+        assertThat(rankingPage(0, 0)).containsEntry("size", 1);
+        assertThat(rankingPage(0, 5000)).containsEntry("size", 100);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> rankingPage(int page, int size) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/managers/ranking?page=" + page + "&size=" + size, HttpMethod.GET,
+                authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return response.getBody();
+    }
+
+    @Test
     void managerWithOnlySoftDeletedDestinationsLeavesTheRanking() {
         UUID managerId = UUID.randomUUID();
         UUID destinationId = createPastDestination(managerId);
@@ -580,10 +661,12 @@ class FeedbackIntegrationTest {
         restTemplate.exchange("/destinations/" + destinationId, HttpMethod.DELETE,
                 authorized(TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", managerId)), Void.class);
 
-        ResponseEntity<List> response = restTemplate.exchange(
-                "/managers/ranking", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), List.class);
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/managers/ranking?size=1000", HttpMethod.GET, authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
 
-        assertThat(response.getBody()).noneSatisfy(row ->
+        @SuppressWarnings("unchecked")
+        List<Object> ranking = (List<Object>) response.getBody().get("content");
+        assertThat(ranking).noneSatisfy(row ->
                 assertThat(asMap(row)).containsEntry("managerId", managerId.toString()));
     }
 
@@ -651,6 +734,19 @@ class FeedbackIntegrationTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object row) {
         return (Map<String, Object>) row;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> feedbackPage(int page, int size) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/feedback?page=" + page + "&size=" + size, HttpMethod.GET,
+                authorized(TestJwtTokens.tokenWithRole("ADMIN")), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return response.getBody();
+    }
+
+    private long totalFeedbackCount() {
+        return ((Number) feedbackPage(0, 1).get("totalElements")).longValue();
     }
 
     private static Map<String, Object> feedbackBody(int rating, String comment) {

@@ -2,6 +2,7 @@ package com.travelplan.travel.controller;
 
 import com.travelplan.travel.dto.FeedbackResponse;
 import com.travelplan.travel.dto.GiveFeedbackRequest;
+import com.travelplan.travel.dto.PageResponse;
 import com.travelplan.travel.service.FeedbackService;
 import com.travelplan.travel.service.TokenValidationService;
 import io.jsonwebtoken.Claims;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -103,17 +105,22 @@ public class FeedbackController {
     }
 
     /**
-     * Every feedback on every active destination — the admin dashboard's
-     * "detailed travel history and feedbacks" list. {@code ADMIN} only.
+     * One page of every feedback on every active destination, newest first —
+     * the admin dashboard's "detailed travel history and feedbacks" list.
+     * {@code ADMIN} only. {@code page} (0-based) defaults to 0 and is clamped
+     * to 0 or above; {@code size} defaults to 20 and is clamped to 1..100 —
+     * see {@link FeedbackService#listAll(int, int)}.
      *
-     * @return 200 with the list (empty if none),
+     * @return 200 with the page (empty content if none),
      *         401 with a generic message if the Authorization header is missing/invalid/expired,
      *         403 if the caller is not an ADMIN
      */
     @GetMapping("/feedback")
-    public ResponseEntity<List<FeedbackResponse>> listAll(
+    public ResponseEntity<PageResponse<FeedbackResponse>> listAll(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size,
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         tokenValidationService.requireAdmin(authorizationHeader);
-        return ResponseEntity.ok(feedbackService.listAll());
+        return ResponseEntity.ok(feedbackService.listAll(page, size));
     }
 }

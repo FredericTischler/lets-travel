@@ -745,8 +745,39 @@ en ont besoin.
 ##### Ce que je sacrifie
 
 Pas d'avis publics sur la fiche d'une destination pour les travelers : seule la
-**note moyenne** d'un manager est publique (5ter.5). Pas de pagination des
-listes (volume de démo), même limite que les autres listes du service.
+**note moyenne** d'un manager est publique (5ter.5). ~~Pas de pagination des
+listes~~ — corrigé pour les deux listes à volume non borné (`GET /feedback`,
+`GET /managers/ranking` — voir §5bis) ; les autres (par destination, par
+traveler) restent non paginées, bornées par construction à un seul manager ou
+traveler.
+
+##### 5bis. Pagination de `GET /feedback` et `GET /managers/ranking`
+
+**Décision.** Ces deux endpoints — les seuls de tout le projet dont la taille
+croît avec le volume de la plateforme entière plutôt qu'avec celui d'un seul
+manager/traveler/destination — répondent désormais `PageResponse<T>`
+(`content`, `page`, `size`, `totalElements`, `totalPages`), `page`/`size` en
+query params clampés (jamais rejetés) plutôt que la liste brute.
+
+**Justification.** Une croissance non bornée avec le nombre total d'avis ou de
+managers de la plateforme (contrairement aux autres listes du service,
+bornées par construction) est exactement le scénario qu'une pagination doit
+couvrir. `PageResponse<T>` est une classe maison plutôt que `Page`/`Pageable`
+de Spring Data : ce projet n'utilise cette dernière nulle part (repositories
+Neo4j explicites en Cypher via `Neo4jClient`, jamais de dérivation de requête
+Spring Data), et `PageImpl` sérialiserait plusieurs champs internes à Spring
+sans utilité ici. Le classement reste calculé et trié dans son intégralité
+avant d'être découpé en page : le rang d'un manager dépend de la population
+entière, pas seulement de la page qu'il occupe (`DashboardService#ranking`).
+
+**Ce que je sacrifie.** Le filtre par note et la « note moyenne » de l'écran
+avis (front) ne portent plus que sur la page affichée, faute de filtre par
+note côté backend — une vraie moyenne plateforme demanderait un endpoint
+d'agrégat dédié, hors périmètre ici.
+
+**Alternative rejetée.** `Page`/`Pageable` de Spring Data : rejeté, cohérence
+avec le choix déjà fait (Neo4jClient explicite) partout ailleurs dans ce
+service.
 
 ##### Alternative rejetée
 

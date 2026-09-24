@@ -61,7 +61,9 @@ describe('FeedbackService', () => {
     service.mine().subscribe();
     httpMock.expectOne(`${base}/travelers/me/feedback`).flush([]);
 
-    service.all().subscribe();
-    httpMock.expectOne(`${base}/feedback`).flush([]);
+    service.all(0, 20).subscribe();
+    httpMock
+      .expectOne((r) => r.url === `${base}/feedback`)
+      .flush({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 1 });
   });
 });

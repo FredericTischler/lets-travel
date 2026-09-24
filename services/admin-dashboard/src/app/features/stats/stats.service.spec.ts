@@ -40,8 +40,10 @@ describe('StatsService', () => {
   });
 
   it('ranking(), adminDashboard() and travelerStats() hit their endpoints', () => {
-    service.ranking().subscribe();
-    httpMock.expectOne(`${base}/managers/ranking`).flush([]);
+    service.ranking(0, 20).subscribe();
+    httpMock
+      .expectOne((r) => r.url === `${base}/managers/ranking`)
+      .flush({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 1 });
 
     service.adminDashboard(3).subscribe();
     const admin = httpMock.expectOne((r) => r.url === `${base}/admin/dashboard`);

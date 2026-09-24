@@ -6,9 +6,11 @@ import { catchError, forkJoin, of } from 'rxjs';
 
 import { formatMoneyMap, formatNumber, formatRating } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { Page } from '../../shared/pagination';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { PaginatorComponent } from '../../shared/ui/paginator/paginator.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { DASHBOARD_MONTH_CHOICES } from '../manager/manager-dashboard.component';
 import { FeedbackListComponent } from '../feedback/feedback-list.component';
@@ -17,6 +19,8 @@ import { incomeChartPoints, incomeFormatter } from '../stats/income-chart';
 import { AdminDashboard, RankingEntry, StatsService } from '../stats/stats.service';
 import { TravelRowsTableComponent } from '../stats/travel-rows-table.component';
 import { User, UserService } from '../users/user.service';
+
+const RANKING_PAGE_SIZE = 20;
 
 /**
  * Admin dashboard (`/admin/dashboard`): the overview the subject asks of the Admin
@@ -45,6 +49,7 @@ import { User, UserService } from '../users/user.service';
     AlertComponent,
     BarChartComponent,
     CardComponent,
+    PaginatorComponent,
     StatTileComponent,
     FeedbackListComponent,
     TravelRowsTableComponent,
@@ -58,6 +63,8 @@ export class AdminDashboardComponent implements OnInit {
 
   protected readonly data = signal<AdminDashboard | null>(null);
   protected readonly ranking = signal<RankingEntry[] | null>(null);
+  protected readonly rankingPage = signal<Page<RankingEntry> | null>(null);
+  protected readonly rankingLoading = signal(false);
   protected readonly reportCounts = signal<Record<string, number | null>>({});
   protected readonly emailsById = signal<Record<string, string>>({});
   protected readonly loading = signal(true);
@@ -106,22 +113,7 @@ export class AdminDashboardComponent implements OnInit {
     });
 
     // The ranking, the report counts and the emails are secondary: each failure is isolated.
-    this.statsService
-      .ranking()
-      .pipe(catchError(() => of<RankingEntry[] | null>(null)))
-      .subscribe((ranking) => {
-        this.ranking.set(ranking);
-        if (ranking && ranking.length > 0) {
-          forkJoin(
-            Object.fromEntries(
-              ranking.map((entry) => [
-                entry.managerId,
-                this.reportService.countFor(entry.managerId).pipe(catchError(() => of(null))),
-              ]),
-            ),
-          ).subscribe((counts) => this.reportCounts.set(counts));
-        }
-      });
+    this.loadRanking(0);
 
     this.userService
       .list()
@@ -129,5 +121,32 @@ export class AdminDashboardComponent implements OnInit {
       .subscribe((users) =>
         this.emailsById.set(Object.fromEntries(users.map((user) => [user.id, user.email]))),
       );
+  }
+
+  /** Only re-fetches the ranking table, not the whole dashboard — kept snappy when paging. */
+  protected changeRankingPage(pageIndex: number): void {
+    this.loadRanking(pageIndex);
+  }
+
+  private loadRanking(pageIndex: number): void {
+    this.rankingLoading.set(true);
+    this.statsService
+      .ranking(pageIndex, RANKING_PAGE_SIZE)
+      .pipe(catchError(() => of<Page<RankingEntry> | null>(null)))
+      .subscribe((page) => {
+        this.rankingLoading.set(false);
+        this.rankingPage.set(page);
+        this.ranking.set(page?.content ?? null);
+        if (page && page.content.length > 0) {
+          forkJoin(
+            Object.fromEntries(
+              page.content.map((entry) => [
+                entry.managerId,
+                this.reportService.countFor(entry.managerId).pipe(catchError(() => of(null))),
+              ]),
+            ),
+          ).subscribe((counts) => this.reportCounts.set(counts));
+        }
+      });
   }
 }

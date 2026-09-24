@@ -34,7 +34,9 @@ describe('AdminFeedbackComponent', () => {
 
   function load(rows: Feedback[]) {
     fixture.detectChanges();
-    httpMock.expectOne(url).flush(rows);
+    httpMock
+      .expectOne((req) => req.url === url)
+      .flush({ content: rows, page: 0, size: 20, totalElements: rows.length, totalPages: 1 });
     fixture.detectChanges();
   }
 
@@ -44,7 +46,9 @@ describe('AdminFeedbackComponent', () => {
     );
 
   it('lists every feedback, newest first, with the author id and a summary', () => {
-    load([feedback('a', 5, '2026-05-01T00:00:00Z'), feedback('b', 3, '2026-06-01T00:00:00Z')]);
+    // Already newest-first, as the real backend returns it (ORDER BY createdAt DESC) — the
+    // component trusts that order rather than re-sorting client-side.
+    load([feedback('b', 3, '2026-06-01T00:00:00Z'), feedback('a', 5, '2026-05-01T00:00:00Z')]);
 
     expect(ids()).toEqual(['avis b', 'avis a']);
     expect(fixture.nativeElement.textContent).toContain('traveler-b');
@@ -71,9 +75,31 @@ describe('AdminFeedbackComponent', () => {
     expect(ids()[0]).toBe('<img src=x onerror=alert(1)>');
   });
 
+  it('requests the next page when the paginator asks for it', () => {
+    fixture.detectChanges();
+    httpMock
+      .expectOne((req) => req.url === url)
+      .flush({ content: [feedback('a', 5, '2026-05-01T00:00:00Z')], page: 0, size: 20, totalElements: 30, totalPages: 2 });
+    fixture.detectChanges();
+
+    const nextButton = Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>)
+      .find((b) => b.textContent?.trim() === 'Suivant');
+    nextButton!.click();
+    fixture.detectChanges();
+
+    const req = httpMock.expectOne((r) => r.url === url);
+    expect(req.request.params.get('page')).toBe('1');
+    req.flush({ content: [feedback('b', 4, '2026-06-01T00:00:00Z')], page: 1, size: 20, totalElements: 30, totalPages: 2 });
+    fixture.detectChanges();
+
+    expect(ids()).toEqual(['avis b']);
+  });
+
   it('shows an error when the list cannot be loaded (e.g. 403 for a non-admin)', () => {
     fixture.detectChanges();
-    httpMock.expectOne(url).flush({ error: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
+    httpMock
+      .expectOne((req) => req.url === url)
+      .flush({ error: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Forbidden');
