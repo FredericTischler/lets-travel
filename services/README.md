@@ -34,8 +34,16 @@ Spring Boot `3.4.3`, Java, build Maven (`./mvnw`), image construite depuis le
 
 ## Non implémenté
 
-- **Pas de CRUD complet sur `TRANSPORT`** : ni mise à jour, ni suppression, ni
-  anti-doublon ; traversée limitée à 1 saut (pas de pathfinding multi-hop).
+~~Pas de CRUD complet sur `TRANSPORT`~~ — **corrigé** : `PUT`/`DELETE
+/destinations/{fromId}/transports/{transportId}` (même ownership que `create` ;
+suppression en soft-delete comme partout ailleurs, jamais de `DETACH DELETE`)
+et pathfinding multi-hop (`GET /destinations/{fromId}/routes/{toId}`, jusqu'à 5
+sauts, fewest-hops — pas le trajet le plus court en durée, un vrai plus-court-
+chemin pondéré demanderait APOC, non installé). Toujours pas d'anti-doublon à
+la création (gap assumé, documenté dans `TransportRepository`). Un trajet a
+maintenant son propre `id` (UUID applicatif) ; les trajets créés avant ce
+changement en sont dépourvus dans le graphe — un backfill idempotent au
+démarrage (`Neo4jSchemaInitializer`) leur en assigne un.
 ~~Aucune CI/CD pour cette phase~~ — **corrigé** : les 3 services ont un
 `Jenkinsfile` (`./mvnw test`, puis analyse SonarQube + quality gate si
 `SONAR_HOST_URL` est configuré), rendus en jobs Jenkins par le rôle Ansible

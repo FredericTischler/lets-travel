@@ -1,28 +1,33 @@
 package com.travelplan.travel.service;
 
 import com.travelplan.travel.dto.CreateTransportRequest;
+import com.travelplan.travel.dto.RouteResponse;
 import com.travelplan.travel.dto.TransportResponse;
+import com.travelplan.travel.dto.UpdateTransportRequest;
 import com.travelplan.travel.entity.Destination;
 import com.travelplan.travel.exception.DestinationNotFoundException;
 import com.travelplan.travel.exception.InsufficientRoleException;
+import com.travelplan.travel.exception.InvalidRouteRequestException;
 import com.travelplan.travel.exception.InvalidTransportRequestException;
+import com.travelplan.travel.exception.RouteNotFoundException;
+import com.travelplan.travel.exception.TransportNotFoundException;
 import com.travelplan.travel.repository.DestinationRepository;
+import com.travelplan.travel.repository.TransportEdge;
 import com.travelplan.travel.repository.TransportRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 /**
  * Business logic for the {@code TRANSPORT} relationship between two
+ * destinations: create/update/delete a directed link, list the destinations
+ * reachable in one hop, and find the fewest-hops chain of links between two
  * destinations.
- *
- * Increment 2 scope: create a directed, single-hop transport link and list
- * the destinations reachable in exactly one hop. No pathfinding, no second
- * node type, no relationship update/delete, no anti-duplicate protection —
- * see {@link TransportRepository} for the rationale of the last point.
  */
 @Service
 @Transactional(readOnly = true)
@@ -67,25 +72,16 @@ public class TransportService {
         if (fromId.equals(toId)) {
             throw InvalidTransportRequestException.selfLoop(fromId);
         }
-        if (!ALLOWED_MODES.contains(request.getMode())) {
-            throw InvalidTransportRequestException.invalidMode(request.getMode(), ALLOWED_MODES);
-        }
-        if (request.getDurationMinutes() <= 0) {
-            throw InvalidTransportRequestException.invalidDuration(request.getDurationMinutes());
-        }
+        validateModeAndDuration(request.getMode(), request.getDurationMinutes());
 
-        Destination origin = destinationRepository.findActiveById(fromId)
-                .orElseThrow(() -> new DestinationNotFoundException(fromId));
-        if (!isAdmin && (origin.getManagerId() == null || !origin.getManagerId().equals(callerId))) {
-            throw new InsufficientRoleException("Not allowed to manage another manager's travel");
-        }
+        Destination origin = requireOwnedActiveOrigin(fromId, callerId, isAdmin);
         Destination target = destinationRepository.findActiveById(toId)
                 .orElseThrow(() -> new DestinationNotFoundException(toId));
 
-        transportRepository.create(origin.getId(), target.getId(), request.getMode(), request.getDurationMinutes(),
-                request.getDepartureTime(), request.getArrivalTime());
+        UUID transportId = transportRepository.create(origin.getId(), target.getId(), request.getMode(),
+                request.getDurationMinutes(), request.getDepartureTime(), request.getArrivalTime());
 
-        return new TransportResponse(request.getMode(), request.getDurationMinutes(),
+        return new TransportResponse(transportId, request.getMode(), request.getDurationMinutes(),
                 request.getDepartureTime(), request.getArrivalTime(),
                 target.getId(), target.getName(), target.getCountry());
     }
@@ -93,9 +89,10 @@ public class TransportService {
     /**
      * List destinations reachable from {@code id} via exactly one outgoing
      * {@code TRANSPORT} relationship. Filters {@code deletedAt IS NULL} on
-     * both the origin (existence check below) and the target (inside the
-     * repository query): a soft-deleted target disappears from this list
-     * even though its relationship still exists in the graph.
+     * the origin (existence check below), the transport, and the target
+     * (inside the repository query): a soft-deleted target or transport
+     * disappears from this list even though its relationship still exists
+     * in the graph.
      *
      * @throws DestinationNotFoundException if {@code id} does not exist or is soft-deleted
      */
@@ -103,10 +100,109 @@ public class TransportService {
         destinationRepository.findActiveById(id)
                 .orElseThrow(() -> new DestinationNotFoundException(id));
 
-        return transportRepository.findActiveOutgoing(id).stream()
-                .map(edge -> new TransportResponse(edge.mode(), edge.durationMinutes(),
-                        edge.departureTime(), edge.arrivalTime(),
-                        edge.targetId(), edge.targetName(), edge.targetCountry()))
-                .toList();
+        return transportRepository.findActiveOutgoing(id).stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Replace the mutable fields (mode, durationMinutes, departure/arrival
+     * time) of one active transport hanging off {@code fromId}. Same
+     * ownership rule as {@link #create}: the caller must own {@code fromId}
+     * (or be admin).
+     *
+     * @throws InvalidTransportRequestException if mode is not one of the five
+     *         allowed values, or durationMinutes is not positive
+     * @throws DestinationNotFoundException if {@code fromId} does not exist or is soft-deleted
+     * @throws InsufficientRoleException if {@code isAdmin} is false and the
+     *         origin's {@code managerId} is not {@code callerId}
+     * @throws TransportNotFoundException if no active transport with
+     *         {@code transportId} hangs off {@code fromId}
+     */
+    @Transactional
+    public TransportResponse update(UUID fromId, UUID transportId, UpdateTransportRequest request,
+                                     UUID callerId, boolean isAdmin) {
+        validateModeAndDuration(request.getMode(), request.getDurationMinutes());
+        requireOwnedActiveOrigin(fromId, callerId, isAdmin);
+
+        TransportEdge updated = transportRepository.update(fromId, transportId, request.getMode(),
+                        request.getDurationMinutes(), request.getDepartureTime(), request.getArrivalTime())
+                .orElseThrow(() -> new TransportNotFoundException(fromId, transportId));
+
+        return toResponse(updated);
+    }
+
+    /**
+     * Soft-delete one active transport hanging off {@code fromId}. Same
+     * ownership rule as {@link #create}.
+     *
+     * @throws DestinationNotFoundException if {@code fromId} does not exist or is soft-deleted
+     * @throws InsufficientRoleException if {@code isAdmin} is false and the
+     *         origin's {@code managerId} is not {@code callerId}
+     * @throws TransportNotFoundException if no active transport with
+     *         {@code transportId} hangs off {@code fromId} (absent, or already deleted)
+     */
+    @Transactional
+    public void delete(UUID fromId, UUID transportId, UUID callerId, boolean isAdmin) {
+        requireOwnedActiveOrigin(fromId, callerId, isAdmin);
+
+        boolean deleted = transportRepository.softDelete(fromId, transportId, OffsetDateTime.now(ZoneOffset.UTC));
+        if (!deleted) {
+            throw new TransportNotFoundException(fromId, transportId);
+        }
+    }
+
+    /**
+     * The fewest-hops chain of active {@code TRANSPORT} edges from
+     * {@code fromId} to {@code toId} (open to any of the three known roles,
+     * read-only — same split as {@link #findOutgoing}, no ownership check).
+     *
+     * @throws InvalidRouteRequestException if {@code fromId} equals {@code toId}
+     * @throws DestinationNotFoundException if either endpoint does not exist or is soft-deleted
+     * @throws RouteNotFoundException if both endpoints exist and are active but
+     *         no chain of active transports connects them within the bounded
+     *         hop count this project searches
+     */
+    public RouteResponse findRoute(UUID fromId, UUID toId) {
+        if (fromId.equals(toId)) {
+            throw InvalidRouteRequestException.sameOriginAndTarget(fromId);
+        }
+        destinationRepository.findActiveById(fromId).orElseThrow(() -> new DestinationNotFoundException(fromId));
+        destinationRepository.findActiveById(toId).orElseThrow(() -> new DestinationNotFoundException(toId));
+
+        List<TransportEdge> hops = transportRepository.findPath(fromId, toId);
+        if (hops.isEmpty()) {
+            throw new RouteNotFoundException(fromId, toId);
+        }
+
+        int totalDurationMinutes = hops.stream().mapToInt(TransportEdge::durationMinutes).sum();
+        return new RouteResponse(hops.stream().map(this::toResponse).toList(), totalDurationMinutes);
+    }
+
+    private void validateModeAndDuration(String mode, int durationMinutes) {
+        if (!ALLOWED_MODES.contains(mode)) {
+            throw InvalidTransportRequestException.invalidMode(mode, ALLOWED_MODES);
+        }
+        if (durationMinutes <= 0) {
+            throw InvalidTransportRequestException.invalidDuration(durationMinutes);
+        }
+    }
+
+    /**
+     * Loads the active origin destination and enforces the ownership rule
+     * shared by create/update/delete: a non-admin caller must be that
+     * destination's {@code managerId}.
+     */
+    private Destination requireOwnedActiveOrigin(UUID fromId, UUID callerId, boolean isAdmin) {
+        Destination origin = destinationRepository.findActiveById(fromId)
+                .orElseThrow(() -> new DestinationNotFoundException(fromId));
+        if (!isAdmin && (origin.getManagerId() == null || !origin.getManagerId().equals(callerId))) {
+            throw new InsufficientRoleException("Not allowed to manage another manager's travel");
+        }
+        return origin;
+    }
+
+    private TransportResponse toResponse(TransportEdge edge) {
+        return new TransportResponse(edge.id(), edge.mode(), edge.durationMinutes(),
+                edge.departureTime(), edge.arrivalTime(),
+                edge.targetId(), edge.targetName(), edge.targetCountry());
     }
 }

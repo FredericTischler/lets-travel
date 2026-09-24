@@ -10,7 +10,7 @@ import java.util.UUID;
  * Not an API type: {@code TransportService} maps this to
  * {@link com.travelplan.travel.dto.TransportResponse}.
  */
-public record TransportEdge(String mode, int durationMinutes, OffsetDateTime departureTime,
+public record TransportEdge(UUID id, String mode, int durationMinutes, OffsetDateTime departureTime,
                              OffsetDateTime arrivalTime, UUID targetId, String targetName,
                              String targetCountry) {
 }

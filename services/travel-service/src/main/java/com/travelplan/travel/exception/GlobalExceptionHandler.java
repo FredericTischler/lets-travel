@@ -33,6 +33,21 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(TransportNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleTransportNotFound(TransportNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(RouteNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleRouteNotFound(RouteNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidRouteRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidRouteRequest(InvalidRouteRequestException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(InvalidDestinationRequestException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidDestinationRequest(InvalidDestinationRequestException ex) {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());

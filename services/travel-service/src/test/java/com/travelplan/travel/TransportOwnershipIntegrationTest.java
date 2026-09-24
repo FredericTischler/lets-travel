@@ -143,6 +143,75 @@ class TransportOwnershipIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void anotherManagerCannotUpdateATransportOnSomeoneElsesOrigin() {
+        UUID owner = UUID.randomUUID();
+        UUID intruder = UUID.randomUUID();
+        UUID origin = createAsManager(owner, "Marseille");
+        UUID target = createAsManager(owner, "Nice");
+        UUID transportId = createTransportAsOwner(owner, origin, target);
+
+        Map<String, Object> update = Map.of("mode", "CAR", "durationMinutes", 120);
+        ResponseEntity<Map> response = putTransport(
+                TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", intruder), origin, transportId, update);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void anotherManagerCannotDeleteATransportOnSomeoneElsesOrigin() {
+        UUID owner = UUID.randomUUID();
+        UUID intruder = UUID.randomUUID();
+        UUID origin = createAsManager(owner, "Toulon");
+        UUID target = createAsManager(owner, "Cannes");
+        UUID transportId = createTransportAsOwner(owner, origin, target);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", intruder));
+        ResponseEntity<Map> response = restTemplate.exchange(
+                "/destinations/" + origin + "/transports/" + transportId, HttpMethod.DELETE,
+                new HttpEntity<>(headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(outgoingOf(origin)).hasSize(1);
+    }
+
+    @Test
+    void ownerCanUpdateAndAdminCanDeleteTheSameTransport() {
+        UUID owner = UUID.randomUUID();
+        UUID origin = createAsManager(owner, "Dijon");
+        UUID target = createAsManager(owner, "Besancon");
+        UUID transportId = createTransportAsOwner(owner, origin, target);
+
+        Map<String, Object> update = Map.of("mode", "CAR", "durationMinutes", 90);
+        ResponseEntity<Map> updateResponse = putTransport(
+                TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", owner), origin, transportId, update);
+        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(TestJwtTokens.validToken());
+        ResponseEntity<Void> deleteResponse = restTemplate.exchange(
+                "/destinations/" + origin + "/transports/" + transportId, HttpMethod.DELETE,
+                new HttpEntity<>(headers), Void.class);
+        assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(outgoingOf(origin)).isEmpty();
+    }
+
+    private UUID createTransportAsOwner(UUID owner, UUID from, UUID to) {
+        ResponseEntity<Map> response = postTransport(
+                TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", owner), from, to);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return UUID.fromString((String) response.getBody().get("id"));
+    }
+
+    private ResponseEntity<Map> putTransport(String token, UUID from, UUID transportId, Map<String, Object> body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return restTemplate.exchange("/destinations/" + from + "/transports/" + transportId, HttpMethod.PUT,
+                new HttpEntity<>(body, headers), Map.class);
+    }
+
     private ResponseEntity<Map> postTransport(String token, UUID from, UUID to) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
