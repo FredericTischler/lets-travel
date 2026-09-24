@@ -17,7 +17,7 @@
             <app-input
               fieldId="email"
               name="email"
-              label="Email"
+              [label]="'Email' | translate"
               type="email"
               [(ngModel)]="email"
               [required]="true"
@@ -28,18 +28,18 @@
               <app-input
                 fieldId="password"
                 name="password"
-                label="Mot de passe"
+                [label]="'Mot de passe' | translate"
                 type="password"
                 [(ngModel)]="password"
                 [required]="true"
                 autocomplete="new-password"
               />
-              <p class="text-xs text-ink-dim">{{ minPasswordLength }} caractères minimum.</p>
+              <p class="text-xs text-ink-dim">{{ '{{n}} caractères minimum.' | translate: { n: minPasswordLength } }}</p>
             </div>
 
             <fieldset class="flex flex-col gap-2">
               <legend class="mb-1 font-mono text-xs tracking-wide text-ink-dim uppercase">
-                Je souhaite être
+                {{ 'Je souhaite être' | translate }}
               </legend>
               @for (option of roles; track option.value) {
                 <label
@@ -54,8 +54,8 @@
                     [(ngModel)]="role"
                   />
                   <span>
-                    <span class="block font-medium text-ink">{{ option.label }}</span>
-                    <span class="block text-xs text-ink-dim">{{ option.hint }}</span>
+                    <span class="block font-medium text-ink">{{ option.label | translate }}</span>
+                    <span class="block text-xs text-ink-dim">{{ option.hint | translate }}</span>
                   </span>
                 </label>
               }
@@ -71,12 +71,12 @@
               class="mt-1 bg-amber px-4 py-3 font-display text-lg font-bold tracking-wide text-amber-ink uppercase transition-[filter] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               style="clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%)"
             >
-              {{ submitting() ? 'Création…' : 'Créer mon compte' }}
+              {{ (submitting() ? 'Création…' : 'Créer mon compte') | translate }}
             </button>
 
             <div class="flex items-center justify-between pt-1">
-              <span class="text-xs text-ink-dim">Déjà un compte ?</span>
-              <a routerLink="/login" class="text-sm font-medium text-teal hover:underline">Se connecter</a>
+              <span class="text-xs text-ink-dim">{{ 'Déjà un compte ?' | translate }}</span>
+              <a routerLink="/login" class="text-sm font-medium text-teal hover:underline">{{ 'Se connecter' | translate }}</a>
             </div>
           </form>
         </div>

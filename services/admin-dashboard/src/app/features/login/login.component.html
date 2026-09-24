@@ -17,7 +17,7 @@
             <app-input
               fieldId="email"
               name="email"
-              label="Email"
+              [label]="'Email' | translate"
               type="email"
               [(ngModel)]="email"
               [required]="true"
@@ -27,7 +27,7 @@
             <app-input
               fieldId="password"
               name="password"
-              label="Mot de passe"
+              [label]="'Mot de passe' | translate"
               type="password"
               [(ngModel)]="password"
               [required]="true"
@@ -44,13 +44,13 @@
               class="mt-1 bg-amber px-4 py-3 font-display text-lg font-bold tracking-wide text-amber-ink uppercase transition-[filter] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               style="clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%)"
             >
-              {{ submitting() ? 'Connexion…' : 'Se connecter' }}
+              {{ (submitting() ? 'Connexion…' : 'Se connecter') | translate }}
             </button>
 
             <div class="flex items-center justify-between pt-1">
-              <span class="text-xs text-ink-dim">Pas encore de compte ?</span>
+              <span class="text-xs text-ink-dim">{{ 'Pas encore de compte ?' | translate }}</span>
               <a routerLink="/register" class="text-sm font-medium text-teal hover:underline"
-                >Créer un compte</a
+                >{{ 'Créer un compte' | translate }}</a
               >
             </div>
           </form>

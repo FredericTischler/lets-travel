@@ -4,9 +4,9 @@
 >
   <div class="flex flex-wrap items-center gap-2">
     <app-badge [tone]="remaining().expired ? 'neutral' : 'warning'">{{
-      remaining().expired ? 'Expirée' : 'En attente de paiement'
+      (remaining().expired ? 'Expirée' : 'En attente de paiement') | translate
     }}</app-badge>
-    <span data-testid="provider-label">{{ providerLabel() }}</span>
+    <span data-testid="provider-label">{{ providerLabel() | translate }}</span>
     @if (amountLabel()) {
       <span class="font-medium" data-testid="amount">{{ amountLabel() }}</span>
     }
@@ -14,103 +14,114 @@
 
   @if (remaining().expired) {
     <p data-testid="expired-note">
-      Le délai de paiement est dépassé : la place n'est plus réservée. Vous pouvez vous réinscrire.
+      {{
+        "Le délai de paiement est dépassé : la place n'est plus réservée. Vous pouvez vous réinscrire."
+          | translate
+      }}
     </p>
   } @else {
     @if (expiresAt()) {
       <p data-testid="countdown">
-        Votre place est réservée encore <strong>{{ remaining().label }}</strong> (jusqu'au
-        {{ expiresAt() | date: 'dd/MM/yyyy HH:mm' }}). Passé ce délai, la réservation expire.
+        {{ 'Votre place est réservée encore' | translate }} <strong>{{ remaining().label }}</strong>
+        {{
+          "(jusqu'au {{date}}). Passé ce délai, la réservation expire."
+            | translate: { date: (expiresAt() | date: 'dd/MM/yyyy HH:mm') ?? '' }
+        }}
       </p>
     }
 
     @switch (provider()) {
       @case ('MANUAL') {
         <p data-testid="manual-explanation">
-          Paiement manuel : un administrateur doit confirmer la réception de votre règlement
-          (virement, espèces…). Votre inscription deviendra active dès cette confirmation, vous
-          n'avez rien d'autre à faire ici.
+          {{
+            "Paiement manuel : un administrateur doit confirmer la réception de votre règlement (virement, espèces…). Votre inscription deviendra active dès cette confirmation, vous n'avez rien d'autre à faire ici."
+              | translate
+          }}
         </p>
       }
       @case ('PAYPAL') {
         <p>
-          Approuvez le paiement sur PayPal, puis revenez ici : le paiement est finalisé
-          automatiquement au retour, ou avec le bouton « J'ai approuvé le paiement ».
+          {{
+            "Approuvez le paiement sur PayPal, puis revenez ici : le paiement est finalisé automatiquement au retour, ou avec le bouton « J'ai approuvé le paiement »."
+              | translate
+          }}
         </p>
         <div class="flex flex-wrap gap-2">
           <app-button [disabled]="busy() || !approveUrl()" (clicked)="payWithPayPal()">
-            Payer avec PayPal
+            {{ 'Payer avec PayPal' | translate }}
           </app-button>
           <app-button variant="secondary" [disabled]="busy()" (clicked)="capture()">
-            {{ busy() ? 'Finalisation…' : "J'ai approuvé le paiement" }}
+            {{ (busy() ? 'Finalisation…' : "J'ai approuvé le paiement") | translate }}
           </app-button>
         </div>
         @if (!approveUrl()) {
           <p class="text-xs" data-testid="no-approve-url">
-            Le lien PayPal d'origine n'est plus disponible dans ce navigateur (il n'est fourni
-            qu'à l'inscription). Si vous avez déjà approuvé le paiement, utilisez « J'ai approuvé
-            le paiement » ; sinon annulez la réservation et recommencez.
+            {{
+              "Le lien PayPal d'origine n'est plus disponible dans ce navigateur (il n'est fourni qu'à l'inscription). Si vous avez déjà approuvé le paiement, utilisez « J'ai approuvé le paiement » ; sinon annulez la réservation et recommencez."
+                | translate
+            }}
           </p>
         }
       }
       @case ('STRIPE') {
         @if (!stripeConfigured) {
           <p data-testid="stripe-explanation">
-            Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'est pas
-            configuré pour collecter la carte (clé publique Stripe manquante). La confirmation
-            arrive du webhook Stripe et active l'inscription si le paiement est réglé autrement.
-            Sans règlement avant l'échéance, la réservation expire.
+            {{
+              "Paiement par carte (Stripe) : le paiement est créé chez Stripe, mais ce site n'est pas configuré pour collecter la carte (clé publique Stripe manquante). La confirmation arrive du webhook Stripe et active l'inscription si le paiement est réglé autrement. Sans règlement avant l'échéance, la réservation expire."
+                | translate
+            }}
           </p>
         } @else if (!stripeClientSecret()) {
           <p data-testid="stripe-no-secret">
-            Le formulaire de carte n'est disponible qu'au moment de l'inscription et n'est pas
-            conservé d'une visite à l'autre. Si vous avez déjà payé, actualisez l'état ci-dessous ;
-            sinon annulez la réservation et recommencez pour obtenir un nouveau formulaire.
+            {{
+              "Le formulaire de carte n'est disponible qu'au moment de l'inscription et n'est pas conservé d'une visite à l'autre. Si vous avez déjà payé, actualisez l'état ci-dessous ; sinon annulez la réservation et recommencez pour obtenir un nouveau formulaire."
+                | translate
+            }}
           </p>
         } @else {
-          <p>Réglez par carte bancaire (paiement sécurisé, géré par Stripe) :</p>
+          <p>{{ 'Réglez par carte bancaire (paiement sécurisé, géré par Stripe) :' | translate }}</p>
           <div #stripeMount data-testid="stripe-elements" class="min-h-10"></div>
           @if (stripeLoading()) {
-            <p class="text-xs text-ink-dim">Chargement du formulaire de paiement…</p>
+            <p class="text-xs text-ink-dim">{{ 'Chargement du formulaire de paiement…' | translate }}</p>
           }
           @if (stripeError()) {
-            <app-alert variant="error">{{ stripeError() }}</app-alert>
+            <app-alert variant="error">{{ stripeError() | translate }}</app-alert>
           }
           <div class="flex flex-wrap gap-2">
             <app-button [disabled]="!stripeReady() || stripeSubmitting()" (clicked)="payWithStripe()">
-              {{ stripeSubmitting() ? 'Paiement en cours…' : 'Payer par carte' }}
+              {{ (stripeSubmitting() ? 'Paiement en cours…' : 'Payer par carte') | translate }}
             </app-button>
           </div>
         }
         @if (reference()) {
-          <p class="break-all text-xs">Référence : <code>{{ reference() }}</code></p>
+          <p class="break-all text-xs">{{ 'Référence :' | translate }} <code>{{ reference() }}</code></p>
         }
         <div>
           <app-button variant="secondary" [disabled]="busy()" (clicked)="refresh()">
-            Actualiser l'état du paiement
+            {{ "Actualiser l'état du paiement" | translate }}
           </app-button>
         </div>
       }
       @default {
-        <p>Nous n'avons pas pu déterminer le mode de paiement de cette réservation.</p>
+        <p>{{ "Nous n'avons pas pu déterminer le mode de paiement de cette réservation." | translate }}</p>
         <div>
-          <app-button variant="secondary" (clicked)="refresh()">Actualiser</app-button>
+          <app-button variant="secondary" (clicked)="refresh()">{{ 'Actualiser' | translate }}</app-button>
         </div>
       }
     }
   }
 
   @if (info()) {
-    <app-alert variant="success">{{ info() }}</app-alert>
+    <app-alert variant="success">{{ info() | translate }}</app-alert>
   }
   @if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   }
 
   @if (!remaining().expired) {
     <div>
       <app-button variant="danger" [disabled]="busy()" (clicked)="cancelRequested.emit()">
-        Annuler la réservation
+        {{ "Annuler la réservation" | translate }}
       </app-button>
     </div>
   }

@@ -5,6 +5,8 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { AuthService } from '../../core/auth/auth.service';
 import { ROLE_LABELS, isRole } from '../../core/auth/roles';
 import { ThemeService } from '../../core/theme/theme.service';
+import { TranslateService } from '../i18n/translate.service';
+import { TranslatePipe } from '../i18n/translate.pipe';
 import { BadgeComponent } from '../ui/badge/badge.component';
 import { navSectionsFor } from './nav-items';
 
@@ -20,13 +22,14 @@ import { navSectionsFor } from './nav-items';
  */
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, BadgeComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NgTemplateOutlet, BadgeComponent, TranslatePipe],
   templateUrl: './app-shell.component.html',
 })
 export class AppShellComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   protected readonly themeService = inject(ThemeService);
+  protected readonly translateService = inject(TranslateService);
 
   protected readonly menuOpen = signal(false);
 
@@ -53,6 +56,10 @@ export class AppShellComponent {
       }
       return next;
     });
+  }
+
+  toggleLocale(): void {
+    this.translateService.setLocale(this.translateService.locale() === 'fr' ? 'en' : 'fr');
   }
 
   toggleMenu(): void {

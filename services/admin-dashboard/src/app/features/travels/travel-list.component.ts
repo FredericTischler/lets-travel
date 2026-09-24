@@ -7,6 +7,7 @@ import { Router, RouterLink } from '@angular/router';
 import { Subject, catchError, debounceTime, map, of, switchMap } from 'rxjs';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -48,6 +49,7 @@ const SEARCH_UNAVAILABLE_NOTICE =
     ButtonComponent,
     CardComponent,
     RecommendationsComponent,
+    TranslatePipe,
   ],
   templateUrl: './travel-list.component.html',
 })

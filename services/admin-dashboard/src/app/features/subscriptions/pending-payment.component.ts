@@ -21,6 +21,7 @@ import { interval } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { formatMoney } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
@@ -65,7 +66,7 @@ const STRIPE_SETTLE_POLL_DELAY_MS = 2000;
  */
 @Component({
   selector: 'app-pending-payment',
-  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent],
+  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, TranslatePipe],
   templateUrl: './pending-payment.component.html',
 })
 export class PendingPaymentComponent implements OnInit, OnDestroy {

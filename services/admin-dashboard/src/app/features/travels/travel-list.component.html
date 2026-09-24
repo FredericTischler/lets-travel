@@ -1,5 +1,5 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Voyages</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Voyages' | translate }}</h1>
 
   <app-recommendations />
 
@@ -7,14 +7,14 @@
     <form class="flex flex-col gap-2 sm:flex-row sm:items-end" role="search" (ngSubmit)="search()">
       <div class="relative flex flex-1 flex-col gap-1">
         <label for="travelSearch" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-          >Rechercher un voyage</label
+          >{{ 'Rechercher un voyage' | translate }}</label
         >
         <input
           id="travelSearch"
           name="travelSearch"
           type="search"
           autocomplete="off"
-          placeholder="Destination, pays, activité, hébergement…"
+          [placeholder]="'Destination, pays, activité, hébergement…' | translate"
           role="combobox"
           aria-autocomplete="list"
           aria-controls="travelSuggestions"
@@ -30,7 +30,7 @@
           <ul
             id="travelSuggestions"
             role="listbox"
-            aria-label="Suggestions"
+            [attr.aria-label]="'Suggestions' | translate"
             class="absolute top-full z-10 mt-1 w-full overflow-hidden border border-line-strong bg-surface"
           >
             @for (suggestion of suggestions(); track suggestion.id; let i = $index) {
@@ -51,26 +51,26 @@
       </div>
 
       <div class="flex gap-2">
-        <app-button type="submit">Rechercher</app-button>
+        <app-button type="submit">{{ 'Rechercher' | translate }}</app-button>
         @if (activeSearch() !== null || query() !== '') {
-          <app-button type="button" variant="secondary" (clicked)="clear()">Effacer</app-button>
+          <app-button type="button" variant="secondary" (clicked)="clear()">{{ 'Effacer' | translate }}</app-button>
         }
       </div>
     </form>
   </app-card>
 
   @if (notice()) {
-    <app-alert variant="warning">{{ notice() }}</app-alert>
+    <app-alert variant="warning">{{ notice() | translate }}</app-alert>
   }
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement…</p>
+    <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else {
     @if (activeSearch() !== null) {
       <p class="text-sm text-ink-dim">
-        {{ travels().length }} résultat(s) pour « {{ activeSearch() }} »
+        {{ '{{n}} résultat(s) pour « {{term}} »' | translate: { n: travels().length, term: activeSearch()! } }}
       </p>
     }
 
@@ -92,7 +92,7 @@
               {{ travel.startDate }} → {{ travel.endDate }} ({{ travel.durationDays }} j)
             </p>
             <p class="mt-auto text-sm font-medium text-ink">
-              {{ travel.price === null ? 'Prix non renseigné' : (travel.price | number: '1.2-2') + ' €' }}
+              {{ travel.price === null ? ('Prix non renseigné' | translate) : (travel.price | number: '1.2-2') + ' €' }}
               <span class="font-normal text-ink-dim">
                 · {{ travel.capacity ?? '—' }} place(s)
               </span>
@@ -101,7 +101,12 @@
         </li>
       } @empty {
         <li class="col-span-full text-sm text-ink-dim">
-          Aucun voyage {{ activeSearch() !== null ? 'ne correspond à cette recherche' : 'disponible' }}.
+          {{
+            (activeSearch() !== null
+              ? 'Aucun voyage ne correspond à cette recherche.'
+              : 'Aucun voyage disponible.'
+            ) | translate
+          }}
         </li>
       }
     </ul>

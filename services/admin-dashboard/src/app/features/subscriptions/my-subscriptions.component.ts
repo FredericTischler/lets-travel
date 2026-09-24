@@ -3,6 +3,8 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -41,11 +43,13 @@ const STATUS_TONES: Record<SubscriptionStatus, BadgeTone> = {
     BadgeComponent,
     CardComponent,
     PendingPaymentComponent,
+    TranslatePipe,
   ],
   templateUrl: './my-subscriptions.component.html',
 })
 export class MySubscriptionsComponent implements OnInit {
   private readonly subscriptionService = inject(SubscriptionService);
+  private readonly translateService = inject(TranslateService);
 
   protected readonly subscriptions = signal<TravelerSubscription[]>([]);
   protected readonly loading = signal(true);
@@ -102,7 +106,13 @@ export class MySubscriptionsComponent implements OnInit {
 
   /** Cancels an unpaid reservation (always allowed) and refreshes the history. */
   protected cancelPending(row: TravelerSubscription): void {
-    if (!confirm(`Annuler la réservation en attente pour ${row.destinationName} ?`)) {
+    if (
+      !confirm(
+        this.translateService.translate('Annuler la réservation en attente pour {{name}} ?', {
+          name: row.destinationName,
+        }),
+      )
+    ) {
       return;
     }
     this.actionError.set(null);

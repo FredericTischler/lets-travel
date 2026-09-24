@@ -6,6 +6,8 @@ import { RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -68,6 +70,7 @@ export interface PendingInfo {
     FeedbackFormComponent,
     FeedbackListComponent,
     PendingPaymentComponent,
+    TranslatePipe,
   ],
   templateUrl: './travel-detail.component.html',
 })
@@ -77,6 +80,7 @@ export class TravelDetailComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
   private readonly reportService = inject(ReportService);
   private readonly authService = inject(AuthService);
+  private readonly translateService = inject(TranslateService);
 
   /** Route param `:id` (bound through `withComponentInputBinding`). */
   readonly id = input.required<string>();
@@ -224,7 +228,7 @@ export class TravelDetailComponent implements OnInit {
   }
 
   unsubscribe(): void {
-    if (!confirm('Annuler votre inscription à ce voyage ?')) {
+    if (!confirm(this.translateService.translate('Annuler votre inscription à ce voyage ?'))) {
       return;
     }
 
@@ -254,7 +258,7 @@ export class TravelDetailComponent implements OnInit {
 
   /** Cancels an unpaid reservation (always allowed, even inside the 3-day cutoff). */
   cancelPending(): void {
-    if (!confirm('Annuler cette réservation en attente de paiement ?')) {
+    if (!confirm(this.translateService.translate('Annuler cette réservation en attente de paiement ?'))) {
       return;
     }
     this.startAction();
