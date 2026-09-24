@@ -123,9 +123,17 @@ constraint on `email` only applies among active (non-deleted) rows.
 ## Authentication and JWT
 
 - Passwords are hashed with BCrypt (`BCryptPasswordEncoder`).
-- On login, tokens are HS256-signed JWTs with a 15-minute expiration. There is
-  no refresh token and no revocation/blacklist.
+- On login, tokens are HS256-signed JWTs with a 15-minute expiration.
 - The token subject is the user id; custom claims are the email and the `role`.
+- ~~No refresh token, no revocation~~ — **corrigé** : `POST /refresh` exchanges
+  a separate, opaque, DB-backed refresh token (7-day validity, single-use —
+  rotated on every redeem, `refresh_tokens` table, V7__add_refresh_tokens.sql)
+  for a fresh access/refresh pair, and `POST /logout` revokes one on demand.
+  Only the SHA-256 hash of the refresh token is ever persisted, same principle
+  as `password_hash`. No token-family/reuse-detection beyond simple rotation
+  (a stolen-and-replayed-before-the-legitimate-client token is rejected, but
+  doesn't revoke the rest of that session's lineage) — an accepted, explicitly
+  scoped gap, not an oversight.
 
 ## Assumed debt
 

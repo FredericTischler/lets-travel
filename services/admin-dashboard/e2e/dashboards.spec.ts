@@ -43,7 +43,19 @@ test.describe('Dashboards and statistics', () => {
     await expect(page.getByTestId('kpi-travels')).toBeVisible();
     await expect(page.getByTestId('kpi-managers')).toBeVisible();
 
+    // The ranking is paginated (20/page) and the dev database accumulates managers
+    // across every test run: a fresh, unscored manager can land on any page, so page
+    // through until it's found instead of assuming page 1. Each click re-fetches the
+    // page asynchronously, so wait for the paginator's own summary to confirm the page
+    // actually advanced before checking for the row (an immediate isVisible() check
+    // would race the fetch and always see the previous page's content).
     const row = page.getByTestId('ranking-row').filter({ hasText: manager.email });
+    const nextPageButton = page.getByRole('button', { name: 'Suivant' });
+    const paginatorSummary = page.getByTestId('paginator-summary');
+    for (let pageNumber = 1; !(await row.isVisible()) && (await nextPageButton.isEnabled()); pageNumber++) {
+      await nextPageButton.click();
+      await expect(paginatorSummary).toContainText(`Page ${pageNumber + 1} sur`);
+    }
     await expect(row).toBeVisible();
     await expect(row.getByTestId('ranking-reports')).toHaveText('0');
     await expect(row.getByTestId('ranking-score')).not.toHaveText('');

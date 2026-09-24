@@ -260,13 +260,20 @@ Pattern d'un écran : `features/<nom>/*.component.ts|html` + `*.service.ts` (HTT
 
 ## Authentification (état réel)
 
-- `AuthService` conserve le JWT dans `localStorage` (clé `admin-dashboard.jwt`) et
-  l'expose via un signal ; il en décode les claims `sub`, `role` et `email`.
+- `AuthService` conserve le JWT et le refresh token dans `localStorage` (clés
+  `admin-dashboard.jwt` / `admin-dashboard.refreshToken`) et expose le JWT via
+  un signal ; il en décode les claims `sub`, `role` et `email`.
 - `authInterceptor` ajoute `Authorization: Bearer <token>` à toute requête dont l'URL
-  commence par l'une des 3 URLs d'API, et **sur 401** : purge le token et redirige
-  vers `/login`.
-- **Pas de refresh token, pas de renouvellement silencieux** : le JWT backend dure
-  15 min, à l'expiration l'utilisateur retombe sur `/login`.
+  commence par l'une des 3 URLs d'API. **Sur 401** (hors `/login`, `/refresh`,
+  `/logout` eux-mêmes) : tente un renouvellement silencieux
+  (`AuthService.refreshAccessToken()`, mutualisé entre 401 concurrents via
+  `shareReplay`) et rejoue la requête d'origine avec le nouveau token ; ce n'est
+  que si ce renouvellement échoue à son tour (refresh token expiré/révoqué) que
+  le token est purgé et l'utilisateur redirigé vers `/login`.
+- ~~Pas de refresh token, pas de renouvellement silencieux~~ — **corrigé** :
+  voir ci-dessus. Le JWT backend dure toujours 15 min, mais son expiration est
+  désormais transparente pour l'utilisateur tant que le refresh token (7 jours,
+  usage unique — voir README d'identity-service) reste valide.
 - `AuthService.decodeJwtPayload()` ne fait **aucune vérification de signature** — il ne
   sert qu'à lire des claims d'un token que le backend re-vérifie à chaque requête (le rôle
   lu ici ne décide que de ce qui est *affiché*).
@@ -413,8 +420,8 @@ message explicite s'ils manquent.
   conteneur. Vérifié manuellement bout-en-bout (build, 2 replicas healthy, routage
   TLS via Traefik, fallback SPA, cache immuable des assets hashés) ; `ng serve` sur
   `http://localhost:4200` reste disponible pour le développement au quotidien.
-- Pas de refresh token (voir Authentification) ; pas de vérification de signature du JWT
-  côté front (voulu).
+- ~~Pas de refresh token~~ — **corrigé**, voir Authentification. Pas de
+  vérification de signature du JWT côté front (voulu).
 - Accessibilité : rôles/labels ARIA soignés (graphiques focalisables au clavier avec table
   équivalente, étoiles décoratives + texte), mais **aucun audit** (lecteur d'écran, contrastes
   mesurés) n'a été mené.
