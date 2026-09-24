@@ -86,6 +86,28 @@ public class Neo4jSchemaInitializer {
     }
 
     /**
+     * One-time backfill: gives every pre-existing {@code TRANSPORT}
+     * relationship an app-assigned {@code id}, for graphs seeded before that
+     * property existed (increment adding update/delete/pathfinding on
+     * Transport — see {@code TransportRepository}). Idempotent — the
+     * {@code WHERE t.id IS NULL} guard means a relationship already backfilled
+     * (by this or an earlier boot) is never touched again, and a fresh
+     * database has none to match. Without this, {@code TransportRepository}'s
+     * read queries (which now always return {@code t.id}) throw on any
+     * relationship missing it, since an id is never optional in the API.
+     * {@code randomUUID()} is a built-in Neo4j 5 Cypher function — no need to
+     * generate values in Java and bind them one row at a time.
+     */
+    @Bean
+    CommandLineRunner backfillTransportIds(Neo4jClient neo4jClient) {
+        return args -> {
+            runWithRetry(neo4jClient,
+                    "MATCH ()-[t:TRANSPORT]->() WHERE t.id IS NULL SET t.id = randomUUID()");
+            log.info("Neo4j data backfill ensured: every TRANSPORT relationship has an id");
+        };
+    }
+
+    /**
      * Runs {@code cypher} via {@code neo4jClient}, retrying on
      * {@link TransientDataAccessException} up to {@link #MAX_ATTEMPTS} times
      * with a fixed delay between attempts. Re-throws the last transient

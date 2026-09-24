@@ -377,8 +377,9 @@ message explicite s'ils manquent.
   codés en dur dans les templates, sans infrastructure de traduction ; les **raisons des
   suggestions** viennent du backend en **anglais**.
 - **Trajets `TRANSPORT`** : gérés uniquement depuis l'écran admin `/destinations` (pas
-  depuis l'écran organisateur), création et liste sortante seulement — le backend n'expose
-  ni mise à jour ni suppression.
+  depuis l'écran organisateur). Création, édition inline et suppression désormais
+  possibles, plus une recherche d'itinéraire multi-saut (fewest-hops) entre deux
+  destinations.
 - ~~Pas de conteneurisation de ce front~~ — **corrigé** : `Dockerfile` (build Node 22 +
   runtime `nginx-unprivileged:1.27-alpine` non-root par défaut, image inhabituelle par
   rapport aux 3 services Spring Boot mais nécessaire — pas de JVM ici) et fragment

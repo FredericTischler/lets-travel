@@ -10,7 +10,7 @@ import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 import { DestinationFormComponent } from './destination-form.component';
 import { Destination, DestinationCreateInput, DestinationService } from './destination.service';
-import { TRANSPORT_MODES, Transport, TransportMode, TransportService } from './transport.service';
+import { Route, TRANSPORT_MODES, Transport, TransportMode, TransportService } from './transport.service';
 
 /**
  * Admin destinations screen: every destination whatever its manager (GET
@@ -21,10 +21,9 @@ import { TRANSPORT_MODES, Transport, TransportMode, TransportService } from './t
  * the list from the server instead of mutating the local signal.
  *
  * Also hosts the outgoing-transports sub-view for a single destination at a
- * time (toggle per row, GET /destinations/{id}/transports) plus a form to
- * create a new one-hop transport from that destination (POST
- * /destinations/{fromId}/transports). No PATCH/DELETE on Transport exists
- * server-side, so none is simulated here.
+ * time (toggle per row, GET /destinations/{id}/transports): create (POST),
+ * inline edit (PUT) and delete (DELETE) of a single-hop transport, plus a
+ * multi-hop route finder (GET /destinations/{fromId}/routes/{toId}).
  */
 @Component({
   selector: 'app-destination-list',
@@ -79,6 +78,23 @@ export class DestinationListComponent implements OnInit {
   protected createTransportDuration: number | null = null;
   protected readonly creatingTransport = signal(false);
   protected readonly createTransportError = signal<string | null>(null);
+
+  // Inline edit-transport form state (one transport at a time).
+  protected readonly editingTransportId = signal<string | null>(null);
+  protected editTransportMode: TransportMode | '' = '';
+  protected editTransportDuration: number | null = null;
+  protected readonly updatingTransport = signal(false);
+  protected readonly updateTransportError = signal<string | null>(null);
+
+  // Delete-transport state.
+  protected readonly deletingTransportId = signal<string | null>(null);
+  protected readonly deleteTransportError = signal<string | null>(null);
+
+  // Multi-hop route finder state.
+  protected routeToId = '';
+  protected readonly routeResult = signal<Route | null>(null);
+  protected readonly routeLoading = signal(false);
+  protected readonly routeError = signal<string | null>(null);
 
   ngOnInit(): void {
     this.loadDestinations();
@@ -174,6 +190,8 @@ export class DestinationListComponent implements OnInit {
 
     this.expandedDestinationId.set(destination.id);
     this.resetCreateTransportForm();
+    this.cancelEditTransport();
+    this.resetRouteFinder();
     this.loadTransports(destination.id);
   }
 
@@ -232,5 +250,95 @@ export class DestinationListComponent implements OnInit {
     this.createTransportMode = '';
     this.createTransportDuration = null;
     this.createTransportError.set(null);
+  }
+
+  startEditTransport(transport: Transport): void {
+    this.updateTransportError.set(null);
+    this.editingTransportId.set(transport.id);
+    this.editTransportMode = transport.mode;
+    this.editTransportDuration = transport.durationMinutes;
+  }
+
+  cancelEditTransport(): void {
+    this.updateTransportError.set(null);
+    this.editingTransportId.set(null);
+  }
+
+  saveTransportEdit(fromId: string): void {
+    const transportId = this.editingTransportId();
+    if (!transportId || !this.editTransportMode || this.editTransportDuration === null) {
+      return;
+    }
+
+    this.updatingTransport.set(true);
+    this.updateTransportError.set(null);
+
+    this.transportService
+      .update(fromId, transportId, this.editTransportMode, this.editTransportDuration)
+      .subscribe({
+        next: () => {
+          this.updatingTransport.set(false);
+          this.cancelEditTransport();
+          this.loadTransports(fromId);
+        },
+        error: (err: unknown) => {
+          this.updatingTransport.set(false);
+          this.updateTransportError.set(extractErrorMessage(err, 'Impossible de modifier ce trajet.'));
+        },
+      });
+  }
+
+  deleteTransport(fromId: string, transport: Transport): void {
+    if (!confirm(`Supprimer le trajet vers ${transport.destinationName} ?`)) {
+      return;
+    }
+
+    this.deletingTransportId.set(transport.id);
+    this.deleteTransportError.set(null);
+
+    this.transportService.delete(fromId, transport.id).subscribe({
+      next: () => {
+        this.deletingTransportId.set(null);
+        if (this.editingTransportId() === transport.id) {
+          this.cancelEditTransport();
+        }
+        this.loadTransports(fromId);
+      },
+      error: (err: unknown) => {
+        this.deletingTransportId.set(null);
+        this.deleteTransportError.set(extractErrorMessage(err, 'Impossible de supprimer ce trajet.'));
+      },
+    });
+  }
+
+  // --- Multi-hop route finder --------------------------------------------------
+
+  findRoute(fromId: string): void {
+    if (!this.routeToId) {
+      return;
+    }
+
+    this.routeLoading.set(true);
+    this.routeError.set(null);
+    this.routeResult.set(null);
+
+    this.transportService.findRoute(fromId, this.routeToId).subscribe({
+      next: (route) => {
+        this.routeLoading.set(false);
+        this.routeResult.set(route);
+      },
+      error: (err: unknown) => {
+        this.routeLoading.set(false);
+        this.routeError.set(
+          extractErrorMessage(err, "Aucun itinéraire trouvé vers cette destination."),
+        );
+      },
+    });
+  }
+
+  private resetRouteFinder(): void {
+    this.routeToId = '';
+    this.routeResult.set(null);
+    this.routeError.set(null);
   }
 }

@@ -1,16 +1,20 @@
 package com.travelplan.travel.controller;
 
 import com.travelplan.travel.dto.CreateTransportRequest;
+import com.travelplan.travel.dto.RouteResponse;
 import com.travelplan.travel.dto.TransportResponse;
+import com.travelplan.travel.dto.UpdateTransportRequest;
 import com.travelplan.travel.service.TokenValidationService;
 import com.travelplan.travel.service.TransportService;
 import io.jsonwebtoken.Claims;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,18 +33,17 @@ import java.util.UUID;
  * Exception-to-HTTP mapping is handled by
  * {@link com.travelplan.travel.exception.GlobalExceptionHandler}.
  *
- * Increment 2 scope: create a single-hop directed transport link, and list
- * destinations reachable in exactly one hop. No pathfinding, no
- * update/delete on transports. Since docs/lets-travel-architecture-decisions.md
- * §1, {@code create} (mutation) is restricted to {@code ADMIN}/
- * {@code TRAVEL_MANAGER} and {@code getOutgoing} (read) is open to any of the
- * three known roles — same split as {@link DestinationController}.
+ * Since docs/lets-travel-architecture-decisions.md §1, every mutation
+ * ({@code create}/{@code update}/{@code delete}) is restricted to
+ * {@code ADMIN}/{@code TRAVEL_MANAGER} and every read ({@code getOutgoing},
+ * {@code getRoute}) is open to any of the three known roles — same split as
+ * {@link DestinationController}.
  *
- * <p>{@code create} is also ownership-aware (security audit G1): the link hangs
- * off its origin destination, so a {@code TRAVEL_MANAGER} may only create it
- * from a destination whose {@code managerId} is their own id; {@code ADMIN}
- * bypasses ownership. The check lives in {@link TransportService}, which alone
- * loads the origin — same split as {@code DestinationController.update/delete}.</p>
+ * <p>Every mutation is also ownership-aware (security audit G1): a transport
+ * hangs off its origin destination, so a {@code TRAVEL_MANAGER} may only
+ * create/update/delete one whose origin's {@code managerId} is their own id;
+ * {@code ADMIN} bypasses ownership. The check lives in {@link TransportService},
+ * which alone loads the origin — same split as {@code DestinationController.update/delete}.</p>
  */
 @RestController
 @RequestMapping("/destinations")
@@ -92,5 +95,68 @@ public class TransportController {
             @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
         tokenValidationService.requireAnyRole(authorizationHeader);
         return ResponseEntity.ok(transportService.findOutgoing(id));
+    }
+
+    /**
+     * Replace the mutable fields of an active transport hanging off
+     * {@code fromId}. Requires a valid Bearer token — see class-level note.
+     *
+     * @return 200 with the updated link, 400 on a request rule violation
+     *         (invalid mode, non-positive duration), 404 if {@code fromId} is
+     *         absent/soft-deleted or {@code transportId} does not (or no
+     *         longer) hangs off it, 401 with a generic message if the
+     *         Authorization header is missing/invalid/expired, 403 if the
+     *         caller is a {@code TRAVEL_MANAGER} who does not own the origin
+     */
+    @PutMapping("/{fromId}/transports/{transportId}")
+    public ResponseEntity<TransportResponse> update(
+            @PathVariable UUID fromId,
+            @PathVariable UUID transportId,
+            @Valid @RequestBody UpdateTransportRequest request,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        TransportResponse updated = transportService.update(fromId, transportId, request,
+                tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims));
+        return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Soft-delete an active transport hanging off {@code fromId}. Requires a
+     * valid Bearer token — see class-level note.
+     *
+     * @return 204 No Content on success, 404 if {@code fromId} is
+     *         absent/soft-deleted or {@code transportId} does not (or no
+     *         longer) hangs off it, 401 with a generic message if the
+     *         Authorization header is missing/invalid/expired, 403 if the
+     *         caller is a {@code TRAVEL_MANAGER} who does not own the origin
+     */
+    @DeleteMapping("/{fromId}/transports/{transportId}")
+    public ResponseEntity<Void> delete(
+            @PathVariable UUID fromId,
+            @PathVariable UUID transportId,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireManagerOrAdmin(authorizationHeader);
+        transportService.delete(fromId, transportId,
+                tokenValidationService.callerId(claims), tokenValidationService.isAdmin(claims));
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * The fewest-hops chain of active transports from {@code fromId} to
+     * {@code toId}. Requires a valid Bearer token — see class-level note.
+     *
+     * @return 200 with the route, 400 if {@code fromId} equals {@code toId},
+     *         404 if either endpoint is absent/soft-deleted, or if both exist
+     *         but no chain connects them within the bounded hop count this
+     *         project searches, 401 with a generic message if the
+     *         Authorization header is missing/invalid/expired
+     */
+    @GetMapping("/{fromId}/routes/{toId}")
+    public ResponseEntity<RouteResponse> getRoute(
+            @PathVariable UUID fromId,
+            @PathVariable UUID toId,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAnyRole(authorizationHeader);
+        return ResponseEntity.ok(transportService.findRoute(fromId, toId));
     }
 }
