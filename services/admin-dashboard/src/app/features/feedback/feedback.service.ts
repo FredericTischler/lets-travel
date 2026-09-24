@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { Page } from '../../shared/pagination';
 
 /**
  * One feedback (travel-service FeedbackResponse.java), the same shape on every
@@ -59,8 +60,8 @@ export class FeedbackService {
     return this.http.get<Feedback[]>(`${this.base}/travelers/me/feedback`);
   }
 
-  /** Every feedback of the platform — admin only. */
-  all(): Observable<Feedback[]> {
-    return this.http.get<Feedback[]>(`${this.base}/feedback`);
+  /** One page of every feedback of the platform, newest first — admin only. `page` is 0-based. */
+  all(page: number, size: number): Observable<Page<Feedback>> {
+    return this.http.get<Page<Feedback>>(`${this.base}/feedback`, { params: { page, size } });
   }
 }

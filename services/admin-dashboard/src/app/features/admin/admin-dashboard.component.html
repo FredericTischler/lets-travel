@@ -220,6 +220,16 @@
             </tbody>
           </table>
         </div>
+        @if (rankingPage(); as rp) {
+          <app-paginator
+            class="mt-3 block"
+            [page]="rp.page"
+            [totalPages]="rp.totalPages"
+            [totalElements]="rp.totalElements"
+            [disabled]="rankingLoading()"
+            (pageChange)="changeRankingPage($event)"
+          />
+        }
       }
     </app-card>
 

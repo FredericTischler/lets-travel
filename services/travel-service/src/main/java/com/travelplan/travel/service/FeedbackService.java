@@ -2,6 +2,7 @@ package com.travelplan.travel.service;
 
 import com.travelplan.travel.dto.FeedbackResponse;
 import com.travelplan.travel.dto.GiveFeedbackRequest;
+import com.travelplan.travel.dto.PageResponse;
 import com.travelplan.travel.entity.Destination;
 import com.travelplan.travel.exception.DestinationNotFoundException;
 import com.travelplan.travel.exception.FeedbackConflictException;
@@ -116,11 +117,25 @@ public class FeedbackService {
                 .toList();
     }
 
-    /** Every feedback on every active destination — the caller (an admin) is checked by the controller. */
-    public List<FeedbackResponse> listAll() {
-        return feedbackRepository.findAll().stream()
+    /** Largest page size a caller may request — see {@link RecommendationService#MAX_LIMIT} for the same idea. */
+    private static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * One page of every feedback on every active destination, newest first —
+     * the caller (an admin) is checked by the controller. {@code page} is
+     * clamped to 0 or above, {@code size} to 1..{@link #MAX_PAGE_SIZE}, rather
+     * than rejected — same reasoning as {@code RecommendationService#limit}:
+     * an out-of-range value has one obvious, harmless meaning (the nearest
+     * valid page/size) and a 400 would only make a client re-derive it.
+     */
+    public PageResponse<FeedbackResponse> listAll(int page, int size) {
+        int boundedPage = Math.max(page, 0);
+        int boundedSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
+        List<FeedbackResponse> content = feedbackRepository.findAllPage(boundedPage * boundedSize, boundedSize)
+                .stream()
                 .map(FeedbackResponse::from)
                 .toList();
+        return new PageResponse<>(content, boundedPage, boundedSize, feedbackRepository.countAll());
     }
 
     private Destination requireActiveDestination(UUID destinationId) {

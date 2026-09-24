@@ -5,6 +5,7 @@ import com.travelplan.travel.dto.FeedbackResponse;
 import com.travelplan.travel.dto.IncomeSummary;
 import com.travelplan.travel.dto.ManagerDashboardResponse;
 import com.travelplan.travel.dto.ManagerRankingEntry;
+import com.travelplan.travel.dto.PageResponse;
 import com.travelplan.travel.dto.TravelStatsRow;
 import com.travelplan.travel.repository.DestinationSummaryView;
 import com.travelplan.travel.repository.FeedbackRepository;
@@ -68,9 +69,25 @@ public class DashboardService {
         this.referenceCurrency = referenceCurrency;
     }
 
-    /** {@code GET /managers/ranking}: every manager scored with the income payment-service reports, if it answers. */
-    public List<ManagerRankingEntry> ranking() {
-        return managerStatsService.ranking(fetchLedger());
+    /** Largest page size a caller may request — same reasoning as {@link RecommendationService#MAX_LIMIT}. */
+    static final int MAX_RANKING_PAGE_SIZE = 100;
+
+    /**
+     * {@code GET /managers/ranking}: one page of every manager scored with the
+     * income payment-service reports, if it answers. Every manager is scored
+     * and sorted first — the ranking a page slices out of has to be complete,
+     * since a manager's rank position depends on the whole population, not
+     * just the page it falls on — then {@code page} (0-based, clamped to 0 or
+     * above) and {@code size} (clamped to 1..{@link #MAX_RANKING_PAGE_SIZE})
+     * select a slice of the already-ordered, already-numbered list.
+     */
+    public PageResponse<ManagerRankingEntry> ranking(int page, int size) {
+        List<ManagerRankingEntry> ranking = managerStatsService.ranking(fetchLedger());
+        int boundedPage = Math.max(page, 0);
+        int boundedSize = Math.clamp(size, 1, MAX_RANKING_PAGE_SIZE);
+        int fromIndex = Math.min(boundedPage * boundedSize, ranking.size());
+        int toIndex = Math.min(fromIndex + boundedSize, ranking.size());
+        return new PageResponse<>(ranking.subList(fromIndex, toIndex), boundedPage, boundedSize, ranking.size());
     }
 
     /**

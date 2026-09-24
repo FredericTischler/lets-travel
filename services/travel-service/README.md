@@ -419,7 +419,10 @@ secrets/URLs, so they do have defaults.
   Elasticsearch search/autocomplete of §6 exists in the code but is not
   described in this README yet.)
 - Feedback is immutable: no edit, no delete, no admin moderation of an abusive
-  comment (see "Feedback" above). No pagination on the feedback lists.
+  comment (see "Feedback" above). `GET /feedback` and `GET /managers/ranking`
+  are paginated (`page`/`size`, `PageResponse<T>`); the other feedback lists
+  (per-destination, per-traveler) stay unpaginated — bounded by one manager's
+  or one traveler's own history, not the whole platform.
 - Dashboards/ranking (see "Dashboards, ranking and statistics"): the score has
   no report-count penalty (identity-service's, added by the front for display
   only); income is not converted between currencies (only the reference

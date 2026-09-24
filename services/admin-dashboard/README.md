@@ -370,7 +370,13 @@ message explicite s'ils manquent.
   `CANCELLED` côté backend et gonfle le compteur d'annulations (limite documentée en ADR §4).
 - **Avis modifiables ou modérables** : un avis est unique et immuable (décision backend).
 - **Profil voyageur** vu par un organisateur : l'API n'expose que l'id du voyageur.
-- **Pagination** des listes d'avis / du classement (le backend ne pagine pas).
+- ~~Pagination des listes d'avis / du classement~~ — **corrigé** : `GET /feedback`
+  et `GET /managers/ranking` sont paginés côté backend (`page`/`size`, réponse
+  `PageResponse<T>` — premier endpoint paginé du projet), consommés via un
+  composant `app-paginator` partagé. Le filtre par note et la « note moyenne »
+  de l'écran avis ne portent que sur la page affichée (pas de filtre par note
+  côté backend, et une vraie moyenne plateforme demanderait un endpoint
+  d'agrégat dédié) — assumé et affiché explicitement.
 - **Page d'accueil par rôle** inchangée (`/users` pour l'admin, `/manager/travels` pour
   l'organisateur) : les dashboards sont dans la navigation, pas la page d'atterrissage.
 - **PWA** et **i18n** (bonus du sujet) : non faits. Les libellés sont en français,

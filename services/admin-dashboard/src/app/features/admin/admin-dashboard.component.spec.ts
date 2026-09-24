@@ -85,8 +85,10 @@ describe('AdminDashboardComponent', () => {
     d === 'error' ? dashboardReq.flush('boom', { status: 500, statusText: 'E' }) : dashboardReq.flush(d);
 
     const ranking = a.ranking ?? [entry(1, 'm1'), entry(2, 'm2'), entry(3, 'm3')];
-    const rankingReq = httpMock.expectOne(rankingUrl);
-    ranking === 'error' ? rankingReq.flush('x', { status: 500, statusText: 'E' }) : rankingReq.flush(ranking);
+    const rankingReq = httpMock.expectOne((r) => r.url === rankingUrl);
+    ranking === 'error'
+      ? rankingReq.flush('x', { status: 500, statusText: 'E' })
+      : rankingReq.flush({ content: ranking, page: 0, size: 20, totalElements: ranking.length, totalPages: 1 });
     if (ranking !== 'error') {
       for (const e of ranking) {
         const c = a.counts?.[e.managerId] ?? 0;
