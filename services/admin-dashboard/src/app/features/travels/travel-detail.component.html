@@ -60,6 +60,42 @@
               {{ (busy() ? 'Annulation…' : 'Se désinscrire') | translate }}
             </app-button>
           </div>
+
+          <div class="flex flex-col gap-2 border-t border-dashed border-line pt-3">
+            <p class="font-mono text-xs tracking-wide text-ink-dim uppercase">
+              {{ 'Compagnons de voyage' | translate }}
+            </p>
+            <label class="inline-flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                class="accent-amber"
+                [checked]="buddyVisible()"
+                [disabled]="buddyVisibleBusy()"
+                (change)="toggleBuddyVisible()"
+              />
+              {{ 'Me rendre visible aux autres voyageurs inscrits à ce voyage' | translate }}
+            </label>
+            @if (buddiesLoading()) {
+              <p class="text-xs text-ink-dim">{{ 'Chargement…' | translate }}</p>
+            } @else if (buddies().length > 0) {
+              <p class="text-sm text-ink-dim">
+                {{
+                  '{{n}} autre(s) voyageur(s) visible(s) sur ce voyage :' | translate: { n: buddies().length }
+                }}
+              </p>
+              <ul class="flex flex-wrap gap-2">
+                @for (buddyId of buddies(); track buddyId) {
+                  <li>
+                    <app-badge tone="info">{{ buddyLabel(buddyId) }}</app-badge>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="text-xs text-ink-dim">
+                {{ 'Aucun autre voyageur visible pour le moment.' | translate }}
+              </p>
+            }
+          </div>
         } @else if (pending(); as p) {
           <app-pending-payment
             [paymentId]="p.paymentId"

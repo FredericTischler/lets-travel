@@ -25,6 +25,7 @@ describe('TravelDetailComponent', () => {
   const subscriptionsUrl = `${travelUrl}/subscriptions`;
   const historyUrl = `${environment.travelApiUrl}/travelers/me/subscriptions`;
   const reportsUrl = `${environment.identityApiUrl}/reports`;
+  const buddiesUrl = `${travelUrl}/buddies`;
 
   function travel(startInDays: number, overrides: Partial<Destination> = {}): Destination {
     return {
@@ -90,6 +91,9 @@ describe('TravelDetailComponent', () => {
     httpMock.expectOne(historyUrl).flush(history(subscribed));
     if (t.managerId) {
       httpMock.expectOne(`${reportsUrl}/count/${t.managerId}`).flush({ count: reportCount });
+    }
+    if (subscribed) {
+      httpMock.expectOne(buddiesUrl).flush([]);
     }
     fixture.detectChanges();
   }
@@ -280,6 +284,9 @@ describe('TravelDetailComponent', () => {
       if (t.managerId) {
         httpMock.expectOne(`${reportsUrl}/count/${t.managerId}`).flush({ count: 0 });
       }
+      if (rows.some((r) => r.status === 'ACTIVE')) {
+        httpMock.expectOne(buddiesUrl).flush([]);
+      }
       fixture.detectChanges();
     }
 
@@ -400,6 +407,7 @@ describe('TravelDetailComponent', () => {
       httpMock.expectOne(paymentUrl).flush({ id: 'pay-1', status: 'COMPLETED', provider: 'MANUAL', externalReference: null });
 
       httpMock.expectOne(historyUrl).flush([{ ...pendingRow(), status: 'ACTIVE' }]);
+      httpMock.expectOne(buddiesUrl).flush([]);
       fixture.detectChanges();
 
       expect(component['subscribed']()).toBe(true);
@@ -427,6 +435,9 @@ describe('TravelDetailComponent', () => {
         httpMock.expectOne(feedbackUrl).flush(feedback);
         httpMock.expectOne(historyUrl).flush(rows);
         httpMock.expectOne(`${reportsUrl}/count/manager-1`).flush({ count: 0 });
+        if (rows.some((r) => r.status === 'ACTIVE')) {
+          httpMock.expectOne(buddiesUrl).flush([]);
+        }
         fixture.detectChanges();
       }
 

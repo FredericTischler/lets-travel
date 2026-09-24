@@ -84,6 +84,12 @@ export const EN_DICTIONARY: Record<string, string> = {
     'You can cancel until {{date}} ({{n}} days before departure).',
   'Annulation…': 'Cancelling…',
   'Se désinscrire': 'Unsubscribe',
+  'Compagnons de voyage': 'Travel buddies',
+  'Me rendre visible aux autres voyageurs inscrits à ce voyage':
+    'Make me visible to other travelers signed up for this trip',
+  '{{n}} autre(s) voyageur(s) visible(s) sur ce voyage :': '{{n}} other traveler(s) visible on this trip:',
+  'Aucun autre voyageur visible pour le moment.': 'No other traveler visible yet.',
+  'Impossible de mettre à jour votre visibilité.': 'Unable to update your visibility.',
   "Ce voyage a déjà commencé : l'inscription n'est plus possible.":
     'This trip has already started: signing up is no longer possible.',
   "Vous pourrez annuler jusqu'à {{n}} jours avant le départ.":
