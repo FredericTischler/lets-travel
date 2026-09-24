@@ -1248,6 +1248,37 @@ Vitest pour la logique front pure (guards, services). Jenkins/SonarQube
 étendus aux nouveaux modules mais toujours **à la demande** (profil `ci`,
 contrainte RAM Phase 0 §8 inchangée — pas de CI permanente).
 
+### 9bis. Déclenchement automatique des pipelines (poll SCM, pas de webhook)
+
+**Décision.** Les 3 jobs Jenkins se déclenchent automatiquement à chaque push sur
+`main`, par **poll SCM** (`jenkins_scm_poll_enabled=true`, `H/5 * * * *` —
+`ansible/roles/jenkins/defaults/main.yml`), et non par webhook GitHub.
+
+**Justification.** Un webhook exige que GitHub puisse joindre ce Jenkins en HTTP
+entrant ; or il tourne sur un poste de développeur, sans port publié, derrière
+Traefik en `https://jenkins.localhost` avec un certificat auto-signé — aucune
+URL publique, aucun DNS, aucun certificat que GitHub accepterait. Un webhook y
+est donc structurellement inapplicable sans tunnel (ngrok/Cloudflare), qui
+exigerait en plus une action dans les paramètres du dépôt GitHub, hors
+périmètre d'un rôle Ansible. Le poll, lui, est un flux 100 % sortant
+(`git ls-remote` déclenché par Jenkins) : rien à configurer côté GitHub, rien à
+exposer côté hôte. Vérifié bout-en-bout le 2026-09-24 : un push sur `main` a
+déclenché les 3 builds sans aucune action manuelle, chacun sur le bon commit.
+
+**Ce que je sacrifie.** La latence (jusqu'à 5 min avant détection, contre ~1 s
+pour un webhook) et la couverture (le poll suit uniquement `main`, jamais les
+Pull Requests — un job multibranch serait nécessaire pour ça, hors périmètre).
+Un push déclenche aussi les 3 jobs quasi simultanément (même SHA détecté par
+les 3 polls) : `numExecutors: 1` côté contrôleur Jenkins (réglage global, hors
+périmètre du rôle) sérialise les builds pour éviter l'OOM (3 builds Maven dans
+1600 Mo).
+
+**Alternative rejetée.** Tunnel (ngrok/Cloudflare) pour exposer Jenkins à un
+webhook GitHub réel : rejeté, complexité et dépendance à un service tiers
+disproportionnées pour un gain de latence sans intérêt pédagogique ici — le
+sujet demande que les tests tournent "à chaque changement", pas "en moins
+d'une seconde".
+
 ## 10. Sécurité — vérification, pas nouvelle décision
 
 Ce que l'audit demande de prouver est déjà en place structurellement : JPA

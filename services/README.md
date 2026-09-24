@@ -36,9 +36,18 @@ Spring Boot `3.4.3`, Java, build Maven (`./mvnw`), image construite depuis le
 
 - **Pas de CRUD complet sur `TRANSPORT`** : ni mise à jour, ni suppression, ni
   anti-doublon ; traversée limitée à 1 saut (pas de pathfinding multi-hop).
-- **Aucune CI/CD pour cette phase** : `ci/jenkins/README.md` et
-  `ci/sonarqube/README.md` restent des placeholders Phase 0 ; aucun pipeline
-  n'exécute les tests ni n'analyse la qualité du code automatiquement.
+~~Aucune CI/CD pour cette phase~~ — **corrigé** : les 3 services ont un
+`Jenkinsfile` (`./mvnw test`, puis analyse SonarQube + quality gate si
+`SONAR_HOST_URL` est configuré), rendus en jobs Jenkins par le rôle Ansible
+`jenkins`. Déclenchement **automatique par poll SCM** (`jenkins_scm_poll_enabled`,
+`ansible/roles/jenkins/defaults/main.yml`), pas par webhook GitHub : ce Jenkins
+tourne en local derrière Traefik avec un certificat auto-signé, injoignable
+depuis GitHub sans tunnel — un webhook y est structurellement inapplicable
+(justifié en détail dans le rôle). Vérifié bout-en-bout : un push sur `main`
+déclenche les 3 builds sans action manuelle (`numExecutors: 1` côté contrôleur
+Jenkins pour éviter les 3 builds simultanés). `ci/jenkins/README.md` et
+`ci/sonarqube/README.md` restaient des placeholders Phase 0 décrivant un
+déclenchement par PR qui n'existe pas — corrigés eux aussi.
 
 ~~Aucune intégration Stripe ni PayPal~~ — **corrigé** : `payment-service` intègre
 Stripe (PaymentIntent + webhook) et PayPal (Order + capture) ; voir son README pour
