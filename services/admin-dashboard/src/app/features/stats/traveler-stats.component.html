@@ -2,7 +2,7 @@
   <h1 class="font-display text-2xl font-bold text-ink">Mes statistiques</h1>
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement…</p>
+    <app-loading />
   } @else if (error()) {
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else if (stats(); as s) {

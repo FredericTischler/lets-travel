@@ -7,6 +7,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { DestinationFormComponent } from '../destinations/destination-form.component';
 import { Destination, DestinationCreateInput, DestinationService } from '../destinations/destination.service';
 
@@ -31,6 +32,7 @@ import { Destination, DestinationCreateInput, DestinationService } from '../dest
     ButtonComponent,
     CardComponent,
     DestinationFormComponent,
+    LoadingComponent,
   ],
   templateUrl: './my-travels.component.html',
 })

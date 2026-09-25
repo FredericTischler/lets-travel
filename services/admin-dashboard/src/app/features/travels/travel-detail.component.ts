@@ -12,6 +12,7 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { Destination, DestinationService } from '../destinations/destination.service';
 import { FeedbackFormComponent } from '../feedback/feedback-form.component';
 import { FeedbackListComponent } from '../feedback/feedback-list.component';
@@ -69,6 +70,7 @@ export interface PendingInfo {
     BadgeComponent,
     ButtonComponent,
     CardComponent,
+    LoadingComponent,
     FeedbackFormComponent,
     FeedbackListComponent,
     PendingPaymentComponent,

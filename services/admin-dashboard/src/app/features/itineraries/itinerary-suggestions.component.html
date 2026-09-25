@@ -1,6 +1,6 @@
 <app-card title="Itinéraires suggérés">
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement des itinéraires suggérés…</p>
+    <app-loading label="Chargement des itinéraires suggérés…" />
   } @else if (error()) {
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else {

@@ -8,6 +8,7 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { User, UserService } from '../users/user.service';
 import { Report, ReportDecision, ReportService, ReportStatus } from './report.service';
 
@@ -47,7 +48,7 @@ export const REPORT_DECISIONS: readonly { status: ReportDecision; label: string 
  */
 @Component({
   selector: 'app-report-queue',
-  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent],
+  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent, LoadingComponent],
   templateUrl: './report-queue.component.html',
 })
 export class ReportQueueComponent implements OnInit {

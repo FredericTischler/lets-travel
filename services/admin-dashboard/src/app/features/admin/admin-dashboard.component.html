@@ -18,7 +18,7 @@
   </div>
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">Chargement…</p>
+    <app-loading />
   } @else if (error()) {
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else if (data(); as d) {

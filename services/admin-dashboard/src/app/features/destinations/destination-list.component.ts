@@ -8,6 +8,7 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { DestinationFormComponent } from './destination-form.component';
 import { Destination, DestinationCreateInput, DestinationService } from './destination.service';
 import { Route, TRANSPORT_MODES, Transport, TransportMode, TransportService } from './transport.service';
@@ -35,6 +36,7 @@ import { Route, TRANSPORT_MODES, Transport, TransportMode, TransportService } fr
     ButtonComponent,
     CardComponent,
     InputComponent,
+    LoadingComponent,
     DestinationFormComponent,
   ],
   templateUrl: './destination-list.component.html',

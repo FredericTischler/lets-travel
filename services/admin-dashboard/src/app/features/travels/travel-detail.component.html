@@ -6,7 +6,7 @@
   >
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
+    <app-loading [label]="'Chargement…' | translate" />
   } @else if (loadError()) {
     <app-alert variant="error">{{ loadError() | translate }}</app-alert>
   } @else if (travel(); as t) {
@@ -76,7 +76,7 @@
               {{ 'Me rendre visible aux autres voyageurs inscrits à ce voyage' | translate }}
             </label>
             @if (buddiesLoading()) {
-              <p class="text-xs text-ink-dim">{{ 'Chargement…' | translate }}</p>
+              <app-loading size="sm" [label]="'Chargement…' | translate" />
             } @else if (buddies().length > 0) {
               <p class="text-sm text-ink-dim">
                 {{
@@ -187,7 +187,7 @@
           </p>
           <app-feedback-form [destinationId]="id()" (saved)="onFeedbackSaved($event)" />
         } @else {
-          <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
+          <app-loading [label]="'Chargement…' | translate" />
         }
       </app-card>
     }

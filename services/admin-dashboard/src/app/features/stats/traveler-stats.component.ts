@@ -8,6 +8,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { FeedbackListComponent } from '../feedback/feedback-list.component';
 import { Feedback, FeedbackService } from '../feedback/feedback.service';
@@ -36,6 +37,7 @@ import { StatsService, TravelerStats } from './stats.service';
     AlertComponent,
     BadgeComponent,
     CardComponent,
+    LoadingComponent,
     StatTileComponent,
     FeedbackListComponent,
   ],

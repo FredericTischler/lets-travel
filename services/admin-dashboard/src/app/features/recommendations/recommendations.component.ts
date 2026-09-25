@@ -6,6 +6,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { formatNumber } from '../../shared/format';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { Recommendation, RecommendationService } from './recommendation.service';
 
 /**
@@ -22,7 +23,7 @@ import { Recommendation, RecommendationService } from './recommendation.service'
  */
 @Component({
   selector: 'app-recommendations',
-  imports: [DecimalPipe, RouterLink, AlertComponent, CardComponent],
+  imports: [DecimalPipe, RouterLink, AlertComponent, CardComponent, LoadingComponent],
   templateUrl: './recommendations.component.html',
 })
 export class RecommendationsComponent implements OnInit {

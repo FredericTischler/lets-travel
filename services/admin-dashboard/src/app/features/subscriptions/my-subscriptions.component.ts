@@ -9,6 +9,7 @@ import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { remainingTime } from './payment-rules';
 import { PendingPaymentComponent } from './pending-payment.component';
 import { SubscriptionStatus, SubscriptionService, TravelerSubscription } from './subscription.service';
@@ -43,6 +44,7 @@ const STATUS_TONES: Record<SubscriptionStatus, BadgeTone> = {
     AlertComponent,
     BadgeComponent,
     CardComponent,
+    LoadingComponent,
     PendingPaymentComponent,
     TranslatePipe,
     TravelerBadgesComponent,

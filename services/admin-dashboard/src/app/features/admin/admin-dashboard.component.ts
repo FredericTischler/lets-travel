@@ -10,6 +10,7 @@ import { Page } from '../../shared/pagination';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { PaginatorComponent } from '../../shared/ui/paginator/paginator.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { DASHBOARD_MONTH_CHOICES } from '../manager/manager-dashboard.component';
@@ -49,6 +50,7 @@ const RANKING_PAGE_SIZE = 20;
     AlertComponent,
     BarChartComponent,
     CardComponent,
+    LoadingComponent,
     PaginatorComponent,
     StatTileComponent,
     FeedbackListComponent,

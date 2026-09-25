@@ -24,8 +24,14 @@ export class AlertComponent {
     this.variant() === 'error' ? 'alert' : 'status',
   );
 
+  /** Purely decorative (aria-hidden) — the announced text carries the meaning. */
+  protected readonly icon = computed<string>(() => {
+    const icons: Record<AlertVariant, string> = { error: '✕', success: '✓', warning: '!' };
+    return icons[this.variant()];
+  });
+
   protected readonly classes = computed(() => {
-    const base = 'border-l-4 bg-surface-2 px-3 py-2 text-sm text-ink';
+    const base = 'flex items-start gap-1 border-l-4 bg-surface-2 px-3 py-2 text-sm text-ink';
     const variants: Record<AlertVariant, string> = {
       error: 'border-l-red',
       success: 'border-l-teal',
