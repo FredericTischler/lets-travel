@@ -11,6 +11,7 @@
  */
 export const EN_DICTIONARY: Record<string, string> = {
   // --- App shell / navigation (shared/layout) ---
+  'Aller au contenu principal': 'Skip to main content',
   Menu: 'Menu',
   Fermer: 'Close',
   'Mode sombre': 'Dark mode',

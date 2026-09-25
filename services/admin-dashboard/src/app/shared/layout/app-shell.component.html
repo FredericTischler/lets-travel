@@ -1,4 +1,9 @@
 <div class="bg-bg text-ink lg:flex lg:min-h-screen">
+  <a
+    href="#main-content"
+    class="sr-only border border-line-strong bg-surface px-4 py-2 font-mono text-xs uppercase text-ink focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
+    >{{ 'Aller au contenu principal' | translate }}</a
+  >
   <div
     class="border-b border-line bg-surface-2 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-b-0"
   >
@@ -105,7 +110,7 @@
     </div>
   </div>
 
-  <main class="flex-1 p-4 md:p-6">
+  <main id="main-content" tabindex="-1" class="flex-1 p-4 md:p-6">
     <router-outlet />
   </main>
 </div>
