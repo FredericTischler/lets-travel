@@ -61,12 +61,13 @@ class TravelerBadgeIntegrationTest {
     void aTravelerWithNoHistoryHasZeroedCountsAndNoBadgeEarned() {
         Map<String, Object> body = getBadges(UUID.randomUUID());
 
-        assertThat(body).containsEntry("destinationsVisited", 0);
-        assertThat(body).containsEntry("countriesVisited", 0);
-        assertThat(body).containsEntry("reviewsGiven", 0);
+        assertThat(body)
+                .containsEntry("destinationsVisited", 0)
+                .containsEntry("countriesVisited", 0)
+                .containsEntry("reviewsGiven", 0);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> badges = (List<Map<String, Object>>) body.get("badges");
-        assertThat(badges).allSatisfy(b -> assertThat(b).containsEntry("earned", false));
+        assertThat(badges).isNotEmpty().allSatisfy(b -> assertThat(b).containsEntry("earned", false));
     }
 
     @Test
@@ -76,8 +77,7 @@ class TravelerBadgeIntegrationTest {
 
         Map<String, Object> body = getBadges(travelerId);
 
-        assertThat(body).containsEntry("destinationsVisited", 1);
-        assertThat(body).containsEntry("countriesVisited", 1);
+        assertThat(body).containsEntry("destinationsVisited", 1).containsEntry("countriesVisited", 1);
         assertThat(earned(body, "EXPLORER")).isTrue();
         assertThat(earned(body, "GLOBETROTTER")).isFalse();
     }
