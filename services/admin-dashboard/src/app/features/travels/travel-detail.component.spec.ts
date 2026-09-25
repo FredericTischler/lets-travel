@@ -105,7 +105,8 @@ describe('TravelDetailComponent', () => {
 
   function alerts(): string[] {
     return Array.from(fixture.nativeElement.querySelectorAll('[role="alert"]') as NodeListOf<HTMLElement>).map(
-      (el) => el.textContent?.trim() ?? '',
+      // Skip app-alert's decorative (aria-hidden) icon span, keep only the announced message.
+      (el) => el.querySelector('span:last-child')?.textContent?.trim() ?? '',
     );
   }
 

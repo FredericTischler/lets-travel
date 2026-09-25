@@ -26,7 +26,9 @@ export class ButtonComponent {
   protected readonly classes = computed(() => {
     const base =
       'inline-flex items-center justify-center gap-1.5 border px-3 py-1.5 font-mono text-xs font-medium ' +
-      'tracking-wide uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+      'tracking-wide uppercase transition-[filter,background-color,color] active:brightness-95 ' +
+      'disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:outline ' +
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber';
     const variants: Record<ButtonVariant, string> = {
       primary: 'border-amber bg-amber text-amber-ink hover:brightness-110',
       secondary: 'border-line-strong text-ink hover:bg-surface-2',

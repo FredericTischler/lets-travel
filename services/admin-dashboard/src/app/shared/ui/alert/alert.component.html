@@ -1,3 +1,4 @@
 <div [attr.role]="role()" [class]="classes()">
-  <ng-content />
+  <span aria-hidden="true" class="w-4 shrink-0 text-center font-mono">{{ icon() }}</span>
+  <span><ng-content /></span>
 </div>
