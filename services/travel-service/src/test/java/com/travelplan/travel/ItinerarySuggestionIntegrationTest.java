@@ -79,13 +79,14 @@ class ItinerarySuggestionIntegrationTest {
 
         assertThat(suggestions).isNotEmpty();
         List<List<String>> stopIdLists = suggestions.stream().map(this::stopIds).toList();
-        assertThat(stopIdLists).contains(List.of(a.toString(), b.toString()));
-        assertThat(stopIdLists).contains(List.of(a.toString(), b.toString(), c.toString()));
+        assertThat(stopIdLists)
+                .contains(List.of(a.toString(), b.toString()))
+                .contains(List.of(a.toString(), b.toString(), c.toString()));
 
         Map<String, Object> threeStops = suggestions.stream()
                 .filter(s -> stopIds(s).size() == 3)
                 .findFirst().orElseThrow();
-        assertThat(threeStops.get("totalDurationMinutes")).isEqualTo(210);
+        assertThat(threeStops).containsEntry("totalDurationMinutes", 210);
     }
 
     @Test
@@ -97,8 +98,8 @@ class ItinerarySuggestionIntegrationTest {
 
         List<Map<String, Object>> suggestions = getSuggestions(UUID.randomUUID());
 
-        assertThat(suggestions.stream().flatMap(s -> stopIds(s).stream()))
-                .doesNotContain(isolated.toString());
+        List<String> allStopIds = suggestions.stream().flatMap(s -> stopIds(s).stream()).toList();
+        assertThat(allStopIds).isNotEmpty().doesNotContain(isolated.toString());
     }
 
     @Test
@@ -106,8 +107,10 @@ class ItinerarySuggestionIntegrationTest {
         UUID a = createDestination("Athens", "Greece");
         UUID b = createDestination("Rome", "Italy");
         UUID c = createDestination("Paris", "France");
+        UUID d = createDestination("Madrid", "Spain");
         createTransport(a, b, 90);
         createTransport(b, c, 120);
+        createTransport(a, d, 60); // reachable without going through B, so some chain must survive
         UUID travelerId = UUID.randomUUID();
 
         // Subscribing to B removes it (and everything that only connects through it) from
@@ -120,8 +123,8 @@ class ItinerarySuggestionIntegrationTest {
 
         List<Map<String, Object>> suggestions = getSuggestions(travelerId);
 
-        assertThat(suggestions.stream().flatMap(s -> stopIds(s).stream()))
-                .doesNotContain(b.toString());
+        List<String> allStopIds = suggestions.stream().flatMap(s -> stopIds(s).stream()).toList();
+        assertThat(allStopIds).isNotEmpty().doesNotContain(b.toString());
     }
 
     @SuppressWarnings("unchecked")

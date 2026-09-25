@@ -63,6 +63,17 @@ public class SubscriptionRepository {
     private static final String EFFECTIVE_STATUS =
             "CASE WHEN s.status = 'PENDING_PAYMENT' AND s.expiresAt <= $now THEN 'EXPIRED' ELSE s.status END";
 
+    /**
+     * Shared prefix of every query that targets one traveler's own live
+     * relation on one destination ({@link #FIND_LIVE_STATUS_QUERY},
+     * {@link #CANCEL_LIVE_QUERY}, {@link #SET_BUDDY_VISIBLE_QUERY}) —
+     * factored out to avoid duplicating the same MATCH/WHERE three times
+     * (Sonar java:S1192).
+     */
+    private static final String MATCH_LIVE_SUBSCRIPTION = """
+            MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND\s""" + IS_LIVE;
+
     private static final String RETURN_VIEW_COLUMNS = """
             d.id AS destinationId, t.userId AS travelerId, %s AS status,
                    s.subscribedAt AS subscribedAt, s.cancelledAt AS cancelledAt,
@@ -70,9 +81,7 @@ public class SubscriptionRepository {
                    s.amount AS amount, s.currency AS currency
             """;
 
-    private static final String FIND_LIVE_STATUS_QUERY = """
-            MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
-            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND\s""" + IS_LIVE + """
+    private static final String FIND_LIVE_STATUS_QUERY = MATCH_LIVE_SUBSCRIPTION + """
 
             RETURN s.status AS status
             ORDER BY s.subscribedAt DESC
@@ -105,9 +114,7 @@ public class SubscriptionRepository {
             RETURN count(s) AS updated
             """;
 
-    private static final String CANCEL_LIVE_QUERY = """
-            MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
-            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND\s""" + IS_LIVE + """
+    private static final String CANCEL_LIVE_QUERY = MATCH_LIVE_SUBSCRIPTION + """
 
             SET s.status = 'CANCELLED', s.cancelledAt = $now
             RETURN count(s) AS updated
@@ -148,9 +155,7 @@ public class SubscriptionRepository {
      * §12): only the caller's own live relation on that destination can be
      * flipped, same ownership shape as {@link #cancelLive}.
      */
-    private static final String SET_BUDDY_VISIBLE_QUERY = """
-            MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
-            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND\s""" + IS_LIVE + """
+    private static final String SET_BUDDY_VISIBLE_QUERY = MATCH_LIVE_SUBSCRIPTION + """
 
             SET s.buddyVisible = $visible
             RETURN count(s) AS updated
