@@ -9,6 +9,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { REPORT_REASON_MAX_LENGTH, ReportService } from '../reports/report.service';
@@ -35,6 +36,7 @@ import { ManagerStats, StatsService } from '../stats/stats.service';
     AlertComponent,
     ButtonComponent,
     CardComponent,
+    LoadingComponent,
     RatingComponent,
     StatTileComponent,
   ],

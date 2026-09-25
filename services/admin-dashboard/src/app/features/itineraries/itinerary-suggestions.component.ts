@@ -5,6 +5,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { formatNumber } from '../../shared/format';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { ItineraryService, ItinerarySuggestion } from './itinerary.service';
 
 /**
@@ -19,7 +20,7 @@ import { ItineraryService, ItinerarySuggestion } from './itinerary.service';
  */
 @Component({
   selector: 'app-itinerary-suggestions',
-  imports: [RouterLink, AlertComponent, CardComponent],
+  imports: [RouterLink, AlertComponent, CardComponent, LoadingComponent],
   templateUrl: './itinerary-suggestions.component.html',
 })
 export class ItinerarySuggestionsComponent implements OnInit {

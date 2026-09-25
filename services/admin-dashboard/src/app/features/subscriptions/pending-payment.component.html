@@ -82,7 +82,7 @@
           <p>{{ 'Réglez par carte bancaire (paiement sécurisé, géré par Stripe) :' | translate }}</p>
           <div #stripeMount data-testid="stripe-elements" class="min-h-10"></div>
           @if (stripeLoading()) {
-            <p class="text-xs text-ink-dim">{{ 'Chargement du formulaire de paiement…' | translate }}</p>
+            <app-loading size="sm" [label]="'Chargement du formulaire de paiement…' | translate" />
           }
           @if (stripeError()) {
             <app-alert variant="error">{{ stripeError() | translate }}</app-alert>

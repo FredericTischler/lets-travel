@@ -66,7 +66,7 @@
   }
 
   @if (loading()) {
-    <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
+    <app-loading [label]="'Chargement…' | translate" />
   } @else if (error()) {
     <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else {

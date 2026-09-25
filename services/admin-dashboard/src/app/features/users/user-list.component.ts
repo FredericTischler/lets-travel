@@ -7,6 +7,7 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { User, UserService } from './user.service';
 
 /**
@@ -16,7 +17,7 @@ import { User, UserService } from './user.service';
  */
 @Component({
   selector: 'app-user-list',
-  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent],
+  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent],
   templateUrl: './user-list.component.html',
 })
 export class UserListComponent implements OnInit {

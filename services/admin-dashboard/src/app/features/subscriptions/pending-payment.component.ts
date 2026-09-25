@@ -24,6 +24,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import {
   PAYMENT_PROVIDER_LABELS,
@@ -66,7 +67,7 @@ const STRIPE_SETTLE_POLL_DELAY_MS = 2000;
  */
 @Component({
   selector: 'app-pending-payment',
-  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, TranslatePipe],
+  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, LoadingComponent, TranslatePipe],
   templateUrl: './pending-payment.component.html',
 })
 export class PendingPaymentComponent implements OnInit, OnDestroy {

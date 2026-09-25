@@ -6,6 +6,7 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { Payment, PaymentService } from './payment.service';
 
 /**
@@ -16,7 +17,7 @@ import { Payment, PaymentService } from './payment.service';
  */
 @Component({
   selector: 'app-payment-list',
-  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent],
+  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent],
   templateUrl: './payment-list.component.html',
 })
 export class PaymentListComponent implements OnInit {

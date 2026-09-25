@@ -26,6 +26,29 @@
   }
 }
 
+/* `app-loading`'s spinner: a static ring by default (never forced motion on
+ * someone who asked their OS not to animate things), spinning only when the
+ * visitor hasn't opted out. */
+.app-spinner {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--app-line-strong);
+  border-top-color: var(--app-amber);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-spinner {
+    animation: app-spin 0.7s linear infinite;
+  }
+}
+@keyframes app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /*
  * Design system — "console d'exploitation aéroportuaire" (validated design
  * concept, see the redesign PR): tableau d'affichage des départs, carte

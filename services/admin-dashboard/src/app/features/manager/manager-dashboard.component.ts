@@ -7,6 +7,7 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { StatTileComponent } from '../../shared/ui/stat-tile/stat-tile.component';
 import { FeedbackListComponent } from '../feedback/feedback-list.component';
 import { incomeChartPoints, incomeFormatter } from '../stats/income-chart';
@@ -35,6 +36,7 @@ export const DASHBOARD_MONTH_CHOICES = [3, 6, 12] as const;
     AlertComponent,
     BarChartComponent,
     CardComponent,
+    LoadingComponent,
     StatTileComponent,
     FeedbackListComponent,
     TravelRowsTableComponent,
