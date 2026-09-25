@@ -5,12 +5,18 @@ import { TranslateService } from './translate.service';
 /**
  * `{{ 'French text' | translate }}` / `{{ 'Voici {{n}}' | translate: { n: 3 } }}`.
  *
- * A plain (non-`pure: false`) pipe: reading `TranslateService.locale()`
- * inside `transform()` (via `translate()`) is enough for Angular's signal
- * reactivity to re-run this binding when the locale changes — no impure
- * pipe / manual change detection needed, zoneless-safe.
+ * `pure: false` is required, not optional: a pure pipe is memoized by its
+ * *argument's* identity, and that argument (the French string literal) never
+ * changes — so Angular would never call `transform()` again after the first
+ * render, no matter how many times `TranslateService.locale` changes inside
+ * it. Reading a signal inside a pure pipe does not make the pipe reactive to
+ * that signal; only re-invoking `transform()` does (confirmed live: toggling
+ * the language updated `localStorage` correctly but never re-rendered a
+ * single translated string until this was set). The cost is that
+ * `transform()` now re-runs on every change-detection pass for every
+ * `| translate` usage — a plain object lookup, negligible at this app's size.
  */
-@Pipe({ name: 'translate' })
+@Pipe({ name: 'translate', pure: false })
 export class TranslatePipe implements PipeTransform {
   private readonly translateService = inject(TranslateService);
 
