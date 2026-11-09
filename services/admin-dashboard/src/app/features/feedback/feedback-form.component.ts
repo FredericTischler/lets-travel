@@ -3,6 +3,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import {
@@ -33,11 +34,11 @@ export function feedbackErrorMessage(err: unknown): string {
  */
 @Component({
   selector: 'app-feedback-form',
-  imports: [FormsModule, AlertComponent, ButtonComponent],
+  imports: [FormsModule, AlertComponent, ButtonComponent, TranslatePipe],
   template: `
     <form class="flex flex-col gap-3" (ngSubmit)="submit()" data-testid="feedback-form">
       <fieldset class="flex flex-col gap-1">
-        <legend class="font-mono text-xs tracking-wide text-ink-dim uppercase">Votre note</legend>
+        <legend class="font-mono text-xs tracking-wide text-ink-dim uppercase">{{ 'Votre note' | translate }}</legend>
         <div class="flex flex-wrap gap-3">
           @for (value of ratings; track value) {
             <label class="inline-flex items-center gap-1 text-sm text-ink">
@@ -57,7 +58,7 @@ export function feedbackErrorMessage(err: unknown): string {
 
       <div class="flex flex-col gap-1">
         <label for="feedbackComment" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-          >Commentaire (facultatif)</label
+          >{{ 'Commentaire (facultatif)' | translate }}</label
         >
         <textarea
           id="feedbackComment"
@@ -68,18 +69,21 @@ export function feedbackErrorMessage(err: unknown): string {
           class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         ></textarea>
         <span class="text-xs text-ink-dim"
-          >Texte brut, {{ commentMax }} caractères au maximum. Votre avis ne pourra pas être modifié.</span
+          >{{
+            'Texte brut, {{max}} caractères au maximum. Votre avis ne pourra pas être modifié.'
+              | translate: { max: commentMax }
+          }}</span
         >
       </div>
 
       <div>
         <app-button type="submit" [disabled]="saving() || rating() === null">
-          {{ saving() ? 'Envoi…' : 'Envoyer mon avis' }}
+          {{ (saving() ? 'Envoi…' : 'Envoyer mon avis') | translate }}
         </app-button>
       </div>
 
       @if (error()) {
-        <app-alert variant="error">{{ error() }}</app-alert>
+        <app-alert variant="error">{{ error() | translate }}</app-alert>
       }
     </form>
   `,

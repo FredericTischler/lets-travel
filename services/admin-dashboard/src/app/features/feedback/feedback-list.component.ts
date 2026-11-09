@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
 import { Feedback } from './feedback.service';
 
@@ -16,7 +17,7 @@ import { Feedback } from './feedback.service';
  */
 @Component({
   selector: 'app-feedback-list',
-  imports: [DatePipe, RouterLink, RatingComponent],
+  imports: [DatePipe, RouterLink, RatingComponent, TranslatePipe],
   template: `
     <ul class="flex flex-col gap-3" data-testid="feedback-list">
       @for (item of items(); track item.id) {
@@ -47,17 +48,17 @@ import { Feedback } from './feedback.service';
               item.comment
             }}</p>
           } @else {
-            <p class="text-ink-dim">Pas de commentaire.</p>
+            <p class="text-ink-dim">{{ 'Pas de commentaire.' | translate }}</p>
           }
           @if (showAuthor()) {
             <p class="break-all text-xs text-ink-dim">
-              Voyageur : {{ item.travelerId }}
+              {{ 'Voyageur : {{id}}' | translate: { id: item.travelerId } }}
             </p>
           }
         </li>
       } @empty {
         <li class="text-sm text-ink-dim" data-testid="feedback-empty">
-          {{ emptyMessage() }}
+          {{ emptyMessage() | translate }}
         </li>
       }
     </ul>

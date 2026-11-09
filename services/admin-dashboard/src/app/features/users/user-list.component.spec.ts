@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { environment } from '../../../environments/environment';
 import { User } from './user.service';
 import { UserListComponent } from './user-list.component';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('UserListComponent', () => {
   let fixture: ComponentFixture<UserListComponent>;
@@ -128,5 +129,24 @@ describe('UserListComponent', () => {
 
     expect(component['createError']()).toBe('Email already used');
     expect(component['createEmail']).toBe('new@example.com');
+  });
+
+  it('renders the screen in English when the locale is en', () => {
+    fixture.detectChanges();
+    httpMock.expectOne(baseUrl).flush([sampleUser]);
+    fixture.detectChanges();
+    const norm = (x: string | null | undefined) => (x ?? '').replace(/\s+/g, ' ').trim();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Create a user');
+      expect(text).toContain('Created on');
+      expect(text).toContain('Edit');
+      expect(text).toContain('Delete');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

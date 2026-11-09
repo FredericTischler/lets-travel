@@ -1,13 +1,13 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Utilisateurs</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Utilisateurs' | translate }}</h1>
 
-  <app-card title="Créer un utilisateur">
+  <app-card [title]="'Créer un utilisateur' | translate">
     <form class="flex flex-col gap-4 sm:flex-row sm:items-end" (ngSubmit)="createUser()">
       <app-input
         class="flex-1"
         fieldId="createEmail"
         name="createEmail"
-        label="Email"
+        [label]="'Email' | translate"
         type="email"
         [(ngModel)]="createEmail"
         [required]="true"
@@ -18,7 +18,7 @@
         class="flex-1"
         fieldId="createPassword"
         name="createPassword"
-        label="Mot de passe"
+        [label]="'Mot de passe' | translate"
         type="password"
         [(ngModel)]="createPassword"
         [required]="true"
@@ -27,7 +27,7 @@
 
       <div class="flex flex-col gap-1">
         <label for="createRole" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-          >Rôle</label
+          >{{ 'Rôle' | translate }}</label
         >
         <select
           id="createRole"
@@ -36,40 +36,40 @@
           class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         >
           @for (option of roleOptions; track option.value) {
-            <option [ngValue]="option.value">{{ option.label }} ({{ option.value }})</option>
+            <option [ngValue]="option.value">{{ option.label | translate }} ({{ option.value }})</option>
           }
         </select>
       </div>
 
       <app-button type="submit" [disabled]="creating()">
-        {{ creating() ? 'Création…' : 'Créer' }}
+        {{ (creating() ? 'Création…' : 'Créer') | translate }}
       </app-button>
     </form>
 
     @if (createError()) {
-      <app-alert variant="error" class="mt-3 block">{{ createError() }}</app-alert>
+      <app-alert variant="error" class="mt-3 block">{{ createError() | translate }}</app-alert>
     }
   </app-card>
 
-  <app-card title="Liste">
+  <app-card [title]="'Liste' | translate">
     @if (deleteError()) {
-      <app-alert variant="error" class="mb-3 block">{{ deleteError() }}</app-alert>
+      <app-alert variant="error" class="mb-3 block">{{ deleteError() | translate }}</app-alert>
     }
 
     @if (loading()) {
       <app-loading />
     } @else if (error()) {
-      <app-alert variant="error">{{ error() }}</app-alert>
+      <app-alert variant="error">{{ error() | translate }}</app-alert>
     } @else {
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Id</th>
-              <th class="table-head-cell">Email</th>
-              <th class="table-head-cell">Rôle</th>
-              <th class="table-head-cell">Créé le</th>
-              <th class="table-head-cell">Actions</th>
+              <th class="table-head-cell">{{ 'Id' | translate }}</th>
+              <th class="table-head-cell">{{ 'Email' | translate }}</th>
+              <th class="table-head-cell">{{ 'Rôle' | translate }}</th>
+              <th class="table-head-cell">{{ 'Créé le' | translate }}</th>
+              <th class="table-head-cell">{{ 'Actions' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -83,7 +83,7 @@
                         class="flex-1"
                         fieldId="editEmail"
                         name="editEmail"
-                        label="Email"
+                        [label]="'Email' | translate"
                         type="email"
                         [(ngModel)]="editEmail"
                         [required]="true"
@@ -91,19 +91,19 @@
                       />
 
                       <app-button type="submit" [disabled]="editing()">
-                        {{ editing() ? 'Enregistrement…' : 'Enregistrer' }}
+                        {{ (editing() ? 'Enregistrement…' : 'Enregistrer') | translate }}
                       </app-button>
                       <app-button
                         type="button"
                         variant="secondary"
                         [disabled]="editing()"
                         (clicked)="cancelEdit()"
-                        >Annuler</app-button
+                        >{{ 'Annuler' | translate }}</app-button
                       >
                     </form>
 
                     @if (editError()) {
-                      <app-alert variant="error" class="mt-2 block">{{ editError() }}</app-alert>
+                      <app-alert variant="error" class="mt-2 block">{{ editError() | translate }}</app-alert>
                     }
                   </td>
                 } @else {
@@ -114,13 +114,13 @@
                 <td class="table-cell">
                   @if (editingUserId() !== user.id) {
                     <div class="flex gap-2">
-                      <app-button variant="secondary" (clicked)="startEdit(user)">Éditer</app-button>
+                      <app-button variant="secondary" (clicked)="startEdit(user)">{{ 'Éditer' | translate }}</app-button>
                       <app-button
                         variant="danger"
                         [disabled]="deletingUserId() === user.id"
                         (clicked)="deleteUser(user)"
                       >
-                        {{ deletingUserId() === user.id ? 'Suppression…' : 'Supprimer' }}
+                        {{ (deletingUserId() === user.id ? 'Suppression…' : 'Supprimer') | translate }}
                       </app-button>
                     </div>
                   }
@@ -128,7 +128,7 @@
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="5">Aucun utilisateur.</td>
+                <td class="table-empty-cell" colspan="5">{{ 'Aucun utilisateur.' | translate }}</td>
               </tr>
             }
           </tbody>

@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AdminFeedbackComponent } from './admin-feedback.component';
 import { Feedback } from './feedback.service';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('AdminFeedbackComponent', () => {
   let fixture: ComponentFixture<AdminFeedbackComponent>;
@@ -103,5 +104,21 @@ describe('AdminFeedbackComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Forbidden');
+  });
+
+  it('renders the screen in English when the locale is en', () => {
+    load([feedback('a', 5, '2026-05-09T10:00:00Z')]);
+    const norm = (x: string | null | undefined) => (x ?? '').replace(/\s+/g, ' ').trim();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Traveler reviews');
+      expect(text).toContain('Rating (displayed page)');
+      expect(text).toContain('1 review(s) in total');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

@@ -5,6 +5,7 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Payment } from './payment.service';
 import { PaymentListComponent } from './payment-list.component';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('PaymentListComponent', () => {
   let fixture: ComponentFixture<PaymentListComponent>;
@@ -107,5 +108,23 @@ describe('PaymentListComponent', () => {
     httpMock.expectOne(baseUrl).flush([{ ...samplePayment, status: 'COMPLETED' }]);
 
     expect(component['updatingPaymentId']()).toBeNull();
+  });
+
+  it('renders the screen in English when the locale is en', () => {
+    fixture.detectChanges();
+    httpMock.expectOne(baseUrl).flush([samplePayment]);
+    fixture.detectChanges();
+    const norm = (x: string | null | undefined) => (x ?? '').replace(/\s+/g, ' ').trim();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Create a payment');
+      expect(text).toContain('External reference');
+      expect(text).toContain('Mark as completed');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { environment } from '../../../environments/environment';
 import { FeedbackFormComponent, feedbackErrorMessage } from './feedback-form.component';
 import { Feedback } from './feedback.service';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('FeedbackFormComponent', () => {
   let fixture: ComponentFixture<FeedbackFormComponent>;
@@ -88,5 +89,20 @@ describe('FeedbackFormComponent', () => {
     expect(feedbackErrorMessage(new HttpErrorResponse({ status: 500 }))).toBe(
       'Impossible d’envoyer votre avis.',
     );
+  });
+
+  it('renders the form in English when the locale is en', () => {
+    const norm = (x: string | null | undefined) => (x ?? '').replace(/\s+/g, ' ').trim();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Your rating');
+      expect(text).toContain('Comment (optional)');
+      expect(text).toContain('Send my review');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

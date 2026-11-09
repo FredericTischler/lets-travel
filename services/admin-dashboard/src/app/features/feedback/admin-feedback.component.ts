@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { Page } from '../../shared/pagination';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -34,24 +35,25 @@ const PAGE_SIZE = 20;
     PaginatorComponent,
     RatingComponent,
     FeedbackListComponent,
+    TranslatePipe,
   ],
   template: `
     <div class="flex flex-col gap-6">
-      <h1 class="font-display text-2xl font-bold text-ink">Avis des voyageurs</h1>
+      <h1 class="font-display text-2xl font-bold text-ink">{{ 'Avis des voyageurs' | translate }}</h1>
 
       @if (loading()) {
-        <p class="text-sm text-ink-dim">Chargement…</p>
+        <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
       } @else if (error()) {
-        <app-alert variant="error">{{ error() }}</app-alert>
+        <app-alert variant="error">{{ error() | translate }}</app-alert>
       } @else if (page(); as p) {
         <app-card>
           <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
             <p class="text-ink" data-testid="summary">
-              {{ p.totalElements }} avis au total · note moyenne de cette page :
+              {{ '{{n}} avis au total · note moyenne de cette page :' | translate: { n: p.totalElements } }}
               <app-rating [value]="pageAverage()" />
             </p>
             <div class="flex items-center gap-2">
-              <label for="ratingFilter" class="text-ink">Note (page affichée)</label>
+              <label for="ratingFilter" class="text-ink">{{ 'Note (page affichée)' | translate }}</label>
               <select
                 id="ratingFilter"
                 name="ratingFilter"
@@ -59,20 +61,20 @@ const PAGE_SIZE = 20;
                 (ngModelChange)="filter.set($event)"
                 class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               >
-                <option [ngValue]="0">Toutes</option>
+                <option [ngValue]="0">{{ 'Toutes' | translate }}</option>
                 @for (value of ratings; track value) {
-                  <option [ngValue]="value">{{ value }} sur 5</option>
+                  <option [ngValue]="value">{{ '{{n}} sur 5' | translate: { n: value } }}</option>
                 }
               </select>
             </div>
           </div>
         </app-card>
 
-        <app-card title="Avis">
+        <app-card [title]="'Avis' | translate">
           <app-feedback-list
             [items]="visible()"
             [showAuthor]="true"
-            emptyMessage="Aucun avis ne correspond."
+            [emptyMessage]="'Aucun avis ne correspond.' | translate"
           />
           <app-paginator
             class="mt-3 block"

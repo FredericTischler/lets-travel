@@ -2,6 +2,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -17,11 +19,12 @@ import { Payment, PaymentService } from './payment.service';
  */
 @Component({
   selector: 'app-payment-list',
-  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent],
+  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent, TranslatePipe],
   templateUrl: './payment-list.component.html',
 })
 export class PaymentListComponent implements OnInit {
   private readonly paymentService = inject(PaymentService);
+  private readonly translateService = inject(TranslateService);
 
   protected readonly payments = signal<Payment[]>([]);
   protected readonly loading = signal(true);
@@ -107,7 +110,7 @@ export class PaymentListComponent implements OnInit {
   }
 
   deletePayment(payment: Payment): void {
-    if (!confirm(`Supprimer le paiement ${payment.id} ?`)) {
+    if (!confirm(this.translateService.translate('Supprimer le paiement {{id}} ?', { id: payment.id }))) {
       return;
     }
 
