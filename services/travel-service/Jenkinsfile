@@ -270,6 +270,9 @@ pipeline {
             steps {
                 sh '''
                     set -e
+                    # Le compose racine interpole aussi Vault (--no-deps le laisse intact) :
+                    # on fournit un bouchon plutot que de donner le root token a Jenkins.
+                    export VAULT_DEV_ROOT_TOKEN_ID=unused-by-deploy
                     compose="docker compose -p travel-plan --project-directory /opt/travel-plan -f /opt/travel-plan/docker-compose.yml --profile full"
 
                     wait_healthy() {
