@@ -4,6 +4,8 @@ import { RouterLink } from '@angular/router';
 
 import { formatMoneyMap, formatRating } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -40,11 +42,13 @@ export const DASHBOARD_MONTH_CHOICES = [3, 6, 12] as const;
     StatTileComponent,
     FeedbackListComponent,
     TravelRowsTableComponent,
+    TranslatePipe,
   ],
   templateUrl: './manager-dashboard.component.html',
 })
 export class ManagerDashboardComponent implements OnInit {
   private readonly statsService = inject(StatsService);
+  private readonly translateService = inject(TranslateService);
 
   /** `managerId` query parameter (bound by withComponentInputBinding), admin only. */
   readonly managerId = input<string | undefined>(undefined);
@@ -55,7 +59,11 @@ export class ManagerDashboardComponent implements OnInit {
   protected readonly months = signal<number>(6);
   protected readonly monthChoices = DASHBOARD_MONTH_CHOICES;
 
-  protected readonly chartPoints = computed(() => incomeChartPoints(this.data()?.income));
+  protected readonly chartPoints = computed(() =>
+    incomeChartPoints(this.data()?.income, (amounts) =>
+      this.translateService.translate('Autres devises : {{amounts}}', { amounts }),
+    ),
+  );
   protected readonly chartFormat = computed(() => incomeFormatter(this.data()?.income));
   protected readonly money = formatMoneyMap;
   protected readonly rating = formatRating;

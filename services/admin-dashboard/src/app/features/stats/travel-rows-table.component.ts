@@ -3,6 +3,7 @@ import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { TRAVEL_STATUS_LABELS, formatMoneyMap } from '../../shared/format';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
 import { TravelRow } from './stats.service';
@@ -17,23 +18,23 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
  */
 @Component({
   selector: 'app-travel-rows-table',
-  imports: [DatePipe, RouterLink, BadgeComponent, RatingComponent],
+  imports: [DatePipe, RouterLink, BadgeComponent, RatingComponent, TranslatePipe],
   template: `
     <div class="table-shell">
       <table class="table-base">
         <caption class="sr-only">
-          {{ caption() }}
+          {{ caption() | translate }}
         </caption>
         <thead>
           <tr class="table-head-row">
-            <th class="table-head-cell" scope="col">Voyage</th>
-            <th class="table-head-cell" scope="col">Dates</th>
-            <th class="table-head-cell" scope="col">Statut</th>
-            <th class="table-head-cell" scope="col">Abonnés</th>
-            <th class="table-head-cell" scope="col">Note</th>
-            <th class="table-head-cell" scope="col">Revenu</th>
+            <th class="table-head-cell" scope="col">{{ 'Voyage' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Dates' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Statut' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Abonnés' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Note' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Revenu' | translate }}</th>
             @if (feedbackLink()) {
-              <th class="table-head-cell" scope="col">Avis</th>
+              <th class="table-head-cell" scope="col">{{ 'Avis' | translate }}</th>
             }
           </tr>
         </thead>
@@ -52,7 +53,7 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
                 {{ row.startDate | date: 'dd/MM/yyyy' }} → {{ row.endDate | date: 'dd/MM/yyyy' }}
               </td>
               <td class="table-cell">
-                <app-badge [tone]="tone(row.status)">{{ statusLabel(row.status) }}</app-badge>
+                <app-badge [tone]="tone(row.status)">{{ statusLabel(row.status) | translate }}</app-badge>
               </td>
               <td class="table-cell whitespace-nowrap tabular-nums">
                 {{ row.subscribers }}{{ row.capacity !== null ? ' / ' + row.capacity : '' }}
@@ -62,21 +63,21 @@ const TONES: Record<string, BadgeTone> = { UPCOMING: 'info', ONGOING: 'success',
                 <span class="text-xs text-ink-dim"> ({{ row.feedbackCount }})</span>
               </td>
               <td class="table-cell whitespace-nowrap tabular-nums" data-testid="row-income">
-                {{ row.income === null ? 'indisponible' : money(row.income) }}
+                {{ row.income === null ? ('indisponible' | translate) : money(row.income) }}
               </td>
               @if (feedbackLink()) {
                 <td class="table-cell">
                   <a
                     [routerLink]="[feedbackLink(), row.destinationId, 'feedback']"
                     class="text-teal hover:underline"
-                    >Voir les avis</a
+                    >{{ 'Voir les avis' | translate }}</a
                   >
                 </td>
               }
             </tr>
           } @empty {
             <tr>
-              <td class="table-empty-cell" colspan="7">{{ emptyMessage() }}</td>
+              <td class="table-empty-cell" colspan="7">{{ emptyMessage() | translate }}</td>
             </tr>
           }
         </tbody>

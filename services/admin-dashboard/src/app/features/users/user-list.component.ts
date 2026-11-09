@@ -3,6 +3,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { ROLES, ROLE_LABELS, Role } from '../../core/auth/roles';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -17,11 +19,12 @@ import { User, UserService } from './user.service';
  */
 @Component({
   selector: 'app-user-list',
-  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent],
+  imports: [FormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent, LoadingComponent, TranslatePipe],
   templateUrl: './user-list.component.html',
 })
 export class UserListComponent implements OnInit {
   private readonly userService = inject(UserService);
+  private readonly translateService = inject(TranslateService);
 
   protected readonly users = signal<User[]>([]);
   protected readonly loading = signal(true);
@@ -119,7 +122,7 @@ export class UserListComponent implements OnInit {
   }
 
   deleteUser(user: User): void {
-    if (!confirm(`Supprimer l'utilisateur ${user.email} ?`)) {
+    if (!confirm(this.translateService.translate("Supprimer l'utilisateur {{email}} ?", { email: user.email }))) {
       return;
     }
 

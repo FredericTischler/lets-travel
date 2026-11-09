@@ -2,6 +2,8 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { formatNumber } from '../../shared/format';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -20,11 +22,12 @@ import { ItineraryService, ItinerarySuggestion } from './itinerary.service';
  */
 @Component({
   selector: 'app-itinerary-suggestions',
-  imports: [RouterLink, AlertComponent, CardComponent, LoadingComponent],
+  imports: [RouterLink, AlertComponent, CardComponent, LoadingComponent, TranslatePipe],
   templateUrl: './itinerary-suggestions.component.html',
 })
 export class ItinerarySuggestionsComponent implements OnInit {
   private readonly itineraryService = inject(ItineraryService);
+  private readonly translateService = inject(TranslateService);
 
   protected readonly items = signal<ItinerarySuggestion[]>([]);
   protected readonly loading = signal(true);
@@ -39,7 +42,9 @@ export class ItinerarySuggestionsComponent implements OnInit {
         this.loading.set(false);
       },
       error: (err: unknown) => {
-        this.error.set(extractErrorMessage(err, 'Impossible de charger les itinéraires suggérés.'));
+        this.error.set(
+          extractErrorMessage(err, this.translateService.translate('Impossible de charger les itinéraires suggérés.')),
+        );
         this.loading.set(false);
       },
     });

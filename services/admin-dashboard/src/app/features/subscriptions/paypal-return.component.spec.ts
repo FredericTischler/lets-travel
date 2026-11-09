@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
 import { environment } from '../../../environments/environment';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { PaypalReturnComponent } from './paypal-return.component';
 
 describe('PaypalReturnComponent', () => {
@@ -67,4 +68,16 @@ describe('PaypalReturnComponent', () => {
     expect(text()).toContain('n’a pas confirmé');
     expect(text()).not.toContain('Paiement reçu');
   });
+
+  it('renders the error screen in English when the locale is switched', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    setup(undefined);
+
+    expect(text()).toContain('Back from PayPal');
+    expect(text()).toContain('Invalid PayPal return: no order specified.');
+    expect(text()).toContain('View my subscriptions');
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));

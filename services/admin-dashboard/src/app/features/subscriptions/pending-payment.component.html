@@ -22,7 +22,7 @@
   } @else {
     @if (expiresAt()) {
       <p data-testid="countdown">
-        {{ 'Votre place est réservée encore' | translate }} <strong>{{ remaining().label }}</strong>
+        {{ 'Votre place est réservée encore' | translate }} <strong>{{ remainingLabel() }}</strong>
         {{
           "(jusqu'au {{date}}). Passé ce délai, la réservation expire."
             | translate: { date: (expiresAt() | date: 'dd/MM/yyyy HH:mm') ?? '' }

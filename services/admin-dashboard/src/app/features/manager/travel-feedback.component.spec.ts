@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { Feedback } from '../feedback/feedback.service';
 import { TravelFeedbackComponent } from './travel-feedback.component';
@@ -73,5 +74,25 @@ describe('TravelFeedbackComponent', () => {
 
     expect(fixture.nativeElement.querySelector('[data-testid="feedback-empty"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="summary"]').textContent).toContain('0 avis');
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      fixture.detectChanges();
+      httpMock.expectOne(feedbackUrl).flush(rows);
+      httpMock.expectOne(travelUrl).flush({ id: 'd1', name: 'Lisbon' });
+      fixture.detectChanges();
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain('Back to my trips');
+      expect(text).toContain('Summary');
+      expect(text).toContain('2 review(s) · average rating:');
+      expect(text).toContain('All reviews');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

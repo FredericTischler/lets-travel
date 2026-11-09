@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Destination, DestinationCreateInput } from '../destinations/destination.service';
@@ -163,5 +164,22 @@ describe('MyTravelsComponent', () => {
     fixture.detectChanges();
 
     expect(component['error']()).toBe('Impossible de charger vos voyages.');
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      load();
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain('My organised trips');
+      expect(text).toContain('Name');
+      expect(text).toContain('Delete');
+      expect(text).toContain('Subscribers');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

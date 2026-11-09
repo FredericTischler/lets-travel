@@ -1632,16 +1632,12 @@ différente.
   évite une classe entière de bugs de dérive clé/texte de référence et rend
   la conversion mécanique d'un gabarit existant (englober la chaîne, pas
   inventer/suivre un nom de clé).
-- **Scope volontairement partiel, jamais un mélange FR/EN sur un même
-  écran.** Traduits intégralement : navigation (shell + groupes par rôle),
-  login, inscription, catalogue voyageur, fiche voyage (inscription,
-  désinscription, choix du moyen de paiement, avis, signalement d'un
-  organisateur), panneau de paiement en attente (MANUAL/PayPal/Stripe) et
-  « Mes abonnements » — le parcours voyageur le plus visible. Les ~40 autres
-  écrans (dashboards admin/organisateur, gestion utilisateurs/paiements/
-  destinations, signalements, avis, statistiques) restent **entièrement**
-  en français codé en dur, documenté comme périmètre restant dans
-  `services/admin-dashboard/README.md`, pas comme un oubli.
+- **Scope : d'abord le parcours voyageur, puis tous les écrans — jamais un
+  mélange FR/EN sur un même écran.** Première vague : navigation, login,
+  inscription, catalogue voyageur, fiche voyage, panneau de paiement,
+  « Mes abonnements ». Seconde vague (addendum ci-dessous) : tous les
+  écrans admin, organisateur, destinations, statistiques et les composants
+  partagés (`shared/ui`).
 - **`NavItem.label`/`NavItem.group` (`nav-items.ts`) ne changent pas.** Ces
   champs servent aussi de suffixe d'`id`/`aria-controls` et de matcher dans
   les tests Playwright existants (`getByRole('link', { name: 'Voyages' })`).
@@ -1695,6 +1691,28 @@ source qui change et invalide la clé) ne se pose pas quand la clé *est* le
 texte source.
 
 ---
+
+### Addendum — Seconde vague : tous les écrans traduits
+
+Les ~40 écrans restants (admin : dashboard, utilisateurs, paiements,
+signalements, avis ; organisateur : voyages, abonnés, avis, dashboard, page
+publique ; destinations/trajets/itinéraires ; statistiques ; suggestions ;
+composants `shared/ui` : paginator, bar-chart, rating, loading) passent par
+le même mécanisme (`| translate`, `TranslateService.translate` pour les
+`confirm()` et messages du `.ts`). Le dictionnaire est éclaté en trois
+fichiers partiels (`en.admin|manager|catalog.dictionary.ts`) fusionnés par
+spread dans `EN_DICTIONARY` : pur choix d'organisation, qui a permis de
+traduire en parallèle sans conflit de merge, la recherche reste une map plate.
+
+**Ce qui est sacrifié.** Les formats nombre/date/devise restent en `fr-FR`
+(`shared/format.ts`) même en anglais ; les messages d'erreur renvoyés par
+l'API et les raisons de recommandation (anglais côté backend) ne sont pas
+traduits ; un test par écran vérifie la locale `en`, pas l'exhaustivité (une
+chaîne oubliée retombe en français, jamais en clé brute).
+
+**Alternative rejetée.** Un seul `en.dictionary.ts` partagé par tous les
+traducteurs : rejeté, il aurait été un point de conflit systématique entre
+branches parallèles.
 
 ## 12. Feature bonus innovante — Travel Buddies, itinéraires combinés, badges voyageur
 
@@ -1835,7 +1853,7 @@ STOP — en attente de validation avant d'écrire du code pour cette phase.
 | Recommandation par requête de contenu (3 champs pondérés) | Pas de ML/filtrage collaboratif |
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
-| i18n FR/EN maison (clé = texte français), scope volontairement partiel (§11) | ~40 écrans restent en français codé en dur ; minuterie de paiement garde ses unités françaises |
+| i18n FR/EN maison (clé = texte français), tous les écrans traduits (§11) | Nombres/dates/devises restent en `fr-FR` (`shared/format.ts`) ; raisons des suggestions et messages d'erreur de l'API restent ceux du backend |
 
 ## Points ouverts
 

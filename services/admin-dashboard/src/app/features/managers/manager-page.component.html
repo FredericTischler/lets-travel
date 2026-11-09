@@ -1,50 +1,50 @@
 <div class="flex flex-col gap-6">
   <a routerLink="/travels" class="text-sm font-medium text-teal hover:underline"
-    >← Retour aux voyages</a
+    >← {{ 'Retour aux voyages' | translate }}</a
   >
 
   <div>
-    <h1 class="font-display text-2xl font-bold text-ink">Page de l'organisateur</h1>
-    <p class="break-all text-sm text-ink-dim">Identifiant : {{ id() }}</p>
+    <h1 class="font-display text-2xl font-bold text-ink">{{ 'Page de l\'organisateur' | translate }}</h1>
+    <p class="break-all text-sm text-ink-dim">{{ 'Identifiant : {{id}}' | translate: { id: id() } }}</p>
   </div>
 
   @if (loading()) {
-    <app-loading />
+    <app-loading [label]="'Chargement…' | translate" />
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else if (stats(); as s) {
     @if (!hasActivity()) {
       <p role="status" class="text-sm text-ink-dim" data-testid="no-activity">
-        Cet organisateur n'a aucun voyage ni aucun avis pour le moment.
+        {{ 'Cet organisateur n\'a aucun voyage ni aucun avis pour le moment.' | translate }}
       </p>
     }
 
     <div class="grid grid-cols-2 gap-4 lg:grid-cols-5" data-testid="kpis">
-      <app-stat-tile label="Voyages organisés" [value]="'' + s.activeTravels" data-testid="kpi-travels" />
-      <app-stat-tile label="Voyages terminés" [value]="'' + s.pastTravels" data-testid="kpi-past" />
-      <app-stat-tile label="Voyageurs inscrits" [value]="'' + s.subscribers" data-testid="kpi-subscribers" />
+      <app-stat-tile [label]="'Voyages organisés' | translate" [value]="'' + s.activeTravels" data-testid="kpi-travels" />
+      <app-stat-tile [label]="'Voyages terminés' | translate" [value]="'' + s.pastTravels" data-testid="kpi-past" />
+      <app-stat-tile [label]="'Voyageurs inscrits' | translate" [value]="'' + s.subscribers" data-testid="kpi-subscribers" />
       <app-stat-tile
-        label="Note moyenne"
+        [label]="'Note moyenne' | translate"
         [value]="rating(s.averageRating)"
-        [hint]="s.feedbackCount + ' avis'"
+        [hint]="'{{n}} avis' | translate: { n: s.feedbackCount }"
         data-testid="kpi-rating"
       />
       <app-stat-tile
-        label="Signalements reçus"
+        [label]="'Signalements reçus' | translate"
         [value]="reportCount() === null ? '—' : '' + reportCount()"
         data-testid="kpi-reports"
       />
     </div>
 
-    <app-card title="Notes des voyages passés">
+    <app-card [title]="'Notes des voyages passés' | translate">
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell" scope="col">Voyage</th>
-              <th class="table-head-cell" scope="col">Dates</th>
-              <th class="table-head-cell" scope="col">Avis</th>
-              <th class="table-head-cell" scope="col">Note moyenne</th>
+              <th class="table-head-cell" scope="col">{{ 'Voyage' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Dates' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Avis' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Note moyenne' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -66,7 +66,7 @@
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="4">Aucun voyage terminé pour l'instant.</td>
+                <td class="table-empty-cell" colspan="4">{{ 'Aucun voyage terminé pour l\'instant.' | translate }}</td>
               </tr>
             }
           </tbody>
@@ -74,16 +74,16 @@
       </div>
     </app-card>
 
-    <app-card title="Signaler cet organisateur">
+    <app-card [title]="'Signaler cet organisateur' | translate">
       <div class="flex flex-col gap-3 text-sm text-ink">
         @if (reportSent()) {
-          <app-alert variant="success">Votre signalement a été transmis à l'équipe de modération.</app-alert>
+          <app-alert variant="success">{{ 'Votre signalement a été transmis à l\'équipe de modération.' | translate }}</app-alert>
         }
         @if (!canReport()) {
-          <p class="text-ink-dim">Vous ne pouvez pas vous signaler vous-même.</p>
+          <p class="text-ink-dim">{{ 'Vous ne pouvez pas vous signaler vous-même.' | translate }}</p>
         } @else if (reportOpen()) {
           <form class="flex flex-col gap-2" (ngSubmit)="submitReport()">
-            <label for="reportReason" class="font-medium">Motif du signalement</label>
+            <label for="reportReason" class="font-medium">{{ 'Motif du signalement' | translate }}</label>
             <textarea
               id="reportReason"
               name="reportReason"
@@ -95,17 +95,17 @@
             ></textarea>
             <div class="flex gap-2">
               <app-button type="submit" [disabled]="reporting()">
-                {{ reporting() ? 'Envoi…' : 'Envoyer le signalement' }}
+                {{ (reporting() ? 'Envoi…' : 'Envoyer le signalement') | translate }}
               </app-button>
-              <app-button type="button" variant="secondary" (clicked)="toggleReport()">Annuler</app-button>
+              <app-button type="button" variant="secondary" (clicked)="toggleReport()">{{ 'Annuler' | translate }}</app-button>
             </div>
           </form>
           @if (reportError()) {
-            <app-alert variant="error">{{ reportError() }}</app-alert>
+            <app-alert variant="error">{{ reportError() | translate }}</app-alert>
           }
         } @else {
           <div>
-            <app-button variant="secondary" (clicked)="toggleReport()">Signaler l'organisateur</app-button>
+            <app-button variant="secondary" (clicked)="toggleReport()">{{ 'Signaler l\'organisateur' | translate }}</app-button>
           </div>
         }
       </div>

@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { PaymentService } from '../payments/payment.service';
@@ -22,26 +23,28 @@ import { PendingPaymentStore } from './pending-payment.store';
  */
 @Component({
   selector: 'app-paypal-return',
-  imports: [RouterLink, AlertComponent, CardComponent],
+  imports: [RouterLink, AlertComponent, CardComponent, TranslatePipe],
   template: `
     <div class="flex flex-col gap-6">
-      <h1 class="font-display text-2xl font-bold text-ink">Retour de PayPal</h1>
+      <h1 class="font-display text-2xl font-bold text-ink">{{ 'Retour de PayPal' | translate }}</h1>
       <app-card>
         @if (state() === 'capturing') {
           <p class="text-sm text-ink-dim" data-testid="capturing">
-            Finalisation de votre paiement…
+            {{ 'Finalisation de votre paiement…' | translate }}
           </p>
         } @else if (state() === 'done') {
           <app-alert variant="success"
-            >Paiement reçu. Votre inscription sera confirmée dans quelques instants.</app-alert
+            >{{
+              'Paiement reçu. Votre inscription sera confirmée dans quelques instants.' | translate
+            }}</app-alert
           >
         } @else {
-          <app-alert variant="error">{{ error() }}</app-alert>
+          <app-alert variant="error">{{ error() | translate }}</app-alert>
         }
         @if (state() !== 'capturing') {
           <p class="mt-3 text-sm">
             <a routerLink="/my-subscriptions" class="text-teal hover:underline"
-              >Voir mes abonnements</a
+              >{{ 'Voir mes abonnements' | translate }}</a
             >
           </p>
         }

@@ -1,17 +1,17 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Signalements</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Signalements' | translate }}</h1>
 
-  <app-card title="File de modération">
+  <app-card [title]="'File de modération' | translate">
     @if (loading()) {
       <app-loading />
     } @else if (error()) {
-      <app-alert variant="error">{{ error() }}</app-alert>
+      <app-alert variant="error">{{ error() | translate }}</app-alert>
     } @else {
       <p class="mb-3 text-sm text-ink-dim" data-testid="open-count">
-        {{ openCount() }} signalement(s) en attente.
+        {{ '{{n}} signalement(s) en attente.' | translate: { n: openCount() } }}
       </p>
 
-      <div class="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filtrer par statut">
+      <div class="mb-3 flex flex-wrap gap-2" role="group" [attr.aria-label]="'Filtrer par statut' | translate">
         @for (option of filters; track option.value) {
           <button
             type="button"
@@ -24,25 +24,25 @@
             [attr.aria-pressed]="filter() === option.value"
             (click)="filter.set(option.value)"
           >
-            {{ option.label }} ({{ countFor(option.value) }})
+            {{ option.label | translate }} ({{ countFor(option.value) }})
           </button>
         }
       </div>
 
       @if (actionError()) {
-        <app-alert variant="error" class="mb-3 block">{{ actionError() }}</app-alert>
+        <app-alert variant="error" class="mb-3 block">{{ actionError() | translate }}</app-alert>
       }
 
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Date</th>
-              <th class="table-head-cell">Signalé par</th>
-              <th class="table-head-cell">Utilisateur signalé</th>
-              <th class="table-head-cell">Motif</th>
-              <th class="table-head-cell">Statut</th>
-              <th class="table-head-cell">Actions</th>
+              <th class="table-head-cell">{{ 'Date' | translate }}</th>
+              <th class="table-head-cell">{{ 'Signalé par' | translate }}</th>
+              <th class="table-head-cell">{{ 'Utilisateur signalé' | translate }}</th>
+              <th class="table-head-cell">{{ 'Motif' | translate }}</th>
+              <th class="table-head-cell">{{ 'Statut' | translate }}</th>
+              <th class="table-head-cell">{{ 'Actions' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -53,7 +53,7 @@
                 <td class="table-cell break-all">{{ who(report.reportedUserId) }}</td>
                 <td class="table-cell max-w-md whitespace-pre-wrap break-words">{{ report.reason }}</td>
                 <td class="table-cell">
-                  <app-badge [tone]="statusTone(report.status)">{{ statusLabel(report.status) }}</app-badge>
+                  <app-badge [tone]="statusTone(report.status)">{{ statusLabel(report.status) | translate }}</app-badge>
                 </td>
                 <td class="table-cell">
                   @if (report.status === 'OPEN') {
@@ -64,7 +64,7 @@
                           [disabled]="updatingId() === report.id"
                           (clicked)="decide(report, decision.status)"
                         >
-                          {{ decision.label }}
+                          {{ decision.label | translate }}
                         </app-button>
                       }
                     </div>
@@ -73,7 +73,7 @@
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="6">Aucun signalement.</td>
+                <td class="table-empty-cell" colspan="6">{{ 'Aucun signalement.' | translate }}</td>
               </tr>
             }
           </tbody>

@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { catchError, forkJoin, of } from 'rxjs';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
@@ -20,37 +21,37 @@ import { Feedback, FeedbackService } from '../feedback/feedback.service';
  */
 @Component({
   selector: 'app-travel-feedback',
-  imports: [RouterLink, AlertComponent, CardComponent, RatingComponent, FeedbackListComponent],
+  imports: [RouterLink, AlertComponent, CardComponent, RatingComponent, FeedbackListComponent, TranslatePipe],
   template: `
     <div class="flex flex-col gap-6">
       <a
         routerLink="/manager/travels"
         class="text-sm font-medium text-teal hover:underline"
-        >← Retour à mes voyages</a
+        >← {{ 'Retour à mes voyages' | translate }}</a
       >
       <h1 class="font-display text-2xl font-bold text-ink">
-        Avis@if (travel(); as t) {
+        {{ 'Avis' | translate }}@if (travel(); as t) {
           <span class="font-normal"> — {{ t.name }}</span>
         }
       </h1>
 
       @if (loading()) {
-        <p class="text-sm text-ink-dim">Chargement…</p>
+        <p class="text-sm text-ink-dim">{{ 'Chargement…' | translate }}</p>
       } @else if (error()) {
-        <app-alert variant="error">{{ error() }}</app-alert>
+        <app-alert variant="error">{{ error() | translate }}</app-alert>
       } @else {
-        <app-card title="Synthèse">
+        <app-card [title]="'Synthèse' | translate">
           <p class="text-sm text-ink" data-testid="summary">
-            {{ items().length }} avis · note moyenne :
+            {{ '{{n}} avis · note moyenne :' | translate: { n: items().length } }}
             <app-rating [value]="average()" />
           </p>
         </app-card>
-        <app-card title="Tous les avis">
+        <app-card [title]="'Tous les avis' | translate">
           <app-feedback-list
             [items]="items()"
             [showDestination]="false"
             [showAuthor]="true"
-            emptyMessage="Ce voyage n'a reçu aucun avis pour l'instant."
+            [emptyMessage]="'Ce voyage n\\'a reçu aucun avis pour l\\'instant.' | translate"
           />
         </app-card>
       }

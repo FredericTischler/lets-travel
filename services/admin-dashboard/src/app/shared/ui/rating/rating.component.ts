@@ -1,4 +1,6 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
+
+import { TranslateService } from '../../i18n/translate.service';
 
 /**
  * Read-only star rating, 1..5. The glyphs are decorative (`aria-hidden`); the
@@ -23,6 +25,8 @@ export class RatingComponent {
   /** The rating (an integer for one feedback, a mean for an aggregate), `null` if none. */
   readonly value = input<number | null>(null);
 
+  private readonly translateService = inject(TranslateService);
+
   protected readonly stars = computed(() => {
     const value = this.value();
     if (value === null) {
@@ -38,6 +42,7 @@ export class RatingComponent {
       return '';
     }
     const shown = Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, '');
-    return `${shown.replace('.', ',')} sur 5`;
+    const decimal = this.translateService.locale() === 'en' ? shown : shown.replace('.', ',');
+    return this.translateService.translate('{{value}} sur 5', { value: decimal });
   });
 }

@@ -1,3 +1,7 @@
+import { EN_ADMIN_DICTIONARY } from './en.admin.dictionary';
+import { EN_CATALOG_DICTIONARY } from './en.catalog.dictionary';
+import { EN_MANAGER_DICTIONARY } from './en.manager.dictionary';
+
 /**
  * English translations, keyed by their exact French source string — see
  * TranslateService for why the key IS the French text rather than an
@@ -10,6 +14,9 @@
  * TranslateService#translate's optional `params` argument.
  */
 export const EN_DICTIONARY: Record<string, string> = {
+  ...EN_ADMIN_DICTIONARY,
+  ...EN_MANAGER_DICTIONARY,
+  ...EN_CATALOG_DICTIONARY,
   // --- App shell / navigation (shared/layout) ---
   'Aller au contenu principal': 'Skip to main content',
   Menu: 'Menu',

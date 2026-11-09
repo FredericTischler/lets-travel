@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { ManagerStats } from '../stats/stats.service';
@@ -135,5 +136,22 @@ describe('ManagerPageComponent', () => {
 
     expect(el().querySelector('img')).toBeNull();
     expect(el().textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      load();
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain("Organiser's page");
+      expect(text).toContain('Ratings of past trips');
+      expect(text).toContain('Completed trips');
+      expect(text).toContain('Report this organiser');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

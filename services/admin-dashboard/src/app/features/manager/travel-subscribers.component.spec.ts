@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Destination } from '../destinations/destination.service';
@@ -154,5 +155,22 @@ describe('TravelSubscribersComponent', () => {
     const adminFixture = TestBed.createComponent(TravelSubscribersComponent);
     expect(adminFixture.componentInstance['backLink']()).toBe('/destinations');
     adminFixture.destroy();
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      load();
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain('Subscriber list');
+      expect(text).toContain('1 active subscriber(s) out of 5 seats.');
+      expect(text).toContain('Unsubscribe');
+      expect(text).toContain('Signed up on');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

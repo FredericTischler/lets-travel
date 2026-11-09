@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AdminDashboard, RankingEntry, TravelRow } from '../stats/stats.service';
 import { AdminDashboardComponent } from './admin-dashboard.component';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('AdminDashboardComponent', () => {
   let fixture: ComponentFixture<AdminDashboardComponent>;
@@ -198,5 +199,20 @@ describe('AdminDashboardComponent', () => {
 
     expect(el().querySelector('img')).toBeNull();
     expect(el().querySelector('script')).toBeNull();
+  });
+
+  it('renders the screen in English when the locale is en', () => {
+    load();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Administrator dashboard');
+      expect(text).toContain('Top organisers — score');
+      expect(text).toContain('Organiser ranking');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

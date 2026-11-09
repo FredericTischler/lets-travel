@@ -1,7 +1,7 @@
 <figure class="flex flex-col gap-3" role="group" [attr.aria-label]="title()">
   @if (!hasData()) {
     <p class="text-sm text-ink-dim" data-testid="chart-empty">
-      {{ emptyMessage() }}
+      {{ emptyMessage() | translate }}
     </p>
   } @else {
     <div class="flex gap-2">
@@ -102,7 +102,7 @@
       class="cursor-pointer text-amber-text hover:underline"
       data-testid="chart-table-toggle"
     >
-      Voir les données en tableau
+      {{ 'Voir les données en tableau' | translate }}
     </summary>
     <div class="table-shell mt-2">
       <table class="table-base">
@@ -111,9 +111,9 @@
         </caption>
         <thead>
           <tr class="table-head-row">
-            <th class="table-head-cell" scope="col">Période</th>
-            <th class="table-head-cell" scope="col">{{ valueLabel() }}</th>
-            <th class="table-head-cell" scope="col">Détail</th>
+            <th class="table-head-cell" scope="col">{{ 'Période' | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ valueLabel() | translate }}</th>
+            <th class="table-head-cell" scope="col">{{ 'Détail' | translate }}</th>
           </tr>
         </thead>
         <tbody>
@@ -125,7 +125,7 @@
             </tr>
           } @empty {
             <tr>
-              <td class="table-empty-cell" colspan="3">{{ emptyMessage() }}</td>
+              <td class="table-empty-cell" colspan="3">{{ emptyMessage() | translate }}</td>
             </tr>
           }
         </tbody>

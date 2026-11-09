@@ -1,5 +1,5 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Destinations</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Destinations' | translate }}</h1>
 
   <app-destination-form
     [destination]="editingDestination()"
@@ -9,7 +9,7 @@
     (cancelled)="cancelEdit()"
   />
 
-  <app-card title="Liste">
+  <app-card [title]="'Liste' | translate">
     @if (deleteError()) {
       <app-alert variant="error" class="mb-3 block">{{ deleteError() }}</app-alert>
     }
@@ -23,16 +23,16 @@
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Id</th>
-              <th class="table-head-cell">Nom</th>
-              <th class="table-head-cell">Pays</th>
-              <th class="table-head-cell">Dates</th>
-              <th class="table-head-cell">Durée</th>
-              <th class="table-head-cell">Prix</th>
-              <th class="table-head-cell">Capacité</th>
-              <th class="table-head-cell">Organisateur</th>
-              <th class="table-head-cell">Créé le</th>
-              <th class="table-head-cell">Actions</th>
+              <th class="table-head-cell">{{ 'Id' | translate }}</th>
+              <th class="table-head-cell">{{ 'Nom' | translate }}</th>
+              <th class="table-head-cell">{{ 'Pays' | translate }}</th>
+              <th class="table-head-cell">{{ 'Dates' | translate }}</th>
+              <th class="table-head-cell">{{ 'Durée' | translate }}</th>
+              <th class="table-head-cell">{{ 'Prix' | translate }}</th>
+              <th class="table-head-cell">{{ 'Capacité' | translate }}</th>
+              <th class="table-head-cell">{{ 'Organisateur' | translate }}</th>
+              <th class="table-head-cell">{{ 'Créé le' | translate }}</th>
+              <th class="table-head-cell">{{ 'Actions' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -42,7 +42,7 @@
                 <td class="table-cell">{{ destination.name }}</td>
                 <td class="table-cell">{{ destination.country }}</td>
                 <td class="table-cell">{{ destination.startDate }} → {{ destination.endDate }}</td>
-                <td class="table-cell">{{ destination.durationDays }} j</td>
+                <td class="table-cell">{{ '{{n}} j' | translate: { n: destination.durationDays } }}</td>
                 <td class="table-cell">
                   {{ destination.price === null ? '—' : (destination.price | number: '1.2-2') + ' €' }}
                 </td>
@@ -52,18 +52,19 @@
                 <td class="table-cell">
                   <div class="flex flex-wrap gap-2">
                     <app-button variant="secondary" (clicked)="startEdit(destination)">
-                      Modifier
+                      {{ 'Modifier' | translate }}
                     </app-button>
                     <a
                       [routerLink]="['/manager/travels', destination.id, 'subscribers']"
                       class="inline-flex items-center border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2"
-                      >Abonnés</a
+                      >{{ 'Abonnés' | translate }}</a
                     >
                     <app-button variant="secondary" (clicked)="toggleTransports(destination)">
                       {{
-                        expandedDestinationId() === destination.id
+                        (expandedDestinationId() === destination.id
                           ? 'Masquer les trajets'
                           : 'Voir les trajets'
+                        ) | translate
                       }}
                     </app-button>
                     <app-button
@@ -72,7 +73,8 @@
                       (clicked)="deleteDestination(destination)"
                     >
                       {{
-                        deletingDestinationId() === destination.id ? 'Suppression…' : 'Supprimer'
+                        (deletingDestinationId() === destination.id ? 'Suppression…' : 'Supprimer')
+                          | translate
                       }}
                     </app-button>
                   </div>
@@ -84,7 +86,7 @@
                     <div class="flex flex-col gap-4">
                       <div>
                         <h3 class="mb-2 text-sm font-semibold text-ink">
-                          Trajets sortants de {{ destination.name }}
+                          {{ 'Trajets sortants de {{name}}' | translate: { name: destination.name } }}
                         </h3>
 
                         @if (transportsError()) {
@@ -106,11 +108,11 @@
                             <table class="table-base">
                               <thead>
                                 <tr class="table-head-row">
-                                  <th class="table-head-cell">Mode</th>
-                                  <th class="table-head-cell">Durée (min)</th>
-                                  <th class="table-head-cell">Destination</th>
-                                  <th class="table-head-cell">Pays</th>
-                                  <th class="table-head-cell">Actions</th>
+                                  <th class="table-head-cell">{{ 'Mode' | translate }}</th>
+                                  <th class="table-head-cell">{{ 'Durée (min)' | translate }}</th>
+                                  <th class="table-head-cell">{{ 'Destination' | translate }}</th>
+                                  <th class="table-head-cell">{{ 'Pays' | translate }}</th>
+                                  <th class="table-head-cell">{{ 'Actions' | translate }}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -126,7 +128,7 @@
                                             <label
                                               [for]="'editTransportMode-' + transport.id"
                                               class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-                                              >Mode</label
+                                              >{{ 'Mode' | translate }}</label
                                             >
                                             <select
                                               [id]="'editTransportMode-' + transport.id"
@@ -144,7 +146,7 @@
                                           <app-input
                                             [fieldId]="'editTransportDuration-' + transport.id"
                                             name="editTransportDuration"
-                                            label="Durée (min)"
+                                            [label]="'Durée (min)' | translate"
                                             type="number"
                                             [(ngModel)]="editTransportDuration"
                                             [required]="true"
@@ -152,14 +154,14 @@
                                           />
 
                                           <app-button type="submit" [disabled]="updatingTransport()">
-                                            {{ updatingTransport() ? 'Enregistrement…' : 'Enregistrer' }}
+                                            {{ (updatingTransport() ? 'Enregistrement…' : 'Enregistrer') | translate }}
                                           </app-button>
                                           <app-button
                                             type="button"
                                             variant="secondary"
                                             (clicked)="cancelEditTransport()"
                                           >
-                                            Annuler
+                                            {{ 'Annuler' | translate }}
                                           </app-button>
                                         </form>
                                         @if (updateTransportError()) {
@@ -181,7 +183,7 @@
                                             variant="secondary"
                                             (clicked)="startEditTransport(transport)"
                                           >
-                                            Modifier
+                                            {{ 'Modifier' | translate }}
                                           </app-button>
                                           <app-button
                                             variant="danger"
@@ -189,9 +191,10 @@
                                             (clicked)="deleteTransport(destination.id, transport)"
                                           >
                                             {{
-                                              deletingTransportId() === transport.id
+                                              (deletingTransportId() === transport.id
                                                 ? 'Suppression…'
                                                 : 'Supprimer'
+                                              ) | translate
                                             }}
                                           </app-button>
                                         </div>
@@ -201,7 +204,7 @@
                                 } @empty {
                                   <tr>
                                     <td class="table-empty-cell" colspan="5">
-                                      Aucun trajet sortant.
+                                      {{ 'Aucun trajet sortant.' | translate }}
                                     </td>
                                   </tr>
                                 }
@@ -213,7 +216,7 @@
 
                       <div>
                         <h3 class="mb-2 text-sm font-semibold text-ink">
-                          Chercher un itinéraire (plusieurs trajets)
+                          {{ 'Chercher un itinéraire (plusieurs trajets)' | translate }}
                         </h3>
 
                         <form
@@ -224,7 +227,7 @@
                             <label
                               for="routeToId"
                               class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-                              >Destination cible</label
+                              >{{ 'Destination cible' | translate }}</label
                             >
                             <select
                               id="routeToId"
@@ -233,7 +236,7 @@
                               required
                               class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
                             >
-                              <option value="" disabled>Choisir…</option>
+                              <option value="" disabled>{{ 'Choisir…' | translate }}</option>
                               @for (target of transportTargets(); track target.id) {
                                 <option [value]="target.id">
                                   {{ target.name }} ({{ target.country }})
@@ -243,7 +246,7 @@
                           </div>
 
                           <app-button type="submit" [disabled]="routeLoading()">
-                            {{ routeLoading() ? 'Recherche…' : 'Chercher' }}
+                            {{ (routeLoading() ? 'Recherche…' : 'Chercher') | translate }}
                           </app-button>
                         </form>
 
@@ -253,8 +256,10 @@
 
                         @if (routeResult(); as route) {
                           <p class="mt-2 text-sm text-ink">
-                            Itinéraire trouvé : {{ route.hops.length }} trajet(s), durée totale
-                            {{ route.totalDurationMinutes }} min.
+                            {{
+                              'Itinéraire trouvé : {{n}} trajet(s), durée totale {{min}} min.'
+                                | translate: { n: route.hops.length, min: route.totalDurationMinutes }
+                            }}
                           </p>
                           <ol class="mt-1 list-decimal pl-5 text-sm text-ink">
                             @for (hop of route.hops; track hop.id) {
@@ -269,7 +274,7 @@
 
                       <div>
                         <h3 class="mb-2 text-sm font-semibold text-ink">
-                          Ajouter un trajet
+                          {{ 'Ajouter un trajet' | translate }}
                         </h3>
 
                         <form
@@ -280,7 +285,7 @@
                             <label
                               for="createTransportToId"
                               class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-                              >Destination cible</label
+                              >{{ 'Destination cible' | translate }}</label
                             >
                             <select
                               id="createTransportToId"
@@ -289,7 +294,7 @@
                               required
                               class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
                             >
-                              <option value="" disabled>Choisir…</option>
+                              <option value="" disabled>{{ 'Choisir…' | translate }}</option>
                               @for (target of transportTargets(); track target.id) {
                                 <option [value]="target.id">
                                   {{ target.name }} ({{ target.country }})
@@ -302,7 +307,7 @@
                             <label
                               for="createTransportMode"
                               class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-                              >Mode</label
+                              >{{ 'Mode' | translate }}</label
                             >
                             <select
                               id="createTransportMode"
@@ -311,7 +316,7 @@
                               required
                               class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
                             >
-                              <option value="" disabled>Choisir…</option>
+                              <option value="" disabled>{{ 'Choisir…' | translate }}</option>
                               @for (mode of transportModes; track mode) {
                                 <option [value]="mode">{{ mode }}</option>
                               }
@@ -321,7 +326,7 @@
                           <app-input
                             fieldId="createTransportDuration"
                             name="createTransportDuration"
-                            label="Durée (min)"
+                            [label]="'Durée (min)' | translate"
                             type="number"
                             [(ngModel)]="createTransportDuration"
                             [required]="true"
@@ -329,7 +334,7 @@
                           />
 
                           <app-button type="submit" [disabled]="creatingTransport()">
-                            {{ creatingTransport() ? 'Création…' : 'Ajouter' }}
+                            {{ (creatingTransport() ? 'Création…' : 'Ajouter') | translate }}
                           </app-button>
                         </form>
 
@@ -345,7 +350,7 @@
               }
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="10">Aucune destination.</td>
+                <td class="table-empty-cell" colspan="10">{{ 'Aucune destination.' | translate }}</td>
               </tr>
             }
           </tbody>

@@ -1,5 +1,6 @@
 import { Component, computed, input, output } from '@angular/core';
 
+import { TranslatePipe } from '../../i18n/translate.pipe';
 import { ButtonComponent } from '../button/button.component';
 
 /**
@@ -10,7 +11,7 @@ import { ButtonComponent } from '../button/button.component';
  */
 @Component({
   selector: 'app-paginator',
-  imports: [ButtonComponent],
+  imports: [ButtonComponent, TranslatePipe],
   templateUrl: './paginator.component.html',
 })
 export class PaginatorComponent {

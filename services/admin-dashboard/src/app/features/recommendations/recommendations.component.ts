@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 
 import { extractErrorMessage } from '../../shared/http-error';
 import { formatNumber } from '../../shared/format';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
 import { LoadingComponent } from '../../shared/ui/loading/loading.component';
@@ -23,7 +24,7 @@ import { Recommendation, RecommendationService } from './recommendation.service'
  */
 @Component({
   selector: 'app-recommendations',
-  imports: [DecimalPipe, RouterLink, AlertComponent, CardComponent, LoadingComponent],
+  imports: [DecimalPipe, RouterLink, AlertComponent, CardComponent, LoadingComponent, TranslatePipe],
   templateUrl: './recommendations.component.html',
 })
 export class RecommendationsComponent implements OnInit {

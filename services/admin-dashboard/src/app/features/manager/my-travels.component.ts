@@ -7,6 +7,8 @@ import { extractErrorMessage } from '../../shared/http-error';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { DestinationFormComponent } from '../destinations/destination-form.component';
 import { Destination, DestinationCreateInput, DestinationService } from '../destinations/destination.service';
@@ -33,12 +35,14 @@ import { Destination, DestinationCreateInput, DestinationService } from '../dest
     CardComponent,
     DestinationFormComponent,
     LoadingComponent,
+    TranslatePipe,
   ],
   templateUrl: './my-travels.component.html',
 })
 export class MyTravelsComponent implements OnInit {
   private readonly destinationService = inject(DestinationService);
   private readonly authService = inject(AuthService);
+  private readonly translateService = inject(TranslateService);
 
   private readonly form = viewChild(DestinationFormComponent);
 
@@ -116,7 +120,7 @@ export class MyTravelsComponent implements OnInit {
   }
 
   remove(travel: Destination): void {
-    if (!confirm(`Supprimer le voyage ${travel.name} ?`)) {
+    if (!confirm(this.translateService.translate('Supprimer le voyage {{name}} ?', { name: travel.name }))) {
       return;
     }
 

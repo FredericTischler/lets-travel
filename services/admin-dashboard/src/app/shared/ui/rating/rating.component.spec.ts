@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
+import { TranslateService } from '../../i18n/translate.service';
 import { RatingComponent } from './rating.component';
 
 describe('RatingComponent', () => {
@@ -32,4 +33,14 @@ describe('RatingComponent', () => {
     expect(el.textContent?.trim()).toBe('—');
     expect(el.querySelector('[data-testid="rating-text"]')).toBeNull();
   });
+
+  it('reads "out of 5" with a decimal point in English', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    const el = render(4.3);
+
+    expect(el.querySelector('[data-testid="rating-text"]')!.textContent).toBe('4.3 out of 5');
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));

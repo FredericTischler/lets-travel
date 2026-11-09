@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { DestinationFormComponent } from './destination-form.component';
 import { Destination, DestinationCreateInput } from './destination.service';
 
@@ -230,4 +231,18 @@ describe('DestinationFormComponent', () => {
     const submit = fixture.nativeElement.querySelector('button[type="submit"]') as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
   });
+
+  it('renders in English when the locale is switched', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Create a destination');
+    expect(text).toContain('Start date');
+    expect(text).toContain('Add an activity');
+    expect(text).not.toContain('Ajouter une activité');
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));

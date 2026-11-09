@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { RecommendationsComponent } from './recommendations.component';
 import { Recommendation } from './recommendation.service';
@@ -89,5 +90,21 @@ describe('RecommendationsComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
       'Impossible de charger vos suggestions.',
     );
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      load([algarve]);
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain('Suggestions for you');
+      expect(text).toContain('Why?');
+      expect(text).toContain('score 18');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });
