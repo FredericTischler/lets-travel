@@ -9,7 +9,14 @@
  * matching usage is dead. `{{name}}`-style placeholders are substituted by
  * TranslateService#translate's optional `params` argument.
  */
+import { EN_ADMIN_DICTIONARY } from './en.admin.dictionary';
+import { EN_CATALOG_DICTIONARY } from './en.catalog.dictionary';
+import { EN_MANAGER_DICTIONARY } from './en.manager.dictionary';
+
 export const EN_DICTIONARY: Record<string, string> = {
+  ...EN_ADMIN_DICTIONARY,
+  ...EN_MANAGER_DICTIONARY,
+  ...EN_CATALOG_DICTIONARY,
   // --- App shell / navigation (shared/layout) ---
   'Aller au contenu principal': 'Skip to main content',
   Menu: 'Menu',
