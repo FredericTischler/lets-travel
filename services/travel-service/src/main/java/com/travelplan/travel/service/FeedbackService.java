@@ -91,6 +91,37 @@ public class FeedbackService {
                         "Feedback just created for destination " + destinationId + " could not be read back"));
     }
 
+    /** The author edits their own active feedback (rating and/or comment). */
+    @Transactional
+    public FeedbackResponse updateMine(UUID destinationId, UUID travelerId, GiveFeedbackRequest request) {
+        requireActiveDestination(destinationId);
+        String comment = request.getComment() == null ? null : request.getComment().strip();
+        if (!feedbackRepository.update(travelerId, destinationId, request.getRating(), comment,
+                OffsetDateTime.now(ZoneOffset.UTC))) {
+            throw new com.travelplan.travel.exception.FeedbackNotFoundException();
+        }
+        return feedbackRepository.findOne(travelerId, destinationId)
+                .map(FeedbackResponse::from)
+                .orElseThrow(com.travelplan.travel.exception.FeedbackNotFoundException::new);
+    }
+
+    /** The author withdraws their own feedback (soft-delete). */
+    @Transactional
+    public void deleteMine(UUID destinationId, UUID travelerId) {
+        requireActiveDestination(destinationId);
+        if (!feedbackRepository.softDeleteOwn(travelerId, destinationId, OffsetDateTime.now(ZoneOffset.UTC))) {
+            throw new com.travelplan.travel.exception.FeedbackNotFoundException();
+        }
+    }
+
+    /** Admin moderation: soft-delete any active feedback by id. */
+    @Transactional
+    public void moderate(UUID feedbackId) {
+        if (!feedbackRepository.softDeleteById(feedbackId, OffsetDateTime.now(ZoneOffset.UTC))) {
+            throw new com.travelplan.travel.exception.FeedbackNotFoundException();
+        }
+    }
+
     /**
      * Every feedback on {@code destinationId} — restricted to the
      * destination's own manager or an admin (quality control).

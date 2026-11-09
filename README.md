@@ -349,22 +349,27 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   factices et le front n'a pas de clé publiable réelle, donc `POST /payments/stripe`
   répond 502 dans cet environnement. Le paiement `MANUAL` et le flux d'abonnement
   sont, eux, bout-en-bout.
-- **Un paiement `FAILED` est compté comme une annulation** (`CANCELLED`) côté
-  abonnement : pas de distinction ni de remboursement.
-- **Avis immuables et non modérables** : ni édition, ni suppression, ni modération
-  d'un commentaire abusif.
+- ~~**Un paiement `FAILED` est compté comme une annulation**~~ **Corrigé** : l'abonnement
+  reste `CANCELLED` côté API, mais porte un `cancelReason = PAYMENT_FAILED` que le
+  compteur d'annulations du voyageur ignore. Toujours **pas de remboursement**.
+- ~~**Avis immuables et non modérables**~~ **Corrigé** : l'auteur modifie
+  (`PUT`) ou retire (`DELETE`) son avis, l'`ADMIN` modère (`DELETE /feedback/{id}`),
+  le tout en soft-delete ; un avis retiré n'entre plus dans aucune moyenne, badge
+  ni recommandation. Un avis modéré ne peut pas être reposté par son auteur.
 - **Statistiques voyageur** (`GET /travelers/me/stats`) : participations passées,
-  annulations, avis donnés, moyen de paiement préféré — mais **pas de compteur des
-  signalements émis** par le voyageur. Un organisateur ne voit d'un abonné que son
-  identifiant, pas un profil.
-- **Pas d'anti-doublon à la création d'un `TRANSPORT`**, et le pathfinding est
+  annulations, avis donnés, moyen de paiement préféré. Les signalements ne sont
+  comptés que **côté reçu** (le sujet ne demande que « report counts »), pas
+  côté émetteur. Un organisateur ne voit d'un abonné que son identifiant, pas un
+  profil.
+- ~~**Pas d'anti-doublon à la création d'un `TRANSPORT`**~~ **Corrigé** : un trajet
+  actif identique (origine, destination, mode) répond 409. Le pathfinding reste
   « fewest-hops », pas le plus court en durée (un plus-court-chemin pondéré
   demanderait APOC, non installé).
 - **Recherche Elasticsearch** : dual-write synchrone depuis `DestinationService`,
-  échec d'indexation loggé et avalé, **pas d'endpoint de ré-indexation** — un index
-  désynchronisé le reste jusqu'à la prochaine mise à jour de la destination.
-  Cohérence PostgreSQL / Neo4j / Elasticsearch : applicative et *best-effort*, pas
-  de transaction distribuée.
+  échec d'indexation loggé et avalé. ~~Pas de ré-indexation~~ **Corrigé** :
+  `POST /destinations/reindex` (`ADMIN`) reconstruit l'index depuis Neo4j et renvoie
+  `{indexed, failed}`. Cohérence PostgreSQL / Neo4j / Elasticsearch : applicative et
+  *best-effort*, pas de transaction distribuée.
 - **Recommandations** : score pondéré à la main sur plusieurs champs du voyage, pas
   de modèle appris ni de filtrage collaboratif.
 - **PWA : coque applicative seulement.** Installable, assets en cache, mais **pas de

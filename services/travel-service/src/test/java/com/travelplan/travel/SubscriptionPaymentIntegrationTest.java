@@ -296,6 +296,14 @@ class SubscriptionPaymentIntegrationTest {
 
         assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(result.getBody()).containsEntry("status", "CANCELLED");
+
+        // a payment failure is not a traveler-initiated cancellation
+        org.springframework.http.HttpHeaders h = new org.springframework.http.HttpHeaders();
+        h.setBearerAuth(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", travelerId));
+        ResponseEntity<Map> stats = restTemplate.exchange("/travelers/me/stats", HttpMethod.GET,
+                new org.springframework.http.HttpEntity<>(h), Map.class);
+        assertThat(stats.getBody()).containsEntry("cancellationCount", 0);
+
         assertThat(subscribeManual(destinationId, travelerId).getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 

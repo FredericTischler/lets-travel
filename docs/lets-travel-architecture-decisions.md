@@ -1841,6 +1841,63 @@ STOP — en attente de validation avant d'écrire du code pour cette phase.
 
 ---
 
+## 13. Correctifs fonctionnels — avis modifiables/modérables, ré-indexation, anti-doublon TRANSPORT, échec de paiement
+
+Ces décisions corrigent quatre écarts listés en « Non implémenté » après audit.
+Elles **révisent** §5 (avis immuables) et la limite signalée en §4 (un `FAILED`
+gonflait le compteur d'annulations).
+
+### Décision
+
+1. **Avis** : l'auteur peut modifier (`PUT /destinations/{id}/feedback`) ou retirer
+   (`DELETE`) son avis ; l'`ADMIN` peut en supprimer un (`DELETE /feedback/{id}`).
+   Toujours en **soft-delete** : `deletedAt` sur la relation `GAVE_FEEDBACK`. Un
+   avis retiré ou modéré **ne peut pas être reposté**.
+2. **Ré-indexation** : `POST /destinations/reindex` (`ADMIN`) reconstruit l'index
+   Elasticsearch depuis Neo4j et répond `{indexed, failed}`.
+3. **Anti-doublon `TRANSPORT`** : créer un trajet actif identique (origine,
+   destination, mode) répond **409**. Un trajet soft-deleté ne bloque pas.
+4. **Paiement échoué ≠ annulation** : l'abonnement passe toujours `CANCELLED` (API
+   inchangée) mais porte `cancelReason = 'PAYMENT_FAILED'` ; les statistiques
+   voyageur ignorent ces annulations.
+
+### Justification
+
+- Le soft-delete est la convention du dépôt ; chaque requête de lecture filtre
+  `f.deletedAt IS NULL` (feedback, moyennes, badges, stats, recommandations,
+  dashboard manager). Garder la relation, plutôt que la supprimer, fait que le
+  `MERGE ... ON CREATE` de `give` la retrouve : l'unicité « un avis par voyageur et
+  voyage » tient sans code supplémentaire, et la modération ne peut pas être
+  contournée en reposant.
+- La ré-indexation était la réponse annoncée en §6 à la dérive du dual-write ;
+  elle réutilise `DestinationService.findAll()` et le même indexeur.
+- L'anti-doublon est une requête Cypher explicite (`TransportRepository`), cohérente
+  avec « Neo4jClient pour les relations » ; Neo4j Community ne sait pas poser de
+  contrainte d'unicité sur une relation.
+- `cancelReason` évite de changer l'enum de statut (contrat d'API, paiement, front)
+  pour une distinction purement statistique.
+
+### Ce que je sacrifie
+
+- Un avis retiré est définitivement perdu pour l'auteur (pas de republication) ; la
+  donnée reste en base mais n'est jamais lue.
+- L'anti-doublon n'est pas atomique : deux créations simultanées identiques peuvent
+  passer (même limite que `SUBSCRIBED` et `GAVE_FEEDBACK`).
+- La ré-indexation est synchrone et séquentielle : adaptée aux volumes du projet,
+  pas à des millions de documents.
+- Pas de remboursement : `PAYMENT_FAILED` corrige seulement la lecture statistique.
+
+### Alternative rejetée
+
+- **Suppression physique des avis modérés** : contredit le soft-delete du dépôt et
+  permettrait de reposter immédiatement.
+- **Nouveau statut `PAYMENT_FAILED` dans l'enum d'abonnement** : casse le contrat
+  d'API et tous les consommateurs du statut pour un gain nul côté métier.
+- **Contrainte d'unicité Cypher sur la relation `TRANSPORT`** : non supportée par
+  Neo4j Community.
+
+---
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |
@@ -1853,6 +1910,7 @@ STOP — en attente de validation avant d'écrire du code pour cette phase.
 | Recommandation par requête de contenu (3 champs pondérés) | Pas de ML/filtrage collaboratif |
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
+| Avis modifiables/modérables en soft-delete (§13) | Un avis retiré ne peut pas être reposté ; anti-doublon TRANSPORT non atomique |
 | i18n FR/EN maison (clé = texte français), tous les écrans traduits (§11) | Nombres/dates/devises restent en `fr-FR` (`shared/format.ts`) ; raisons des suggestions et messages d'erreur de l'API restent ceux du backend |
 
 ## Points ouverts

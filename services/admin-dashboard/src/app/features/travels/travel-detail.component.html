@@ -173,19 +173,38 @@
     @if (ended() && subscribed()) {
       <app-card [title]="'Votre avis' | translate">
         @if (myFeedback(); as mine) {
-          <app-feedback-list
-            [items]="[mine]"
-            [showDestination]="false"
-            emptyMessage=""
-          />
+          @if (editingFeedback()) {
+            <app-feedback-form
+              [destinationId]="id()"
+              [initial]="mine"
+              (saved)="onFeedbackSaved($event)"
+              (cancelled)="editingFeedback.set(false)"
+            />
+          } @else {
+            <app-feedback-list
+              [items]="[mine]"
+              [showDestination]="false"
+              emptyMessage=""
+            />
+            <div class="mt-3 flex gap-2">
+              <app-button type="button" variant="secondary" (clicked)="editingFeedback.set(true)">{{
+                'Modifier mon avis' | translate
+              }}</app-button>
+              <app-button type="button" variant="danger" (clicked)="withdrawFeedback()">{{
+                'Retirer mon avis' | translate
+              }}</app-button>
+            </div>
+          }
         } @else if (canGiveFeedback()) {
           <p class="mb-3 text-sm text-ink">
             {{
-              'Ce voyage est terminé : donnez votre avis (un seul avis par voyage, non modifiable).'
+              'Ce voyage est terminé : donnez votre avis (un seul avis par voyage).'
                 | translate
             }}
           </p>
           <app-feedback-form [destinationId]="id()" (saved)="onFeedbackSaved($event)" />
+        } @else if (feedbackWithdrawn()) {
+          <p class="text-sm text-ink-dim">{{ 'Vous avez retiré votre avis ; il ne peut plus être republié.' | translate }}</p>
         } @else {
           <app-loading [label]="'Chargement…' | translate" />
         }

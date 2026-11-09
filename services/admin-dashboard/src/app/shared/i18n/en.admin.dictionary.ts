@@ -121,13 +121,15 @@ export const EN_ADMIN_DICTIONARY: Record<string, string> = {
   'Impossible de charger les avis.': 'Unable to load the reviews.',
   'Votre note': 'Your rating',
   'Commentaire (facultatif)': 'Comment (optional)',
-  'Texte brut, {{max}} caractères au maximum. Votre avis ne pourra pas être modifié.':
-    'Plain text, {{max}} characters at most. Your review cannot be edited afterwards.',
+  'Texte brut, {{max}} caractères au maximum. Vous pourrez modifier ou retirer votre avis.':
+    'Plain text, {{max}} characters at most. You can edit or withdraw your review later.',
+  'Supprimer cet avis': 'Delete this review',
+  'Impossible de supprimer cet avis.': 'Unable to delete this review.',
   'Envoyer mon avis': 'Send my review',
   'Vous ne pouvez donner un avis que sur un voyage auquel vous avez participé (inscription active).':
     'You can only review a trip you took part in (active registration).',
-  'Avis refusé : ce voyage n’est pas encore terminé, ou vous avez déjà donné votre avis (un seul avis par voyage, non modifiable).':
-    'Review refused: this trip is not over yet, or you have already given your review (one review per trip, not editable).',
+  'Avis refusé : ce voyage n’est pas encore terminé, ou vous avez déjà donné votre avis (un seul avis par voyage).':
+    'Review refused: this trip is not over yet, or you have already given your review (one review per trip).',
   'Impossible d’envoyer votre avis.': 'Unable to send your review.',
   'Pas de commentaire.': 'No comment.',
   'Voyageur : {{id}}': 'Traveler: {{id}}',

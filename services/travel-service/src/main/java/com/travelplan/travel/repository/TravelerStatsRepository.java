@@ -28,9 +28,9 @@ public class TravelerStatsRepository {
     private static final String SUBSCRIPTIONS_QUERY = """
             MATCH (t:TravelerRef {userId: $travelerId})-[s:SUBSCRIBED]->(d:Destination)
             WHERE d.deletedAt IS NULL
-            RETURN s.status AS status, d.id AS destinationId, d.name AS name, d.country AS country,
+            RETURN s.status AS status, s.cancelReason AS cancelReason, d.id AS destinationId, d.name AS name, d.country AS country,
                    d.startDate AS startDate, d.endDate AS endDate,
-                   EXISTS { (t)-[:GAVE_FEEDBACK]->(d) } AS feedbackGiven
+                   EXISTS { (t)-[gf:GAVE_FEEDBACK]->(d) WHERE gf.deletedAt IS NULL } AS feedbackGiven
             ORDER BY d.endDate DESC
             """;
 
@@ -52,7 +52,8 @@ public class TravelerStatsRepository {
                         row.get("country").asString(),
                         row.get("startDate").isNull() ? null : row.get("startDate").asLocalDate(),
                         row.get("endDate").isNull() ? null : row.get("endDate").asLocalDate(),
-                        row.get("feedbackGiven").asBoolean()))
+                        row.get("feedbackGiven").asBoolean(),
+                        row.get("cancelReason").isNull() ? null : row.get("cancelReason").asString()))
                 .all()
                 .stream()
                 .toList();
@@ -62,9 +63,11 @@ public class TravelerStatsRepository {
      * One subscription of the traveler with its destination's summary. Not an API type.
      *
      * @param status        stored status of the relation
+     * @param cancelReason  {@code PAYMENT_FAILED} when the system cancelled it, null otherwise
      * @param feedbackGiven whether the traveler already gave feedback on the destination
      */
     public record TravelerSubscriptionSummary(String status, UUID destinationId, String name, String country,
-                                              LocalDate startDate, LocalDate endDate, boolean feedbackGiven) {
+                                              LocalDate startDate, LocalDate endDate, boolean feedbackGiven,
+                                              String cancelReason) {
     }
 }

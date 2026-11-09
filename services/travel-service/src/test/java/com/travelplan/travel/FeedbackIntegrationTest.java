@@ -224,6 +224,65 @@ class FeedbackIntegrationTest {
     }
 
     @Test
+    void authorCanEditTheirOwnFeedbackAndOthersCannot() {
+        UUID managerId = UUID.randomUUID();
+        UUID destinationId = createPastDestination(managerId);
+        UUID travelerId = participant(destinationId, "ACTIVE");
+        postFeedback(destinationId, travelerId, feedbackBody(2, "meh"));
+
+        ResponseEntity<Map> edited = restTemplate.exchange("/destinations/" + destinationId + "/feedback",
+                HttpMethod.PUT, new HttpEntity<>(feedbackBody(5, "great"),
+                        jsonHeaders(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", travelerId))), Map.class);
+        assertThat(edited.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(edited.getBody()).containsEntry("rating", 5).containsEntry("comment", "great");
+
+        ResponseEntity<Map> stranger = restTemplate.exchange("/destinations/" + destinationId + "/feedback",
+                HttpMethod.PUT, new HttpEntity<>(feedbackBody(1, "x"),
+                        jsonHeaders(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", UUID.randomUUID()))), Map.class);
+        assertThat(stranger.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(listForDestination(destinationId, "TRAVEL_MANAGER", managerId)).hasSize(1);
+    }
+
+    @Test
+    void authorWithdrawalAndAdminModerationSoftDeleteAndHideTheFeedback() {
+        UUID managerId = UUID.randomUUID();
+        UUID destinationId = createPastDestination(managerId);
+        UUID travelerId = participant(destinationId, "ACTIVE");
+        postFeedback(destinationId, travelerId, feedbackBody(1, "abusive"));
+        String feedbackId = (String) listForDestination(destinationId, "TRAVEL_MANAGER", managerId).get(0).get("id");
+
+        assertThat(restTemplate.exchange("/feedback/" + feedbackId, HttpMethod.DELETE,
+                authorized(TestJwtTokens.tokenWithRoleAndSubject("TRAVEL_MANAGER", managerId)), Void.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(restTemplate.exchange("/feedback/" + feedbackId, HttpMethod.DELETE,
+                authorized(TestJwtTokens.tokenWithRole("ADMIN")), Void.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(listForDestination(destinationId, "TRAVEL_MANAGER", managerId)).isEmpty();
+        assertThat(stats(managerId).toString()).doesNotContain("ratingSum=1");
+        assertThat(restTemplate.exchange("/feedback/" + feedbackId, HttpMethod.DELETE,
+                authorized(TestJwtTokens.tokenWithRole("ADMIN")), Void.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        // a removed feedback cannot be re-posted
+        assertThat(postFeedback(destinationId, travelerId, feedbackBody(5, "again")).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void authorCanWithdrawTheirOwnFeedback() {
+        UUID managerId = UUID.randomUUID();
+        UUID destinationId = createPastDestination(managerId);
+        UUID travelerId = participant(destinationId, "ACTIVE");
+        postFeedback(destinationId, travelerId, feedbackBody(3, "ok"));
+
+        ResponseEntity<Void> deleted = restTemplate.exchange("/destinations/" + destinationId + "/feedback",
+                HttpMethod.DELETE, authorized(TestJwtTokens.tokenWithRoleAndSubject("TRAVELER", travelerId)),
+                Void.class);
+        assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(listForDestination(destinationId, "TRAVEL_MANAGER", managerId)).isEmpty();
+    }
+
+    @Test
     void feedbackOnAnUnknownDestinationIsNotFound() {
         ResponseEntity<Map> response = postFeedback(UUID.randomUUID(), UUID.randomUUID(), feedbackBody(5, "?"));
 

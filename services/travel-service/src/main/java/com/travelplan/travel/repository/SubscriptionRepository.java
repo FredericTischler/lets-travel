@@ -134,7 +134,7 @@ public class SubscriptionRepository {
 
     private static final String CANCEL_PENDING_QUERY = """
             MATCH (:TravelerRef)-[s:SUBSCRIBED {id: $id, status: 'PENDING_PAYMENT'}]->(:Destination)
-            SET s.status = 'CANCELLED', s.cancelledAt = $now,
+            SET s.status = 'CANCELLED', s.cancelledAt = $now, s.cancelReason = 'PAYMENT_FAILED',
                 s.paymentId = coalesce($paymentId, s.paymentId)
             RETURN count(s) AS updated
             """;

@@ -38,10 +38,9 @@ public class TransportRepository {
     /** Itinerary suggestions (docs/lets-travel-architecture-decisions.md §12): up to 3 stops. */
     private static final int MAX_ITINERARY_HOPS = 2;
 
-    // Plain CREATE — no MERGE, no prior-existence check for an identical
-    // trip. Creating the same A->B transport twice is an accepted, documented
-    // gap for increment 2 (see task rationale), not an oversight. Both
-    // endpoint ids are assumed already verified active by the caller.
+    // Plain CREATE: the duplicate check is a separate read (DUPLICATE_QUERY)
+    // done by the service just before. Both endpoint ids are assumed already
+    // verified active by the caller.
     private static final String CREATE_QUERY = """
             MATCH (origin:Destination), (target:Destination)
             WHERE origin.id = $fromId AND target.id = $toId
@@ -49,6 +48,18 @@ public class TransportRepository {
                 id: $transportId, mode: $mode, durationMinutes: $durationMinutes,
                 departureTime: $departureTime, arrivalTime: $arrivalTime
             }]->(target)
+            """;
+
+    // Same endpoints + mode + departure among ACTIVE transports = duplicate.
+    // Two concurrent identical creates can still both pass this read: accepted,
+    // a unique constraint cannot cover a relationship property with soft-delete.
+    private static final String DUPLICATE_QUERY = """
+            MATCH (origin:Destination)-[t:TRANSPORT]->(target:Destination)
+            WHERE origin.id = $fromId AND target.id = $toId
+              AND origin.deletedAt IS NULL AND target.deletedAt IS NULL
+              AND t.deletedAt IS NULL AND t.mode = $mode
+              AND ((t.departureTime IS NULL AND $departureTime IS NULL) OR t.departureTime = $departureTime)
+            RETURN count(t) AS n
             """;
 
     // First real traversal query of the project (Phase 0 justification test).
@@ -181,6 +192,16 @@ public class TransportRepository {
         params.put(ARRIVAL_TIME, arrivalTime);
         neo4jClient.query(CREATE_QUERY).bindAll(params).run();
         return transportId;
+    }
+
+    /** Whether an identical active transport (endpoints, mode, departure) already exists. */
+    public boolean existsActiveDuplicate(UUID fromId, UUID toId, String mode, OffsetDateTime departureTime) {
+        Map<String, Object> params = new HashMap<>();
+        params.put(FROM_ID, fromId.toString());
+        params.put("toId", toId.toString());
+        params.put("mode", mode);
+        params.put(DEPARTURE_TIME, departureTime);
+        return neo4jClient.query(DUPLICATE_QUERY).bindAll(params).fetchAs(Long.class).one().orElse(0L) > 0;
     }
 
     /**

@@ -148,6 +148,36 @@ class DestinationSearchIntegrationTest {
         assertThat(suggestionsAfter).noneMatch(s -> id.toString().equals(s.get("id")));
     }
 
+    @Test
+    void adminReindexRestoresADocumentMissingFromTheIndex() {
+        Map<String, Object> createBody = Map.of(
+                "name", "Tromso Reindexed", "country", "Norway",
+                "startDate", "2026-11-10", "endDate", "2026-11-14",
+                "managerId", UUID.randomUUID().toString(), "price", 999.00, "capacity", 8);
+        ResponseEntity<Map> createResponse = restTemplate.exchange(
+                "/destinations", HttpMethod.POST, authorizedJsonEntity(createBody), Map.class);
+        UUID id = UUID.fromString((String) createResponse.getBody().get("id"));
+
+        new org.springframework.web.client.RestTemplate().delete("http://" + elasticsearch.getHost() + ":"
+                + elasticsearch.getMappedPort(9200) + "/" + com.travelplan.travel.config.ElasticsearchIndexInitializer.INDEX_NAME
+                + "/_doc/" + id + "?refresh=true");
+        ResponseEntity<List> lost = restTemplate.exchange(
+                "/destinations/search?q=Tromso", HttpMethod.GET, authorizedEntity(), List.class);
+        assertThat(lost.getBody()).isEmpty();
+
+        ResponseEntity<Map> reindex = restTemplate.exchange(
+                "/destinations/reindex", HttpMethod.POST, authorizedEntity(), Map.class);
+        assertThat(reindex.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((Integer) reindex.getBody().get("indexed")).isGreaterThanOrEqualTo(1);
+        assertThat(reindex.getBody().get("failed")).isEqualTo(0);
+
+        ResponseEntity<List> found = restTemplate.exchange(
+                "/destinations/search?q=Tromso", HttpMethod.GET, authorizedEntity(), List.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> hits = found.getBody();
+        assertThat(hits).anyMatch(hit -> id.toString().equals(hit.get("id")));
+    }
+
     private static HttpEntity<Map<String, Object>> authorizedJsonEntity(Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

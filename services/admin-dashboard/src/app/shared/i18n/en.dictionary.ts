@@ -136,8 +136,15 @@ export const EN_DICTIONARY: Record<string, string> = {
   Hébergements: 'Accommodation',
   'Aucun hébergement renseigné.': 'No accommodation listed.',
   'Votre avis': 'Your review',
-  'Ce voyage est terminé : donnez votre avis (un seul avis par voyage, non modifiable).':
-    'This trip is over: leave your review (one review per trip, not editable).',
+  'Vous avez retiré votre avis ; il ne peut plus être republié.':
+    'You withdrew your review; it can no longer be posted again.',
+  'Modifier mon avis': 'Edit my review',
+  'Retirer mon avis': 'Withdraw my review',
+  'Enregistrer mon avis': 'Save my review',
+  'Votre avis a été retiré.': 'Your review has been withdrawn.',
+  'Impossible de retirer votre avis.': 'Unable to withdraw your review.',
+  'Ce voyage est terminé : donnez votre avis (un seul avis par voyage).':
+    'This trip is over: leave your review (one review per trip).',
   "Voir la page de l'organisateur (statistiques, notes)": "View the organiser's page (statistics, ratings)",
   'Signalements reçus par cet organisateur :': 'Reports received by this organiser:',
   "Votre signalement a été transmis à l'équipe de modération.": 'Your report has been sent to the moderation team.',

@@ -38,16 +38,26 @@ export class FeedbackService {
   /**
    * Rate a travel the caller took part in. 403: no ACTIVE subscription; 409:
    * the travel has not ended yet, or feedback was already given (one per
-   * traveler and travel, immutable). The author is the token subject — never sent.
+   * traveler and travel; editable afterwards through `update`). The author is the token subject — never sent.
    * A blank comment is omitted: the backend refuses a present-but-blank one.
    */
   give(destinationId: string, rating: number, comment: string | null): Observable<Feedback> {
-    const trimmed = comment?.trim() ?? '';
-    const body: { rating: number; comment?: string } = { rating };
-    if (trimmed !== '') {
-      body.comment = trimmed;
-    }
-    return this.http.post<Feedback>(`${this.base}/destinations/${destinationId}/feedback`, body);
+    return this.http.post<Feedback>(`${this.base}/destinations/${destinationId}/feedback`, body(rating, comment));
+  }
+
+  /** Edit the caller's own feedback on a travel (404 when there is none). */
+  update(destinationId: string, rating: number, comment: string | null): Observable<Feedback> {
+    return this.http.put<Feedback>(`${this.base}/destinations/${destinationId}/feedback`, body(rating, comment));
+  }
+
+  /** Withdraw the caller's own feedback (soft-delete). */
+  deleteMine(destinationId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/destinations/${destinationId}/feedback`);
+  }
+
+  /** Moderation: remove any feedback (soft-delete) — admin only. */
+  moderate(feedbackId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/feedback/${feedbackId}`);
   }
 
   /** Feedback on one travel — owning manager or admin only (quality control). */
@@ -64,4 +74,10 @@ export class FeedbackService {
   all(page: number, size: number): Observable<Page<Feedback>> {
     return this.http.get<Page<Feedback>>(`${this.base}/feedback`, { params: { page, size } });
   }
+}
+
+/** A blank comment is omitted: the backend refuses a present-but-blank one. */
+function body(rating: number, comment: string | null): { rating: number; comment?: string } {
+  const trimmed = comment?.trim() ?? '';
+  return trimmed === '' ? { rating } : { rating, comment: trimmed };
 }

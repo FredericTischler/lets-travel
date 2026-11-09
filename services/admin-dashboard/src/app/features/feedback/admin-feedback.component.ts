@@ -74,6 +74,8 @@ const PAGE_SIZE = 20;
           <app-feedback-list
             [items]="visible()"
             [showAuthor]="true"
+            [moderable]="true"
+            (moderate)="moderate($event)"
             [emptyMessage]="'Aucun avis ne correspond.' | translate"
           />
           <app-paginator
@@ -111,6 +113,13 @@ export class AdminFeedbackComponent implements OnInit {
 
   ngOnInit(): void {
     this.load(0);
+  }
+
+  protected moderate(item: Feedback): void {
+    this.feedbackService.moderate(item.id).subscribe({
+      next: () => this.load(this.page()?.page ?? 0),
+      error: (err: unknown) => this.error.set(extractErrorMessage(err, 'Impossible de supprimer cet avis.')),
+    });
   }
 
   protected load(pageIndex: number): void {

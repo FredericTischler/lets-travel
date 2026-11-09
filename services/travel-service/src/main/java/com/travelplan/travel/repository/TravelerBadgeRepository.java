@@ -26,7 +26,7 @@ public class TravelerBadgeRepository {
             OPTIONAL MATCH (t)-[s:SUBSCRIBED {status: 'ACTIVE'}]->(d:Destination)
               WHERE d.deletedAt IS NULL AND d.endDate < $today
             WITH t, count(DISTINCT d.id) AS destinationsVisited, count(DISTINCT d.country) AS countriesVisited
-            OPTIONAL MATCH (t)-[f:GAVE_FEEDBACK]->(fd:Destination) WHERE fd.deletedAt IS NULL
+            OPTIONAL MATCH (t)-[f:GAVE_FEEDBACK]->(fd:Destination) WHERE fd.deletedAt IS NULL AND f.deletedAt IS NULL
             RETURN destinationsVisited, countriesVisited, count(f) AS reviewsGiven
             """;
 

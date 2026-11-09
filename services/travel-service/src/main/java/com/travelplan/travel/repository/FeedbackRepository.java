@@ -70,22 +70,22 @@ public class FeedbackRepository {
 
     private static final String FIND_FOR_DESTINATION_QUERY = """
             MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.id = $destinationId AND d.deletedAt IS NULL
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND f.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
     private static final String FIND_ONE_QUERY = """
             MATCH (t:TravelerRef {userId: $travelerId})-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.id = $destinationId AND d.deletedAt IS NULL
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND f.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
     private static final String FIND_FOR_TRAVELER_QUERY = """
             MATCH (t:TravelerRef {userId: $travelerId})-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.deletedAt IS NULL
+            WHERE d.deletedAt IS NULL AND f.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
     private static final String FIND_ALL_QUERY = """
             MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.deletedAt IS NULL
+            WHERE d.deletedAt IS NULL AND f.deletedAt IS NULL
             """ + RETURN_CLAUSE;
 
     private static final String FIND_ALL_PAGE_QUERY = FIND_ALL_QUERY + """
@@ -94,7 +94,7 @@ public class FeedbackRepository {
 
     private static final String COUNT_ALL_QUERY = """
             MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.deletedAt IS NULL
+            WHERE d.deletedAt IS NULL AND f.deletedAt IS NULL
             RETURN count(f) AS total
             """;
 
@@ -105,9 +105,33 @@ public class FeedbackRepository {
      */
     private static final String FIND_RECENT_QUERY = """
             MATCH (t:TravelerRef)-[f:GAVE_FEEDBACK]->(d:Destination)
-            WHERE d.deletedAt IS NULL AND ($managerId IS NULL OR d.managerId = $managerId)
+            WHERE d.deletedAt IS NULL AND f.deletedAt IS NULL AND ($managerId IS NULL OR d.managerId = $managerId)
             """ + RETURN_CLAUSE + """
             LIMIT $limit
+            """;
+
+    // Own feedback: rating/comment editable by the author while active.
+    private static final String UPDATE_QUERY = """
+            MATCH (t:TravelerRef {userId: $travelerId})-[f:GAVE_FEEDBACK]->(d:Destination)
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND f.deletedAt IS NULL
+            SET f.rating = $rating, f.comment = $comment, f.updatedAt = $now
+            RETURN count(f) AS n
+            """;
+
+    // Soft-delete (author or admin moderation). The relation stays, flagged,
+    // so MERGE in GIVE_QUERY still finds it: a removed feedback cannot be re-posted.
+    private static final String SOFT_DELETE_BY_ID_QUERY = """
+            MATCH (:TravelerRef)-[f:GAVE_FEEDBACK {id: $feedbackId}]->(d:Destination)
+            WHERE d.deletedAt IS NULL AND f.deletedAt IS NULL
+            SET f.deletedAt = $now
+            RETURN count(f) AS n
+            """;
+
+    private static final String SOFT_DELETE_OWN_QUERY = """
+            MATCH (:TravelerRef {userId: $travelerId})-[f:GAVE_FEEDBACK]->(d:Destination)
+            WHERE d.id = $destinationId AND d.deletedAt IS NULL AND f.deletedAt IS NULL
+            SET f.deletedAt = $now
+            RETURN count(f) AS n
             """;
 
     private static final String DESTINATION_ID = "destinationId";
@@ -158,6 +182,31 @@ public class FeedbackRepository {
                 .one()
                 .orElseThrow(() -> new IllegalStateException(
                         "Feedback query returned no row for destination " + destinationId));
+    }
+
+    /** @return whether an active feedback of this traveler on this destination was updated */
+    public boolean update(UUID travelerId, UUID destinationId, int rating, String comment, OffsetDateTime now) {
+        Map<String, Object> params = idParams(travelerId, destinationId);
+        params.put("rating", rating);
+        params.put(COMMENT, comment);
+        params.put("now", now);
+        return count(UPDATE_QUERY, params) > 0;
+    }
+
+    /** @return whether an active feedback with this id was soft-deleted (admin moderation) */
+    public boolean softDeleteById(UUID feedbackId, OffsetDateTime now) {
+        return count(SOFT_DELETE_BY_ID_QUERY, Map.of("feedbackId", feedbackId.toString(), "now", now)) > 0;
+    }
+
+    /** @return whether the traveler's own active feedback on this destination was soft-deleted */
+    public boolean softDeleteOwn(UUID travelerId, UUID destinationId, OffsetDateTime now) {
+        Map<String, Object> params = idParams(travelerId, destinationId);
+        params.put("now", now);
+        return count(SOFT_DELETE_OWN_QUERY, params) > 0;
+    }
+
+    private long count(String query, Map<String, Object> params) {
+        return neo4jClient.query(query).bindAll(params).fetchAs(Long.class).one().orElse(0L);
     }
 
     /** Every feedback on a single active destination, newest first. */

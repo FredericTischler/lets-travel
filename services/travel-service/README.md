@@ -117,6 +117,11 @@ managers/admins, and manager statistics/ranking built from it.
 - `GET /travelers/me/feedback` — the caller's own feedback, across every active
   destination. Any known role, self only.
 - `GET /feedback` — every feedback on every active destination. `ADMIN` only.
+- `PUT /destinations/{id}/feedback` — the author edits their own feedback
+  (same body rules as `POST`); 404 when there is none (or it was withdrawn/moderated).
+- `DELETE /destinations/{id}/feedback` — the author withdraws their own feedback (204, soft-delete).
+- `DELETE /feedback/{feedbackId}` — moderation, `ADMIN` only (204, soft-delete);
+  the author cannot post again on that destination afterwards.
 - `GET /managers/{managerId}/stats` — `activeTravels`, `pastTravels`,
   `subscribers`, `feedbackCount`, `averageRating`, `pastRatings` (per past
   destination). Any known role; aggregates only.
@@ -226,8 +231,12 @@ every list, statistic and the ranking without the relation being touched.
   enforce relationship uniqueness natively, so under truly concurrent requests
   a duplicate is narrowed, not impossible — the same documented gap as
   `SUBSCRIBED`.
-- **Immutable**: no edit, no delete endpoint (an admin cannot remove an
-  abusive comment either). Deliberate for this phase, see the ADR.
+- **Editable and moderable** (ADR §13): the author edits or withdraws their
+  feedback, an `ADMIN` can remove an abusive one. Always a soft-delete
+  (`deletedAt` on the relation); every read, average, badge, statistic and
+  recommendation ignores soft-deleted feedback. The `MERGE` uniqueness check
+  still sees a soft-deleted relation, so neither a withdrawn nor a moderated
+  feedback can be posted again.
 - **Comment = plain text, never HTML**: stored and returned verbatim (only
   surrounding whitespace is trimmed) — the backend neither strips nor
   HTML-encodes it. XSS protection is the renderer's responsibility (Angular
@@ -341,9 +350,9 @@ pagination or filters.
   only contacted lazily.
 - Neo4j stays the source of truth: `DestinationService` dual-writes the index
   synchronously on create/update and removes the document on delete. An
-  indexing failure is logged and swallowed, never returned to the caller. There
-  is no re-index endpoint yet, so a lost write leaves the index stale until the
-  destination is next updated.
+  indexing failure is logged and swallowed, never returned to the caller. A
+  lost write is repaired by `POST /destinations/reindex` (`ADMIN`), which
+  rebuilds the index from Neo4j and answers `{"indexed": n, "failed": m}`.
 
 ## Soft-delete
 
@@ -457,10 +466,10 @@ secrets/URLs, so they do have defaults.
   `clientSecret` / PayPal `approveUrl`, `expiresAt`).
 - Recommendations exist (see "Recommendations") but are a hand-weighted
   content-based score, not a learned model or collaborative filtering. Search
-  and autocomplete (Elasticsearch) are described above; there is no re-index
-  endpoint.
-- Feedback is immutable: no edit, no delete, no admin moderation of an abusive
-  comment (see "Feedback" above). `GET /feedback` and `GET /managers/ranking`
+  and autocomplete (Elasticsearch) are described above; `POST /destinations/reindex`
+  (`ADMIN`) rebuilds the index.
+- Feedback is editable/withdrawable by its author and moderable by an admin
+  (soft-delete, no re-post — see "Feedback" above). `GET /feedback` and `GET /managers/ranking`
   are paginated (`page`/`size`, `PageResponse<T>`); the other feedback lists
   (per-destination, per-traveler) stay unpaginated — bounded by one manager's
   or one traveler's own history, not the whole platform.

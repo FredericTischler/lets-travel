@@ -39,8 +39,8 @@ Spring Boot `3.4.3`, Java, build Maven (`./mvnw`), image construite depuis le
 suppression en soft-delete comme partout ailleurs, jamais de `DETACH DELETE`)
 et pathfinding multi-hop (`GET /destinations/{fromId}/routes/{toId}`, jusqu'à 5
 sauts, fewest-hops — pas le trajet le plus court en durée, un vrai plus-court-
-chemin pondéré demanderait APOC, non installé). Toujours pas d'anti-doublon à
-la création (gap assumé, documenté dans `TransportRepository`). Un trajet a
+chemin pondéré demanderait APOC, non installé). Anti-doublon
+à la création : un trajet actif identique (origine, destination, mode) répond 409. Un trajet a
 maintenant son propre `id` (UUID applicatif) ; les trajets créés avant ce
 changement en sont dépourvus dans le graphe — un backfill idempotent au
 démarrage (`Neo4jSchemaInitializer`) leur en assigne un.

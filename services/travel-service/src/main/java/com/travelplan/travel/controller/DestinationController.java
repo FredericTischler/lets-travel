@@ -95,6 +95,14 @@ public class DestinationController {
      *         header is missing/invalid/expired, 503 if Elasticsearch is
      *         unreachable
      */
+    @PostMapping("/reindex")
+    public ResponseEntity<java.util.Map<String, Integer>> reindex(
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAdmin(authorizationHeader);
+        int[] counts = destinationService.reindexSearch();
+        return ResponseEntity.ok(java.util.Map.of("indexed", counts[0], "failed", counts[1]));
+    }
+
     @GetMapping("/search")
     public ResponseEntity<List<DestinationResponse>> search(
             @RequestParam(name = "q") String query,

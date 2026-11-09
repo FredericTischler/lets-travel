@@ -104,6 +104,11 @@ public class DestinationService {
         return response;
     }
 
+    /** Rebuild the Elasticsearch documents of all active destinations from Neo4j. */
+    public int[] reindexSearch() {
+        return searchIndexer.reindexAll(findAll());
+    }
+
     /**
      * Find an active destination by id.
      *
