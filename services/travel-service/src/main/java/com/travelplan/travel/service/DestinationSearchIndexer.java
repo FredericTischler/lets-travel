@@ -60,6 +60,26 @@ public class DestinationSearchIndexer {
      * subject's wording for this feature.
      */
     public void indexOrUpdate(DestinationResponse destination) {
+        tryIndex(destination);
+    }
+
+    /**
+     * Re-index every given (active) destination from the Neo4j source of
+     * truth; unlike the per-write hook, the caller learns how many succeeded.
+     *
+     * @return {indexed, failed} counts
+     */
+    public int[] reindexAll(List<DestinationResponse> destinations) {
+        int indexed = 0;
+        for (DestinationResponse destination : destinations) {
+            if (tryIndex(destination)) {
+                indexed++;
+            }
+        }
+        return new int[] {indexed, destinations.size() - indexed};
+    }
+
+    private boolean tryIndex(DestinationResponse destination) {
         try {
             Map<String, Object> doc = new LinkedHashMap<>();
             doc.put("id", destination.getId().toString());
@@ -86,10 +106,12 @@ public class DestinationSearchIndexer {
             request.addParameter("refresh", "wait_for");
             request.setJsonEntity(objectMapper.writeValueAsString(doc));
             restClient.performRequest(request);
+            return true;
         } catch (Exception ex) {
             log.warn("Elasticsearch indexing failed for destination {} — the Neo4j write already "
                     + "succeeded and is unaffected; the search index may be briefly stale until a "
                     + "future re-index.", destination.getId(), ex);
+            return false;
         }
     }
 

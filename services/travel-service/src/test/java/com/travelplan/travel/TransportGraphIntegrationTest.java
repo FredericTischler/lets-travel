@@ -371,6 +371,24 @@ class TransportGraphIntegrationTest {
         assertThat(hop.get("id")).isNotNull();
     }
 
+    @Test
+    void creatingAnIdenticalActiveTransportIsRejectedButAfterSoftDeleteItIsAllowed() {
+        UUID a = createDestination("Dijon", "France");
+        UUID b = createDestination("Lyon", "France");
+        UUID first = createTransport(a, b, "TRAIN", 90);
+
+        Map<String, Object> body = Map.of("toDestinationId", b.toString(), "mode", "TRAIN", "durationMinutes", 95);
+        ResponseEntity<Map> duplicate = restTemplate.exchange(
+                "/destinations/" + a + "/transports", HttpMethod.POST, authorizedJsonEntity(body), Map.class);
+        assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        createTransport(a, b, "BUS", 150);
+
+        restTemplate.exchange("/destinations/" + a + "/transports/" + first, HttpMethod.DELETE,
+                authorizedEntity(), Void.class);
+        createTransport(a, b, "TRAIN", 90);
+    }
+
     private void neoClientCreateLegacyTransport(UUID from, UUID to) {
         neo4jClient.query("""
                         MATCH (origin:Destination), (target:Destination)

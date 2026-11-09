@@ -78,6 +78,10 @@ public class TransportService {
         Destination target = destinationRepository.findActiveById(toId)
                 .orElseThrow(() -> new DestinationNotFoundException(toId));
 
+        if (transportRepository.existsActiveDuplicate(fromId, toId, request.getMode(), request.getDepartureTime())) {
+            throw com.travelplan.travel.exception.TransportConflictException.duplicate(fromId, toId, request.getMode());
+        }
+
         UUID transportId = transportRepository.create(origin.getId(), target.getId(), request.getMode(),
                 request.getDurationMinutes(), request.getDepartureTime(), request.getArrivalTime());
 

@@ -73,6 +73,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(TransportConflictException.class)
+    public ResponseEntity<Map<String, Object>> handleTransportConflict(TransportConflictException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(FeedbackConflictException.class)
     public ResponseEntity<Map<String, Object>> handleFeedbackConflict(FeedbackConflictException ex) {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
