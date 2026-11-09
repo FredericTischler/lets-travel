@@ -10,6 +10,8 @@ import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { LoadingComponent } from '../../shared/ui/loading/loading.component';
 import { Destination, DestinationService } from '../destinations/destination.service';
 import { Subscription, SubscriptionService } from '../subscriptions/subscription.service';
@@ -25,13 +27,14 @@ import { Subscription, SubscriptionService } from '../subscriptions/subscription
  */
 @Component({
   selector: 'app-travel-subscribers',
-  imports: [RouterLink, DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent, LoadingComponent],
+  imports: [RouterLink, DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent, LoadingComponent, TranslatePipe],
   templateUrl: './travel-subscribers.component.html',
 })
 export class TravelSubscribersComponent implements OnInit {
   private readonly destinationService = inject(DestinationService);
   private readonly subscriptionService = inject(SubscriptionService);
   private readonly authService = inject(AuthService);
+  private readonly translateService = inject(TranslateService);
 
   /** Route param `:id`. */
   readonly id = input.required<string>();
@@ -88,7 +91,11 @@ export class TravelSubscribersComponent implements OnInit {
   }
 
   forceUnsubscribe(subscription: Subscription): void {
-    if (!confirm(`Désinscrire le voyageur ${subscription.travelerId} de ce voyage ?`)) {
+    if (!confirm(
+        this.translateService.translate('Désinscrire le voyageur {{id}} de ce voyage ?', {
+          id: subscription.travelerId,
+        }),
+      )) {
       return;
     }
 

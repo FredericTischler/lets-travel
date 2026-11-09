@@ -1,37 +1,37 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Mes voyages organisés</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Mes voyages organisés' | translate }}</h1>
 
   @if (managerId) {
     <app-destination-form
       [destination]="editing()"
       [fixedManagerId]="managerId"
       [saving]="saving()"
-      [error]="saveError()"
+      [error]="saveError() | translate"
       (submitted)="save($event)"
       (cancelled)="cancelEdit()"
     />
   }
 
-  <app-card title="Mes voyages">
+  <app-card [title]="'Mes voyages' | translate">
     @if (deleteError()) {
-      <app-alert variant="error" class="mb-3 block">{{ deleteError() }}</app-alert>
+      <app-alert variant="error" class="mb-3 block">{{ deleteError() | translate }}</app-alert>
     }
 
     @if (loading()) {
-      <app-loading />
+      <app-loading [label]="'Chargement…' | translate" />
     } @else if (error()) {
-      <app-alert variant="error">{{ error() }}</app-alert>
+      <app-alert variant="error">{{ error() | translate }}</app-alert>
     } @else {
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Nom</th>
-              <th class="table-head-cell">Pays</th>
-              <th class="table-head-cell">Dates</th>
-              <th class="table-head-cell">Prix</th>
-              <th class="table-head-cell">Capacité</th>
-              <th class="table-head-cell">Actions</th>
+              <th class="table-head-cell">{{ 'Nom' | translate }}</th>
+              <th class="table-head-cell">{{ 'Pays' | translate }}</th>
+              <th class="table-head-cell">{{ 'Dates' | translate }}</th>
+              <th class="table-head-cell">{{ 'Prix' | translate }}</th>
+              <th class="table-head-cell">{{ 'Capacité' | translate }}</th>
+              <th class="table-head-cell">{{ 'Actions' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -46,30 +46,30 @@
                 <td class="table-cell">{{ travel.capacity ?? '—' }}</td>
                 <td class="table-cell">
                   <div class="flex flex-wrap gap-2">
-                    <app-button variant="secondary" (clicked)="startEdit(travel)">Modifier</app-button>
+                    <app-button variant="secondary" (clicked)="startEdit(travel)">{{ 'Modifier' | translate }}</app-button>
                     <a
                       [routerLink]="['/manager/travels', travel.id, 'subscribers']"
                       class="inline-flex items-center border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2"
-                      >Abonnés</a
+                      >{{ 'Abonnés' | translate }}</a
                     >
                     <a
                       [routerLink]="['/manager/travels', travel.id, 'feedback']"
                       class="inline-flex items-center border border-line-strong px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-2"
-                      >Avis</a
+                      >{{ 'Avis' | translate }}</a
                     >
                     <app-button
                       variant="danger"
                       [disabled]="deletingId() === travel.id"
                       (clicked)="remove(travel)"
                     >
-                      {{ deletingId() === travel.id ? 'Suppression…' : 'Supprimer' }}
+                      {{ (deletingId() === travel.id ? 'Suppression…' : 'Supprimer') | translate }}
                     </app-button>
                   </div>
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="6">Vous n'organisez aucun voyage pour le moment.</td>
+                <td class="table-empty-cell" colspan="6">{{ 'Vous n\'organisez aucun voyage pour le moment.' | translate }}</td>
               </tr>
             }
           </tbody>

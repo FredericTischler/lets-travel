@@ -2,11 +2,11 @@
   <a
     [routerLink]="backLink()"
     class="text-sm font-medium text-teal hover:underline"
-    >← Retour</a
+    >← {{ 'Retour' | translate }}</a
   >
 
   <div>
-    <h1 class="font-display text-2xl font-bold text-ink">Abonnés</h1>
+    <h1 class="font-display text-2xl font-bold text-ink">{{ 'Abonnés' | translate }}</h1>
     @if (travel(); as t) {
       <p class="text-sm text-ink-dim">
         {{ t.name }} — {{ t.country }} ({{ t.startDate }} → {{ t.endDate }})
@@ -14,29 +14,33 @@
     }
   </div>
 
-  <app-card title="Liste des abonnés">
+  <app-card [title]="'Liste des abonnés' | translate">
     @if (actionError()) {
-      <app-alert variant="error" class="mb-3 block">{{ actionError() }}</app-alert>
+      <app-alert variant="error" class="mb-3 block">{{ actionError() | translate }}</app-alert>
     }
 
     @if (loading()) {
-      <app-loading />
+      <app-loading [label]="'Chargement…' | translate" />
     } @else if (error()) {
-      <app-alert variant="error">{{ error() }}</app-alert>
+      <app-alert variant="error">{{ error() | translate }}</app-alert>
     } @else {
       <p class="mb-3 text-sm text-ink-dim" data-testid="active-count">
-        {{ activeCount() }} abonné(s) actif(s){{ travel()?.capacity ? ' sur ' + travel()?.capacity + ' places' : '' }}.
+        @if (travel()?.capacity) {
+          {{ '{{n}} abonné(s) actif(s) sur {{capacity}} places.' | translate: { n: activeCount(), capacity: travel()?.capacity ?? '' } }}
+        } @else {
+          {{ '{{n}} abonné(s) actif(s).' | translate: { n: activeCount() } }}
+        }
       </p>
 
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell">Voyageur</th>
-              <th class="table-head-cell">Statut</th>
-              <th class="table-head-cell">Inscrit le</th>
-              <th class="table-head-cell">Annulé le</th>
-              <th class="table-head-cell">Actions</th>
+              <th class="table-head-cell">{{ 'Voyageur' | translate }}</th>
+              <th class="table-head-cell">{{ 'Statut' | translate }}</th>
+              <th class="table-head-cell">{{ 'Inscrit le' | translate }}</th>
+              <th class="table-head-cell">{{ 'Annulé le' | translate }}</th>
+              <th class="table-head-cell">{{ 'Actions' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -45,7 +49,7 @@
                 <td class="table-cell">{{ row.travelerId }}</td>
                 <td class="table-cell">
                   <app-badge [tone]="row.status === 'ACTIVE' ? 'success' : 'neutral'">{{
-                    row.status === 'ACTIVE' ? 'Active' : 'Annulée'
+                    (row.status === 'ACTIVE' ? 'Active' : 'Annulée') | translate
                   }}</app-badge>
                 </td>
                 <td class="table-cell">{{ row.subscribedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
@@ -59,14 +63,14 @@
                       [disabled]="removingId() === row.travelerId"
                       (clicked)="forceUnsubscribe(row)"
                     >
-                      {{ removingId() === row.travelerId ? 'Désinscription…' : 'Désinscrire' }}
+                      {{ (removingId() === row.travelerId ? 'Désinscription…' : 'Désinscrire') | translate }}
                     </app-button>
                   }
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="5">Aucun abonné pour ce voyage.</td>
+                <td class="table-empty-cell" colspan="5">{{ 'Aucun abonné pour ce voyage.' | translate }}</td>
               </tr>
             }
           </tbody>

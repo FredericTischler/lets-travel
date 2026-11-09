@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { formatMoneyMap } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -40,6 +41,7 @@ import { StatsService, TravelerStats } from './stats.service';
     LoadingComponent,
     StatTileComponent,
     FeedbackListComponent,
+    TranslatePipe,
   ],
   templateUrl: './traveler-stats.component.html',
 })

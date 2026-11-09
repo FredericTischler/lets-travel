@@ -8,7 +8,10 @@ import { IncomeSummary } from './stats.service';
  * summed, so any *other* currency of that month is spelled out in the tooltip /
  * table `detail` instead of being folded into the bar.
  */
-export function incomeChartPoints(income: IncomeSummary | null | undefined): BarChartPoint[] {
+export function incomeChartPoints(
+  income: IncomeSummary | null | undefined,
+  otherCurrencies: (amounts: string) => string = (amounts) => `Autres devises : ${amounts}`,
+): BarChartPoint[] {
   if (!income) {
     return [];
   }
@@ -19,7 +22,7 @@ export function incomeChartPoints(income: IncomeSummary | null | undefined): Bar
     return {
       label: formatMonth(entry.month),
       value: Number(entry.amount) || 0,
-      detail: Object.keys(others).length > 0 ? `Autres devises : ${formatMoneyMap(others)}` : null,
+      detail: Object.keys(others).length > 0 ? otherCurrencies(formatMoneyMap(others)) : null,
     };
   });
 }
