@@ -136,6 +136,8 @@ export const EN_DICTIONARY: Record<string, string> = {
   Hébergements: 'Accommodation',
   'Aucun hébergement renseigné.': 'No accommodation listed.',
   'Votre avis': 'Your review',
+  'Vous avez retiré votre avis ; il ne peut plus être republié.':
+    'You withdrew your review; it can no longer be posted again.',
   'Modifier mon avis': 'Edit my review',
   'Retirer mon avis': 'Withdraw my review',
   'Enregistrer mon avis': 'Save my review',

@@ -142,9 +142,10 @@ export class TravelDetailComponent implements OnInit {
   });
   protected readonly myFeedback = signal<Feedback | null>(null);
   protected readonly editingFeedback = signal(false);
+  protected readonly feedbackWithdrawn = signal(false);
   protected readonly feedbackLoaded = signal(false);
   protected readonly canGiveFeedback = computed(
-    () => this.subscribed() && this.ended() && this.feedbackLoaded() && this.myFeedback() === null,
+    () => this.subscribed() && this.ended() && this.feedbackLoaded() && this.myFeedback() === null && !this.feedbackWithdrawn(),
   );
 
   // Report-the-organiser state.
@@ -351,6 +352,7 @@ export class TravelDetailComponent implements OnInit {
     this.feedbackService.deleteMine(this.id()).subscribe({
       next: () => {
         this.myFeedback.set(null);
+        this.feedbackWithdrawn.set(true);
         this.actionSuccess.set('Votre avis a été retiré.');
       },
       error: (err: unknown) => this.actionError.set(extractErrorMessage(err, 'Impossible de retirer votre avis.')),

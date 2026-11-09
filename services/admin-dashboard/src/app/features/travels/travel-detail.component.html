@@ -203,6 +203,8 @@
             }}
           </p>
           <app-feedback-form [destinationId]="id()" (saved)="onFeedbackSaved($event)" />
+        } @else if (feedbackWithdrawn()) {
+          <p class="text-sm text-ink-dim">{{ 'Vous avez retiré votre avis ; il ne peut plus être republié.' | translate }}</p>
         } @else {
           <app-loading [label]="'Chargement…' | translate" />
         }

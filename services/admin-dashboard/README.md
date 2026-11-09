@@ -151,8 +151,9 @@ multi-navigateurs au-delà du spec Playwright « on a phone ».
 
 - Le formulaire (note 1–5 + commentaire facultatif ≤ 1000 caractères, texte brut) n'est proposé, sur le
   détail d'un voyage, qu'à un **participant `ACTIVE` d'un voyage terminé** (`endDate < aujourd'hui`) qui n'a
-  pas encore donné son avis (`GET /travelers/me/feedback`). Un avis est **unique et non modifiable** : le
-  formulaire le dit, et les 403/409 du backend sont traduits (« pas participé », « pas terminé / déjà donné »).
+  pas encore donné son avis (`GET /travelers/me/feedback`). Un avis est **unique par voyage mais modifiable ou
+  retirable** par son auteur (« Modifier mon avis » / « Retirer mon avis » sur le détail), et supprimable par
+  l'admin depuis la liste globale ; les 403/409 du backend sont traduits (« pas participé », « pas terminé / déjà donné »).
 - Le voyageur retrouve « Vos avis » sur `/my-stats`, le lien « Donner / voir mon avis » sur les voyages
   effectués, et l'organisateur / l'admin voient les avis (`/manager/travels/:id/feedback`, dashboards,
   `/admin/feedback`) avec l'**id** de l'auteur (jamais une identité).
@@ -373,9 +374,8 @@ message explicite s'ils manquent.
   capture) est implémenté mais **jamais exercé contre PayPal** ; il suppose que `/paypal/return`
   est configuré comme URL de retour côté PayPal (le backend crée la commande sans URL de
   retour), sinon le bouton « J'ai approuvé le paiement » fait la même capture.
-- **Remboursement / paiement échoué distingué d'une annulation** : un `FAILED` devient
-  `CANCELLED` côté backend et gonfle le compteur d'annulations (limite documentée en ADR §4).
-- **Avis modifiables ou modérables** : un avis est unique et immuable (décision backend).
+- **Remboursement** : aucun. Un paiement `FAILED` n'est plus compté comme une annulation
+  voyageur (`cancelReason = PAYMENT_FAILED`, ADR §13).
 - **Profil voyageur** vu par un organisateur : l'API n'expose que l'id du voyageur.
 - ~~Pagination des listes d'avis / du classement~~ — **corrigé** : `GET /feedback`
   et `GET /managers/ranking` sont paginés côté backend (`page`/`size`, réponse
