@@ -65,7 +65,7 @@ public class TravelerStatsService {
                 } else {
                     upcoming++;
                 }
-            } else if (CANCELLED.equals(s.status())) {
+            } else if (CANCELLED.equals(s.status()) && !"PAYMENT_FAILED".equals(s.cancelReason())) {
                 cancellations++;
             }
         }
