@@ -1,6 +1,9 @@
 <div class="flex flex-wrap items-center justify-between gap-2 border-t border-line-strong pt-3 text-sm text-ink-dim">
   <span data-testid="paginator-summary">
-    Page {{ page() + 1 }} sur {{ totalPages() }} ({{ totalElements() }} au total)
+    {{
+      'Page {{page}} sur {{total}} ({{count}} au total)'
+        | translate: { page: page() + 1, total: totalPages(), count: totalElements() }
+    }}
   </span>
   <div class="flex gap-2">
     <app-button
@@ -8,14 +11,14 @@
       [disabled]="disabled() || !hasPrevious()"
       (clicked)="previous()"
     >
-      Précédent
+      {{ 'Précédent' | translate }}
     </app-button>
     <app-button
       variant="secondary"
       [disabled]="disabled() || !hasNext()"
       (clicked)="next()"
     >
-      Suivant
+      {{ 'Suivant' | translate }}
     </app-button>
   </div>
 </div>

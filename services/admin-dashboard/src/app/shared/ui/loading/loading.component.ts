@@ -1,5 +1,7 @@
 import { Component, input } from '@angular/core';
 
+import { TranslatePipe } from '../../i18n/translate.pipe';
+
 /**
  * Replaces the bare `<p>Chargement…</p>` repeated across every screen with a
  * small spinner next to the same text — a perceived-performance cue ("this
@@ -14,10 +16,11 @@ import { Component, input } from '@angular/core';
  */
 @Component({
   selector: 'app-loading',
+  imports: [TranslatePipe],
   template: `
     <p class="flex items-center gap-2 text-ink-dim" [class]="size() === 'sm' ? 'text-xs' : 'text-sm'">
       <span class="app-spinner" aria-hidden="true"></span>
-      {{ label() }}
+      {{ label() | translate }}
     </p>
   `,
 })

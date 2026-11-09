@@ -1,12 +1,14 @@
-<app-card title="Itinéraires suggérés">
+<app-card [title]="'Itinéraires suggérés' | translate">
   @if (loading()) {
-    <app-loading label="Chargement des itinéraires suggérés…" />
+    <app-loading [label]="'Chargement des itinéraires suggérés…' | translate" />
   } @else if (error()) {
     <app-alert variant="error">{{ error() }}</app-alert>
   } @else {
     <p class="mb-3 text-sm text-ink-dim">
-      Des enchaînements de 2 à 3 voyages reliés par un trajet existant, classés par la somme des scores
-      de chaque étape.
+      {{
+        'Des enchaînements de 2 à 3 voyages reliés par un trajet existant, classés par la somme des scores de chaque étape.'
+          | translate
+      }}
     </p>
     <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="itinerary-list">
       @for (item of items(); track $index) {
@@ -23,11 +25,14 @@
               }
             </h3>
             <p class="text-sm text-ink-dim">
-              {{ item.stops.length }} étapes · {{ item.totalDurationMinutes }} min de trajet
+              {{
+                '{{stops}} étapes · {{min}} min de trajet'
+                  | translate: { stops: item.stops.length, min: item.totalDurationMinutes }
+              }}
             </p>
-            <p class="text-sm text-ink-dim" data-testid="score">score total {{ formatScore(item.score) }}</p>
+            <p class="text-sm text-ink-dim" data-testid="score">{{ 'score total {{score}}' | translate: { score: formatScore(item.score) } }}</p>
             <details class="mt-auto text-sm" data-testid="reasons">
-              <summary class="cursor-pointer text-teal hover:underline">Pourquoi ?</summary>
+              <summary class="cursor-pointer text-teal hover:underline">{{ 'Pourquoi ?' | translate }}</summary>
               <ul class="mt-2 list-inside list-disc text-ink">
                 @for (reason of item.reasons; track $index) {
                   <li>{{ reason }}</li>
@@ -38,8 +43,10 @@
         </li>
       } @empty {
         <li class="col-span-full text-sm text-ink-dim" data-testid="itinerary-empty">
-          Aucun itinéraire combiné pour le moment : il n'y a pas encore de trajet reliant des voyages
-          disponibles.
+          {{
+            'Aucun itinéraire combiné pour le moment : il n\'y a pas encore de trajet reliant des voyages disponibles.'
+              | translate
+          }}
         </li>
       }
     </ul>

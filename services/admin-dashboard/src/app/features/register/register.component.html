@@ -62,7 +62,7 @@
             </fieldset>
 
             @if (error()) {
-              <app-alert variant="error">{{ error() }}</app-alert>
+              <app-alert variant="error">{{ error() | translate }}</app-alert>
             }
 
             <button

@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { TranslateService } from '../../i18n/translate.service';
 import { BarChartComponent, BarChartPoint, niceMax } from './bar-chart.component';
 
 describe('niceMax()', () => {
@@ -112,4 +113,24 @@ describe('BarChartComponent', () => {
     expect(el().querySelector('img')).toBeNull();
     expect(el().textContent).toContain('<img src=x onerror=alert(1)>');
   });
+
+  it('renders the table twin in English when the locale is switched', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    render(points);
+
+    const text = el().textContent as string;
+    expect(text).toContain('View the data as a table');
+    expect(text).toContain('Period');
+    expect(text).toContain('Details');
+  });
+
+  it('translates the default empty message', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    render([]);
+
+    expect(el().querySelector('[data-testid="chart-empty"]')!.textContent).toContain('No data for the period.');
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));

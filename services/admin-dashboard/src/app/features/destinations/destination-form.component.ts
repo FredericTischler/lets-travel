@@ -15,6 +15,8 @@ import {
   Validators,
 } from '@angular/forms';
 
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -47,11 +49,19 @@ function dateRange(group: AbstractControl): ValidationErrors | null {
  */
 @Component({
   selector: 'app-destination-form',
-  imports: [ReactiveFormsModule, AlertComponent, ButtonComponent, CardComponent, InputComponent],
+  imports: [
+    ReactiveFormsModule,
+    AlertComponent,
+    ButtonComponent,
+    CardComponent,
+    InputComponent,
+    TranslatePipe,
+  ],
   templateUrl: './destination-form.component.html',
 })
 export class DestinationFormComponent {
   private readonly fb = inject(NonNullableFormBuilder);
+  private readonly translateService = inject(TranslateService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** The destination being edited, or `null` to create a new one. */
@@ -171,11 +181,11 @@ export class DestinationFormComponent {
     }
     switch (name) {
       case 'price':
-        return 'Indiquez un prix supérieur ou égal à 0.';
+        return this.translateService.translate('Indiquez un prix supérieur ou égal à 0.');
       case 'capacity':
-        return 'Indiquez une capacité entière d’au moins 1.';
+        return this.translateService.translate('Indiquez une capacité entière d’au moins 1.');
       default:
-        return 'Indiquez un identifiant (UUID) d’organisateur valide.';
+        return this.translateService.translate('Indiquez un identifiant (UUID) d’organisateur valide.');
     }
   }
 

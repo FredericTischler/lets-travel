@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
 import { environment } from '../../../environments/environment';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { ItinerarySuggestionsComponent } from './itinerary-suggestions.component';
 import { ItinerarySuggestion } from './itinerary.service';
 
@@ -81,4 +82,18 @@ describe('ItinerarySuggestionsComponent', () => {
       'Impossible de charger les itinéraires suggérés.',
     );
   });
+
+  it('renders the block in English when the locale is switched', () => {
+    TestBed.inject(TranslateService).setLocale('en');
+    load([chain]);
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Suggested itineraries');
+    expect(text).toContain('2 stops · 90 min of travel');
+    expect(text).toContain('total score 10');
+    expect(text).toContain('Why?');
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));

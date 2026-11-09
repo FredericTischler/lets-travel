@@ -22,6 +22,7 @@ import { environment } from '../../../environments/environment';
 import { formatMoney } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent } from '../../shared/ui/badge/badge.component';
 import { LoadingComponent } from '../../shared/ui/loading/loading.component';
@@ -73,6 +74,7 @@ const STRIPE_SETTLE_POLL_DELAY_MS = 2000;
 export class PendingPaymentComponent implements OnInit, OnDestroy {
   private readonly paymentService = inject(PaymentService);
   private readonly store = inject(PendingPaymentStore);
+  private readonly translateService = inject(TranslateService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly stripeCheckout = inject(StripeCheckoutService);
 
@@ -104,6 +106,11 @@ export class PendingPaymentComponent implements OnInit, OnDestroy {
   private destroyed = false;
 
   protected readonly remaining = computed(() => remainingTime(this.expiresAt(), this.now()));
+  /** `remaining().label` with the French day unit (`j`) swapped for `d` in English. */
+  protected readonly remainingLabel = computed(() => {
+    const label = this.remaining().label;
+    return this.translateService.locale() === 'en' ? label.replace(/^(\d+) j /, '$1 d ') : label;
+  });
 
   protected readonly provider = computed<PaymentProvider | null>(
     () =>

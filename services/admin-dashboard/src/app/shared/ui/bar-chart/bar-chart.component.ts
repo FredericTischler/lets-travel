@@ -1,5 +1,7 @@
 import { Component, computed, input, signal } from '@angular/core';
 
+import { TranslatePipe } from '../../i18n/translate.pipe';
+
 /** One column of {@link BarChartComponent}. */
 export interface BarChartPoint {
   /** Short x-axis label (`sept. 2026`). */
@@ -38,6 +40,7 @@ export function niceMax(max: number): number {
  */
 @Component({
   selector: 'app-bar-chart',
+  imports: [TranslatePipe],
   templateUrl: './bar-chart.component.html',
 })
 export class BarChartComponent {
