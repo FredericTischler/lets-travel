@@ -78,6 +78,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(FeedbackNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleFeedbackNotFound(FeedbackNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
     @ExceptionHandler(FeedbackConflictException.class)
     public ResponseEntity<Map<String, Object>> handleFeedbackConflict(FeedbackConflictException ex) {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());

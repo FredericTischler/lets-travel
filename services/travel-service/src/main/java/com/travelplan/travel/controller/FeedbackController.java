@@ -70,6 +70,36 @@ public class FeedbackController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    /** Edit the caller's own feedback (200), 404 if they have none on this destination. */
+    @org.springframework.web.bind.annotation.PutMapping("/destinations/{id}/feedback")
+    public ResponseEntity<FeedbackResponse> updateMine(
+            @PathVariable UUID id,
+            @Valid @RequestBody GiveFeedbackRequest request,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
+        return ResponseEntity.ok(feedbackService.updateMine(id, tokenValidationService.callerId(claims), request));
+    }
+
+    /** Withdraw the caller's own feedback (204), 404 if they have none on this destination. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/destinations/{id}/feedback")
+    public ResponseEntity<Void> deleteMine(
+            @PathVariable UUID id,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        Claims claims = tokenValidationService.requireAnyRoleClaims(authorizationHeader);
+        feedbackService.deleteMine(id, tokenValidationService.callerId(claims));
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Moderation: an ADMIN removes any feedback by id (204), 404 if absent or already removed. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/feedback/{feedbackId}")
+    public ResponseEntity<Void> moderate(
+            @PathVariable UUID feedbackId,
+            @RequestHeader(name = "Authorization", required = false) String authorizationHeader) {
+        tokenValidationService.requireAdmin(authorizationHeader);
+        feedbackService.moderate(feedbackId);
+        return ResponseEntity.noContent().build();
+    }
+
     /**
      * Every feedback on a destination, for quality control. Restricted to the
      * destination's own {@code TRAVEL_MANAGER} or an {@code ADMIN}.

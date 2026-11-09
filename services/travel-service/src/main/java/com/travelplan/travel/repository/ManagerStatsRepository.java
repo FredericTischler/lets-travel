@@ -36,7 +36,7 @@ public class ManagerStatsRepository {
      */
     private static final String DESTINATION_RATINGS_QUERY = """
             MATCH (d:Destination) WHERE d.managerId = $managerId AND d.deletedAt IS NULL
-            OPTIONAL MATCH (:TravelerRef)-[f:GAVE_FEEDBACK]->(d)
+            OPTIONAL MATCH (:TravelerRef)-[f:GAVE_FEEDBACK]->(d) WHERE f.deletedAt IS NULL
             RETURN d.id AS destinationId, d.name AS name, d.country AS country,
                    d.startDate AS startDate, d.endDate AS endDate,
                    count(f) AS feedbackCount, coalesce(sum(f.rating), 0) AS ratingSum
@@ -67,7 +67,7 @@ public class ManagerStatsRepository {
             }
             CALL {
               WITH d
-              OPTIONAL MATCH (:TravelerRef)-[f:GAVE_FEEDBACK]->(d)
+              OPTIONAL MATCH (:TravelerRef)-[f:GAVE_FEEDBACK]->(d) WHERE f.deletedAt IS NULL
               RETURN count(f) AS feedbackCount, coalesce(sum(f.rating), 0) AS ratingSum
             }
             RETURN d.id AS destinationId, d.managerId AS managerId, d.name AS name, d.country AS country,

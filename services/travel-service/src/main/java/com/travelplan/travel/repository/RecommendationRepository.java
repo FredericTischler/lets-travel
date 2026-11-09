@@ -85,6 +85,7 @@ public class RecommendationRepository {
 
             OPTIONAL MATCH (:TravelerRef {userId: $travelerId})-[r:SUBSCRIBED|GAVE_FEEDBACK]->(h:Destination)
               WHERE h.deletedAt IS NULL AND h <> c
+                AND r.deletedAt IS NULL
                 AND (type(r) = 'GAVE_FEEDBACK' OR r.status = 'ACTIVE')
             WITH c, activeSubscribers, cActivities, cTypes, h,
                  count(CASE WHEN type(r) = 'SUBSCRIBED' THEN 1 END) > 0 AS participated,

@@ -30,7 +30,7 @@ public class TravelerStatsRepository {
             WHERE d.deletedAt IS NULL
             RETURN s.status AS status, d.id AS destinationId, d.name AS name, d.country AS country,
                    d.startDate AS startDate, d.endDate AS endDate,
-                   EXISTS { (t)-[:GAVE_FEEDBACK]->(d) } AS feedbackGiven
+                   EXISTS { (t)-[gf:GAVE_FEEDBACK]->(d) WHERE gf.deletedAt IS NULL } AS feedbackGiven
             ORDER BY d.endDate DESC
             """;
 
