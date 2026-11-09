@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { extractErrorMessage } from '../../shared/http-error';
@@ -19,7 +19,7 @@ export function feedbackErrorMessage(err: unknown): string {
       return "Vous ne pouvez donner un avis que sur un voyage auquel vous avez participé (inscription active).";
     }
     if (err.status === 409) {
-      return 'Avis refusé : ce voyage n’est pas encore terminé, ou vous avez déjà donné votre avis (un seul avis par voyage, non modifiable).';
+      return 'Avis refusé : ce voyage n’est pas encore terminé, ou vous avez déjà donné votre avis (un seul avis par voyage).';
     }
   }
   return extractErrorMessage(err, 'Impossible d’envoyer votre avis.');
@@ -70,7 +70,7 @@ export function feedbackErrorMessage(err: unknown): string {
         ></textarea>
         <span class="text-xs text-ink-dim"
           >{{
-            'Texte brut, {{max}} caractères au maximum. Votre avis ne pourra pas être modifié.'
+            'Texte brut, {{max}} caractères au maximum. Vous pourrez modifier ou retirer votre avis.'
               | translate: { max: commentMax }
           }}</span
         >
@@ -78,8 +78,13 @@ export function feedbackErrorMessage(err: unknown): string {
 
       <div>
         <app-button type="submit" [disabled]="saving() || rating() === null">
-          {{ (saving() ? 'Envoi…' : 'Envoyer mon avis') | translate }}
+          {{ (saving() ? 'Envoi…' : initial() ? 'Enregistrer mon avis' : 'Envoyer mon avis') | translate }}
         </app-button>
+        @if (initial()) {
+          <app-button type="button" variant="secondary" class="ml-2" [disabled]="saving()" (clicked)="cancelled.emit()">
+            {{ 'Annuler' | translate }}
+          </app-button>
+        }
       </div>
 
       @if (error()) {
@@ -88,12 +93,15 @@ export function feedbackErrorMessage(err: unknown): string {
     </form>
   `,
 })
-export class FeedbackFormComponent {
+export class FeedbackFormComponent implements OnInit {
   private readonly feedbackService = inject(FeedbackService);
 
   readonly destinationId = input.required<string>();
-  /** Emitted with the created feedback. */
+  /** When set, the form edits this feedback (PUT) instead of creating one. */
+  readonly initial = input<Feedback | null>(null);
+  /** Emitted with the created or updated feedback. */
   readonly saved = output<Feedback>();
+  readonly cancelled = output<void>();
 
   protected readonly ratings = [1, 2, 3, 4, 5];
   protected readonly commentMax = FEEDBACK_COMMENT_MAX_LENGTH;
@@ -102,6 +110,14 @@ export class FeedbackFormComponent {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
 
+  ngOnInit(): void {
+    const initial = this.initial();
+    if (initial) {
+      this.rating.set(initial.rating);
+      this.comment = initial.comment ?? '';
+    }
+  }
+
   submit(): void {
     const rating = this.rating();
     if (rating === null) {
@@ -109,7 +125,10 @@ export class FeedbackFormComponent {
     }
     this.saving.set(true);
     this.error.set(null);
-    this.feedbackService.give(this.destinationId(), rating, this.comment).subscribe({
+    const call = this.initial()
+      ? this.feedbackService.update(this.destinationId(), rating, this.comment)
+      : this.feedbackService.give(this.destinationId(), rating, this.comment);
+    call.subscribe({
       next: (feedback) => {
         this.saving.set(false);
         this.saved.emit(feedback);

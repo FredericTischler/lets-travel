@@ -47,6 +47,24 @@ describe('FeedbackService', () => {
     requests.forEach((r) => r.flush(feedback));
   });
 
+  it('update() PUTs the trimmed rating/comment, deleteMine() and moderate() DELETE', () => {
+    service.update('d1', 2, '  Moyen ').subscribe();
+    const put = httpMock.expectOne(`${base}/destinations/d1/feedback`);
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual({ rating: 2, comment: 'Moyen' });
+    put.flush({});
+
+    service.deleteMine('d1').subscribe();
+    const own = httpMock.expectOne(`${base}/destinations/d1/feedback`);
+    expect(own.request.method).toBe('DELETE');
+    own.flush(null);
+
+    service.moderate('f9').subscribe();
+    const mod = httpMock.expectOne(`${base}/feedback/f9`);
+    expect(mod.request.method).toBe('DELETE');
+    mod.flush(null);
+  });
+
   it('forDestination() GETs the feedback of one travel', () => {
     let result: Feedback[] | undefined;
     service.forDestination('d1').subscribe((rows) => (result = rows));

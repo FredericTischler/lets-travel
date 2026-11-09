@@ -1,9 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { RatingComponent } from '../../shared/ui/rating/rating.component';
+import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { Feedback } from './feedback.service';
 
 /**
@@ -17,7 +18,7 @@ import { Feedback } from './feedback.service';
  */
 @Component({
   selector: 'app-feedback-list',
-  imports: [DatePipe, RouterLink, RatingComponent, TranslatePipe],
+  imports: [DatePipe, RouterLink, RatingComponent, ButtonComponent, TranslatePipe],
   template: `
     <ul class="flex flex-col gap-3" data-testid="feedback-list">
       @for (item of items(); track item.id) {
@@ -55,6 +56,13 @@ import { Feedback } from './feedback.service';
               {{ 'Voyageur : {{id}}' | translate: { id: item.travelerId } }}
             </p>
           }
+          @if (moderable()) {
+            <div>
+              <app-button type="button" variant="danger" (clicked)="moderate.emit(item)">{{
+                'Supprimer cet avis' | translate
+              }}</app-button>
+            </div>
+          }
         </li>
       } @empty {
         <li class="text-sm text-ink-dim" data-testid="feedback-empty">
@@ -73,4 +81,7 @@ export class FeedbackListComponent {
   readonly showAuthor = input(false);
   /** Base route of the travel link (`/travels` for everyone). */
   readonly travelLink = input('/travels');
+  /** Show a delete button on each item (admin moderation). */
+  readonly moderable = input(false);
+  readonly moderate = output<Feedback>();
 }
