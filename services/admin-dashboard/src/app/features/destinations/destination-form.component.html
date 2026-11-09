@@ -1,10 +1,10 @@
-<app-card [title]="isEditing ? 'Modifier la destination' : 'Créer une destination'">
+<app-card [title]="(isEditing ? 'Modifier la destination' : 'Créer une destination') | translate">
   <form class="flex flex-col gap-6" [formGroup]="form" (ngSubmit)="submit()">
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <app-input
         fieldId="destName"
         formControlName="name"
-        label="Nom"
+        [label]="'Nom' | translate"
         type="text"
         [required]="true"
         autocomplete="off"
@@ -13,7 +13,7 @@
       <app-input
         fieldId="destCountry"
         formControlName="country"
-        label="Pays"
+        [label]="'Pays' | translate"
         type="text"
         [required]="true"
         autocomplete="off"
@@ -21,7 +21,7 @@
 
       <div class="flex flex-col gap-1">
         <label for="destStartDate" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-          >Date de début</label
+          >{{ 'Date de début' | translate }}</label
         >
         <input
           id="destStartDate"
@@ -34,7 +34,7 @@
 
       <div class="flex flex-col gap-1">
         <label for="destEndDate" class="font-mono text-xs tracking-wide text-ink-dim uppercase"
-          >Date de fin</label
+          >{{ 'Date de fin' | translate }}</label
         >
         <input
           id="destEndDate"
@@ -45,7 +45,7 @@
         />
         @if (dateRangeError) {
           <p class="text-sm text-red">
-            La date de fin doit être postérieure ou égale à la date de début.
+            {{ 'La date de fin doit être postérieure ou égale à la date de début.' | translate }}
           </p>
         }
       </div>
@@ -53,7 +53,7 @@
       <app-input
         fieldId="destPrice"
         formControlName="price"
-        label="Prix (€)"
+        [label]="'Prix (€)' | translate"
         type="number"
         [required]="true"
         [error]="fieldError('price')"
@@ -63,7 +63,7 @@
       <app-input
         fieldId="destCapacity"
         formControlName="capacity"
-        label="Capacité (places)"
+        [label]="'Capacité (places)' | translate"
         type="number"
         [required]="true"
         [error]="fieldError('capacity')"
@@ -75,7 +75,7 @@
           class="sm:col-span-2"
           fieldId="destManagerId"
           formControlName="managerId"
-          label="Identifiant de l'organisateur"
+          [label]="'Identifiant de l\'organisateur' | translate"
           type="text"
           [required]="true"
           [error]="fieldError('managerId')"
@@ -86,9 +86,9 @@
 
     <div>
       <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-ink">Activités</h3>
+        <h3 class="text-sm font-semibold text-ink">{{ 'Activités' | translate }}</h3>
         <app-button type="button" variant="secondary" (clicked)="addActivity()"
-          >Ajouter une activité</app-button
+          >{{ 'Ajouter une activité' | translate }}</app-button
         >
       </div>
 
@@ -98,25 +98,25 @@
             <input
               type="text"
               [formControlName]="$index"
-              aria-label="Nom de l'activité"
-              placeholder="Ex: Tram 28 ride"
+              [attr.aria-label]="'Nom de l\'activité' | translate"
+              [attr.placeholder]="'Ex: Tram 28 ride' | translate"
               class="min-w-0 flex-1 border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
             />
             <app-button type="button" variant="danger" (clicked)="removeActivity($index)"
-              >Retirer</app-button
+              >{{ 'Retirer' | translate }}</app-button
             >
           </div>
         } @empty {
-          <p class="text-sm text-ink-dim">Aucune activité.</p>
+          <p class="text-sm text-ink-dim">{{ 'Aucune activité.' | translate }}</p>
         }
       </div>
     </div>
 
     <div>
       <div class="mb-2 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-ink">Hébergements</h3>
+        <h3 class="text-sm font-semibold text-ink">{{ 'Hébergements' | translate }}</h3>
         <app-button type="button" variant="secondary" (clicked)="addAccommodation()"
-          >Ajouter un hébergement</app-button
+          >{{ 'Ajouter un hébergement' | translate }}</app-button
         >
       </div>
 
@@ -127,13 +127,13 @@
               <label
                 [attr.for]="'accName' + $index"
                 class="text-xs font-medium text-ink"
-                >Nom de l'hébergement</label
+                >{{ 'Nom de l\'hébergement' | translate }}</label
               >
               <input
                 [id]="'accName' + $index"
                 type="text"
                 formControlName="name"
-                placeholder="Ex: Hotel Lisboa"
+                [attr.placeholder]="'Ex: Hotel Lisboa' | translate"
                 class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
@@ -142,13 +142,13 @@
               <label
                 [attr.for]="'accType' + $index"
                 class="text-xs font-medium text-ink"
-                >Type d'hébergement</label
+                >{{ 'Type d\'hébergement' | translate }}</label
               >
               <input
                 [id]="'accType' + $index"
                 type="text"
                 formControlName="type"
-                placeholder="Ex: HOTEL"
+                [attr.placeholder]="'Ex: HOTEL' | translate"
                 class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1.5 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
               />
             </div>
@@ -157,7 +157,7 @@
               <label
                 [attr.for]="'accIn' + $index"
                 class="text-xs font-medium text-ink"
-                >Check-in</label
+                >{{ 'Check-in' | translate }}</label
               >
               <input
                 [id]="'accIn' + $index"
@@ -171,7 +171,7 @@
               <label
                 [attr.for]="'accOut' + $index"
                 class="text-xs font-medium text-ink"
-                >Check-out</label
+                >{{ 'Check-out' | translate }}</label
               >
               <input
                 [id]="'accOut' + $index"
@@ -182,23 +182,25 @@
             </div>
 
             <app-button type="button" variant="danger" (clicked)="removeAccommodation($index)"
-              >Retirer</app-button
+              >{{ 'Retirer' | translate }}</app-button
             >
           </div>
         } @empty {
-          <p class="text-sm text-ink-dim">Aucun hébergement.</p>
+          <p class="text-sm text-ink-dim">{{ 'Aucun hébergement.' | translate }}</p>
         }
       </div>
     </div>
 
     <div class="flex gap-2">
       <app-button type="submit" [disabled]="saving()">
-        {{ saving() ? 'Enregistrement…' : isEditing ? 'Enregistrer les modifications' : 'Créer' }}
+        {{
+          (saving() ? 'Enregistrement…' : isEditing ? 'Enregistrer les modifications' : 'Créer') | translate
+        }}
       </app-button>
 
       @if (isEditing) {
         <app-button type="button" variant="secondary" [disabled]="saving()" (clicked)="cancelled.emit()">
-          Annuler
+          {{ 'Annuler' | translate }}
         </app-button>
       }
     </div>

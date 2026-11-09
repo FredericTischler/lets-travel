@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -38,12 +40,14 @@ import { Route, TRANSPORT_MODES, Transport, TransportMode, TransportService } fr
     InputComponent,
     LoadingComponent,
     DestinationFormComponent,
+    TranslatePipe,
   ],
   templateUrl: './destination-list.component.html',
 })
 export class DestinationListComponent implements OnInit {
   private readonly destinationService = inject(DestinationService);
   private readonly transportService = inject(TransportService);
+  private readonly translateService = inject(TranslateService);
 
   private readonly form = viewChild(DestinationFormComponent);
 
@@ -111,7 +115,7 @@ export class DestinationListComponent implements OnInit {
         this.loading.set(false);
       },
       error: () => {
-        this.error.set('Impossible de charger la liste des destinations.');
+        this.error.set(this.translateService.translate('Impossible de charger la liste des destinations.'));
         this.loading.set(false);
       },
     });
@@ -152,7 +156,9 @@ export class DestinationListComponent implements OnInit {
         this.saveError.set(
           extractErrorMessage(
             err,
-            editing ? 'Impossible de modifier cette destination.' : 'Impossible de créer cette destination.',
+            this.translateService.translate(
+              editing ? 'Impossible de modifier cette destination.' : 'Impossible de créer cette destination.',
+            ),
           ),
         );
       },
@@ -160,7 +166,11 @@ export class DestinationListComponent implements OnInit {
   }
 
   deleteDestination(destination: Destination): void {
-    if (!confirm(`Supprimer la destination ${destination.name} ?`)) {
+    if (
+      !confirm(
+        this.translateService.translate('Supprimer la destination {{name}} ?', { name: destination.name }),
+      )
+    ) {
       return;
     }
 
@@ -177,7 +187,7 @@ export class DestinationListComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.deletingDestinationId.set(null);
-        this.deleteError.set(extractErrorMessage(err, 'Impossible de supprimer cette destination.'));
+        this.deleteError.set(extractErrorMessage(err, this.translateService.translate('Impossible de supprimer cette destination.')));
       },
     });
   }
@@ -209,7 +219,10 @@ export class DestinationListComponent implements OnInit {
       error: (err: unknown) => {
         this.transportsLoading.set(false);
         this.transportsError.set(
-          extractErrorMessage(err, 'Impossible de charger les trajets de cette destination.'),
+          extractErrorMessage(
+            err,
+            this.translateService.translate('Impossible de charger les trajets de cette destination.'),
+          ),
         );
       },
     });
@@ -242,7 +255,7 @@ export class DestinationListComponent implements OnInit {
         },
         error: (err: unknown) => {
           this.creatingTransport.set(false);
-          this.createTransportError.set(extractErrorMessage(err, 'Impossible de créer ce trajet.'));
+          this.createTransportError.set(extractErrorMessage(err, this.translateService.translate('Impossible de créer ce trajet.')));
         },
       });
   }
@@ -285,13 +298,19 @@ export class DestinationListComponent implements OnInit {
         },
         error: (err: unknown) => {
           this.updatingTransport.set(false);
-          this.updateTransportError.set(extractErrorMessage(err, 'Impossible de modifier ce trajet.'));
+          this.updateTransportError.set(extractErrorMessage(err, this.translateService.translate('Impossible de modifier ce trajet.')));
         },
       });
   }
 
   deleteTransport(fromId: string, transport: Transport): void {
-    if (!confirm(`Supprimer le trajet vers ${transport.destinationName} ?`)) {
+    if (
+      !confirm(
+        this.translateService.translate('Supprimer le trajet vers {{name}} ?', {
+          name: transport.destinationName,
+        }),
+      )
+    ) {
       return;
     }
 
@@ -308,7 +327,7 @@ export class DestinationListComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.deletingTransportId.set(null);
-        this.deleteTransportError.set(extractErrorMessage(err, 'Impossible de supprimer ce trajet.'));
+        this.deleteTransportError.set(extractErrorMessage(err, this.translateService.translate('Impossible de supprimer ce trajet.')));
       },
     });
   }
@@ -332,7 +351,10 @@ export class DestinationListComponent implements OnInit {
       error: (err: unknown) => {
         this.routeLoading.set(false);
         this.routeError.set(
-          extractErrorMessage(err, "Aucun itinéraire trouvé vers cette destination."),
+          extractErrorMessage(
+            err,
+            this.translateService.translate('Aucun itinéraire trouvé vers cette destination.'),
+          ),
         );
       },
     });

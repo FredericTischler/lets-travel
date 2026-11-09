@@ -7,6 +7,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ROLES, ROLE_LABELS, Role, SIGN_UP_ROLES, homeRouteFor } from '../../core/auth/roles';
 import { extractErrorMessage } from '../../shared/http-error';
 import { TranslatePipe } from '../../shared/i18n/translate.pipe';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { InputComponent } from '../../shared/ui/input/input.component';
 
@@ -31,6 +32,7 @@ const MIN_PASSWORD_LENGTH = 8;
 export class RegisterComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly translateService = inject(TranslateService);
 
   protected readonly currentYear = new Date().getFullYear();
 
@@ -54,7 +56,11 @@ export class RegisterComponent {
 
   submit(): void {
     if (this.password.length < MIN_PASSWORD_LENGTH) {
-      this.error.set(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.`);
+      this.error.set(
+        this.translateService.translate('Le mot de passe doit contenir au moins {{n}} caractères.', {
+          n: MIN_PASSWORD_LENGTH,
+        }),
+      );
       return;
     }
     // Defence in depth: never send a role the form does not offer.

@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
 import { environment } from '../../../environments/environment';
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { DestinationListComponent } from './destination-list.component';
 import { Destination, DestinationCreateInput } from './destination.service';
 
@@ -144,4 +145,35 @@ describe('DestinationListComponent (admin)', () => {
 
     expect(component['expandedDestinationId']()).toBe('dest-1');
   });
+
+  it('renders the table, actions and transport panel in English when the locale is switched', () => {
+    load();
+    TestBed.inject(TranslateService).setLocale('en');
+    component['toggleTransports'](lisbon);
+    httpMock.expectOne(`${url}/dest-1/transports`).flush([]);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Capacity');
+    expect(text).toContain('Edit');
+    expect(text).toContain('Subscribers');
+    expect(text).toContain('11 d');
+    expect(text).toContain('Hide the routes');
+    expect(text).toContain('No outgoing route.');
+    expect(text).toContain('Outgoing routes from Lisbon');
+    expect(text).not.toContain('Modifier');
+  });
+
+  it('asks for the delete confirmation in English', () => {
+    load();
+    TestBed.inject(TranslateService).setLocale('en');
+
+    component['deleteDestination'](lisbon);
+    expect(confirm).toHaveBeenCalledWith('Delete the destination Lisbon?');
+    httpMock.expectOne(`${url}/dest-1`).flush(null);
+    httpMock.expectOne(url).flush([]);
+  });
 });
+
+// The locale is persisted in localStorage: never leak 'en' into the next spec.
+afterEach(() => localStorage.removeItem('admin-dashboard.locale'));
