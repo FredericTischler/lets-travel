@@ -1,8 +1,8 @@
 <div class="flex flex-col gap-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="font-display text-2xl font-bold text-ink">Tableau de bord administrateur</h1>
+    <h1 class="font-display text-2xl font-bold text-ink">{{ 'Tableau de bord administrateur' | translate }}</h1>
     <div class="flex items-center gap-2 text-sm">
-      <label for="months" class="text-ink">Période des revenus</label>
+      <label for="months" class="text-ink">{{ 'Période des revenus' | translate }}</label>
       <select
         id="months"
         name="months"
@@ -11,7 +11,7 @@
         class="border-0 border-b-2 border-line-strong bg-transparent px-1 py-1 font-mono text-sm text-ink focus:border-amber focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
       >
         @for (choice of monthChoices; track choice) {
-          <option [ngValue]="choice">{{ choice }} derniers mois</option>
+          <option [ngValue]="choice">{{ '{{n}} derniers mois' | translate: { n: choice } }}</option>
         }
       </select>
     </div>
@@ -20,49 +20,51 @@
   @if (loading()) {
     <app-loading />
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else if (data(); as d) {
     @if (d.partial) {
       <app-alert variant="warning" data-testid="income-unavailable">
-        Données de revenus indisponibles pour le moment (service de paiement injoignable) : les
-        revenus ne sont pas affichés et les scores des organisateurs sont calculés sans les revenus.
+        {{
+          'Données de revenus indisponibles pour le moment (service de paiement injoignable) : les revenus ne sont pas affichés et les scores des organisateurs sont calculés sans les revenus.'
+            | translate
+        }}
       </app-alert>
     }
 
     <div class="grid grid-cols-2 gap-4 lg:grid-cols-5" data-testid="kpis">
       <app-stat-tile
-        label="Voyages organisés"
+        [label]="'Voyages organisés' | translate"
         [value]="'' + d.totals.organizedTravels"
-        [hint]="d.totals.pastTravels + ' terminés · ' + d.totals.ongoingTravels + ' en cours · ' + d.totals.upcomingTravels + ' à venir'"
+        [hint]="'{{past}} terminés · {{ongoing}} en cours · {{upcoming}} à venir' | translate: { past: d.totals.pastTravels, ongoing: d.totals.ongoingTravels, upcoming: d.totals.upcomingTravels }"
         data-testid="kpi-travels"
       />
-      <app-stat-tile label="Organisateurs" [value]="'' + d.totals.managers" data-testid="kpi-managers" />
-      <app-stat-tile label="Voyageurs actifs" [value]="'' + d.totals.activeTravelers" data-testid="kpi-travelers" />
+      <app-stat-tile [label]="'Organisateurs' | translate" [value]="'' + d.totals.managers" data-testid="kpi-managers" />
+      <app-stat-tile [label]="'Voyageurs actifs' | translate" [value]="'' + d.totals.activeTravelers" data-testid="kpi-travelers" />
       <app-stat-tile
-        label="Revenus (total)"
-        [value]="d.income ? money(d.income.totals) : 'Indisponible'"
-        [hint]="d.income ? d.months + ' derniers mois : ' + money(d.income.windowTotals) : null"
+        [label]="'Revenus (total)' | translate"
+        [value]="d.income ? money(d.income.totals) : ('Indisponible' | translate)"
+        [hint]="d.income ? ('{{n}} derniers mois : {{amount}}' | translate: { n: d.months, amount: money(d.income.windowTotals) }) : null"
         data-testid="kpi-income"
       />
       <app-stat-tile
-        label="Satisfaction"
+        [label]="'Satisfaction' | translate"
         [value]="rating(d.totals.averageRating)"
-        [hint]="d.totals.feedbackCount + ' avis'"
+        [hint]="'{{n}} avis' | translate: { n: d.totals.feedbackCount }"
         data-testid="kpi-rating"
       />
     </div>
 
-    <app-card [title]="'Revenus par mois (' + d.referenceCurrency + ')'">
+    <app-card [title]="'Revenus par mois ({{currency}})' | translate: { currency: d.referenceCurrency }">
       @if (d.income) {
         <app-bar-chart
-          [title]="'Revenus de la plateforme sur les ' + d.months + ' derniers mois'"
+          [title]="'Revenus de la plateforme sur les {{n}} derniers mois' | translate: { n: d.months }"
           [data]="chartPoints()"
           [format]="chartFormat()"
-          valueLabel="Revenus"
-          emptyMessage="Aucun revenu encaissé sur la période."
+          [valueLabel]="'Revenus' | translate"
+          [emptyMessage]="'Aucun revenu encaissé sur la période.' | translate"
         />
       } @else {
-        <p class="text-sm text-ink-dim">Graphique indisponible : données de revenus indisponibles.</p>
+        <p class="text-sm text-ink-dim">{{ 'Graphique indisponible : données de revenus indisponibles.' | translate }}</p>
       }
     </app-card>
 
@@ -70,14 +72,14 @@
       <div class="table-shell">
         <table class="table-base">
           <caption class="sr-only">
-            {{ caption }}
+            {{ caption | translate }}
           </caption>
           <thead>
             <tr class="table-head-row">
               <th class="table-head-cell" scope="col">#</th>
-              <th class="table-head-cell" scope="col">Organisateur</th>
+              <th class="table-head-cell" scope="col">{{ 'Organisateur' | translate }}</th>
               <th class="table-head-cell" scope="col">
-                {{ metric === 'score' ? 'Score' : metric === 'rating' ? 'Note' : 'Revenus' }}
+                {{ (metric === 'score' ? 'Score' : metric === 'rating' ? 'Note' : 'Revenus') | translate }}
               </th>
             </tr>
           </thead>
@@ -98,17 +100,17 @@
                       {{ num(entry.score) }} / 100
                     }
                     @case ('rating') {
-                      {{ rating(entry.dampedRating) }} ({{ entry.feedbackCount }} avis)
+                      {{ rating(entry.dampedRating) }} ({{ '{{n}} avis' | translate: { n: entry.feedbackCount } }})
                     }
                     @default {
-                      {{ entry.income ? money(entry.income) : 'indisponible' }}
+                      {{ entry.income ? money(entry.income) : ('indisponible' | translate) }}
                     }
                   }
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="3">Aucune donnée.</td>
+                <td class="table-empty-cell" colspan="3">{{ 'Aucune donnée.' | translate }}</td>
               </tr>
             }
           </tbody>
@@ -117,19 +119,19 @@
     </ng-template>
 
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-      <app-card title="Top organisateurs — score">
+      <app-card [title]="'Top organisateurs — score' | translate">
         <ng-container
           [ngTemplateOutlet]="topManagers"
           [ngTemplateOutletContext]="{ $implicit: d.topManagersByScore, metric: 'score', caption: 'Meilleurs organisateurs par score' }"
         />
       </app-card>
-      <app-card title="Top organisateurs — note">
+      <app-card [title]="'Top organisateurs — note' | translate">
         <ng-container
           [ngTemplateOutlet]="topManagers"
           [ngTemplateOutletContext]="{ $implicit: d.topManagersByRating, metric: 'rating', caption: 'Meilleurs organisateurs par note' }"
         />
       </app-card>
-      <app-card title="Top organisateurs — revenus">
+      <app-card [title]="'Top organisateurs — revenus' | translate">
         <ng-container
           [ngTemplateOutlet]="topManagers"
           [ngTemplateOutletContext]="{ $implicit: d.topManagersByIncome, metric: 'income', caption: 'Meilleurs organisateurs par revenus' }"
@@ -137,47 +139,49 @@
       </app-card>
     </div>
 
-    <app-card title="Top voyages — revenus">
+    <app-card [title]="'Top voyages — revenus' | translate">
       <app-travel-rows-table
         [rows]="d.topTravelsByIncome"
-        caption="Meilleurs voyages par revenus"
-        [emptyMessage]="d.partial ? 'Revenus indisponibles.' : 'Aucun voyage avec des revenus.'"
+        [caption]="'Meilleurs voyages par revenus' | translate"
+        [emptyMessage]="(d.partial ? 'Revenus indisponibles.' : 'Aucun voyage avec des revenus.') | translate"
       />
     </app-card>
 
-    <app-card title="Top voyages — note">
+    <app-card [title]="'Top voyages — note' | translate">
       <app-travel-rows-table
         [rows]="d.topTravelsByRating"
-        caption="Meilleurs voyages par note"
-        emptyMessage="Aucun voyage noté."
+        [caption]="'Meilleurs voyages par note' | translate"
+        [emptyMessage]="'Aucun voyage noté.' | translate"
       />
     </app-card>
 
-    <app-card title="Classement des organisateurs (score de performance)">
+    <app-card [title]="'Classement des organisateurs (score de performance)' | translate">
       <p class="mb-3 text-sm text-ink-dim">
-        Score de 0 à 100 : note (amortie), revenus et nombre de voyageurs. Les signalements
-        n'entrent pas dans le score : ils sont affichés à part.
+        {{
+          "Score de 0 à 100 : note (amortie), revenus et nombre de voyageurs. Les signalements n'entrent pas dans le score : ils sont affichés à part."
+            | translate
+        }}
       </p>
       @if (ranking() === null) {
         <p class="text-sm text-ink-dim" data-testid="ranking-unavailable">
-          Classement indisponible.
+          {{ 'Classement indisponible.' | translate }}
         </p>
       } @else {
         <div class="table-shell">
           <table class="table-base">
             <caption class="sr-only">
-              Organisateurs classés par score de performance
+              {{ 'Organisateurs classés par score de performance' | translate }}
             </caption>
             <thead>
               <tr class="table-head-row">
                 <th class="table-head-cell" scope="col">#</th>
                 <th class="table-head-cell" scope="col">Organisateur</th>
-                <th class="table-head-cell" scope="col">Score</th>
-                <th class="table-head-cell" scope="col">Note</th>
-                <th class="table-head-cell" scope="col">Voyages</th>
-                <th class="table-head-cell" scope="col">Voyageurs</th>
-                <th class="table-head-cell" scope="col">Revenus</th>
-                <th class="table-head-cell" scope="col">Signalements</th>
+                <th class="table-head-cell" scope="col">{{ 'Score' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Note' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Voyages' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Voyageurs' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Revenus' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Signalements' | translate }}</th>
               </tr>
             </thead>
             <tbody>
@@ -194,7 +198,7 @@
                       [routerLink]="['/manager/dashboard']"
                       [queryParams]="{ managerId: entry.managerId }"
                       class="ml-2 text-xs text-ink-dim hover:underline"
-                      >tableau de bord</a
+                      >{{ 'tableau de bord' | translate }}</a
                     >
                   </td>
                   <td class="table-cell whitespace-nowrap tabular-nums" data-testid="ranking-score">
@@ -206,7 +210,7 @@
                   <td class="table-cell tabular-nums">{{ entry.activeTravels }}</td>
                   <td class="table-cell tabular-nums">{{ entry.subscribers }}</td>
                   <td class="table-cell whitespace-nowrap tabular-nums">
-                    {{ entry.income ? money(entry.income) : 'indisponible' }}
+                    {{ entry.income ? money(entry.income) : ('indisponible' | translate) }}
                   </td>
                   <td class="table-cell tabular-nums" data-testid="ranking-reports">
                     {{ reports(entry.managerId) }}
@@ -214,7 +218,7 @@
                 </tr>
               } @empty {
                 <tr>
-                  <td class="table-empty-cell" colspan="8">Aucun organisateur pour l'instant.</td>
+                  <td class="table-empty-cell" colspan="8">{{ "Aucun organisateur pour l'instant." | translate }}</td>
                 </tr>
               }
             </tbody>
@@ -233,20 +237,20 @@
       }
     </app-card>
 
-    <app-card title="Historique détaillé des voyages terminés">
+    <app-card [title]="'Historique détaillé des voyages terminés' | translate">
       <app-travel-rows-table
         [rows]="d.travelHistory"
-        caption="Voyages terminés"
-        emptyMessage="Aucun voyage terminé pour l'instant."
+        [caption]="'Voyages terminés' | translate"
+        [emptyMessage]="'Aucun voyage terminé pour l\'instant.' | translate"
         feedbackLink="/manager/travels"
       />
     </app-card>
 
-    <app-card title="Derniers avis">
-      <app-feedback-list [items]="d.recentFeedback" [showAuthor]="true" emptyMessage="Aucun avis pour l'instant." />
+    <app-card [title]="'Derniers avis' | translate">
+      <app-feedback-list [items]="d.recentFeedback" [showAuthor]="true" [emptyMessage]="'Aucun avis pour l\'instant.' | translate" />
       <p class="mt-3 text-sm">
         <a routerLink="/admin/feedback" class="text-teal hover:underline"
-          >Tous les avis</a
+          >{{ 'Tous les avis' | translate }}</a
         >
       </p>
     </app-card>

@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { environment } from '../../../environments/environment';
 import { Report } from './report.service';
 import { ReportQueueComponent } from './report-queue.component';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('ReportQueueComponent', () => {
   let fixture: ComponentFixture<ReportQueueComponent>;
@@ -153,5 +154,22 @@ describe('ReportQueueComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
       'Impossible de charger les signalements.',
     );
+  });
+
+  it('renders the screen in English when the locale is en', () => {
+    load([open, dismissed]);
+    const norm = (x: string | null | undefined) => (x ?? '').replace(/\s+/g, ' ').trim();
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      fixture.detectChanges();
+      const text = norm(fixture.nativeElement.textContent);
+      expect(text).toContain('Moderation queue');
+      expect(text).toContain('Reported user');
+      expect(text).toContain('Mark as reviewed');
+      expect(text).toContain('Dismissed');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

@@ -4,6 +4,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { forkJoin, catchError, of } from 'rxjs';
 
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BadgeComponent, BadgeTone } from '../../shared/ui/badge/badge.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
@@ -48,7 +49,7 @@ export const REPORT_DECISIONS: readonly { status: ReportDecision; label: string 
  */
 @Component({
   selector: 'app-report-queue',
-  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent, LoadingComponent],
+  imports: [DatePipe, AlertComponent, BadgeComponent, ButtonComponent, CardComponent, LoadingComponent, TranslatePipe],
   templateUrl: './report-queue.component.html',
 })
 export class ReportQueueComponent implements OnInit {

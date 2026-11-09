@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 
 import { FeedbackListComponent } from './feedback-list.component';
 import { Feedback } from './feedback.service';
+import { TranslateService } from '../../shared/i18n/translate.service';
 
 describe('FeedbackListComponent', () => {
   function feedback(overrides: Partial<Feedback> = {}): Feedback {
@@ -69,5 +70,17 @@ describe('FeedbackListComponent', () => {
     const el = render([], { emptyMessage: 'Rien du tout.' });
 
     expect(el.querySelector('[data-testid="feedback-empty"]')!.textContent).toContain('Rien du tout.');
+  });
+
+  it('renders the empty-comment text in English when the locale is en', () => {
+    const translate = TestBed.inject(TranslateService);
+    translate.setLocale('en');
+    try {
+      const el = render([feedback({ comment: null }), feedback({ id: 'f2' })], { showAuthor: true });
+      expect(el.textContent).toContain('No comment.');
+      expect(el.textContent).toContain('Traveler: traveler-1');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

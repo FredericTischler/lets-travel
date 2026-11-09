@@ -6,6 +6,7 @@ import { catchError, forkJoin, of } from 'rxjs';
 
 import { formatMoneyMap, formatNumber, formatRating } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { Page } from '../../shared/pagination';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { BarChartComponent } from '../../shared/ui/bar-chart/bar-chart.component';
@@ -55,6 +56,7 @@ const RANKING_PAGE_SIZE = 20;
     StatTileComponent,
     FeedbackListComponent,
     TravelRowsTableComponent,
+    TranslatePipe,
   ],
   templateUrl: './admin-dashboard.component.html',
 })
