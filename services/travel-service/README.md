@@ -328,6 +328,23 @@ pagination or filters.
   active Spring transaction synchronization, even `NOT_SUPPORTED`, which
   silently undid the compensation when the payment call failed.
 
+## Search and autocomplete (docs/lets-travel-architecture-decisions.md §6)
+
+- `GET /destinations/search?q=` — full-text search over `name`, `country`,
+  `activities`, `accommodations`, `price`, `capacity`, dates and `managerId`
+  (index `destinations`, one document per active destination). Any known role.
+- `GET /destinations/autocomplete?prefix=` — up to 10 suggestions from an
+  Elasticsearch `completion` suggester (input = name + country).
+- Both answer `503` when Elasticsearch is unreachable; the rest of the service
+  (CRUD, subscriptions, recommendations) stays bootable and usable without it,
+  because Elasticsearch lives behind its own Compose profile (`search`) and is
+  only contacted lazily.
+- Neo4j stays the source of truth: `DestinationService` dual-writes the index
+  synchronously on create/update and removes the document on delete. An
+  indexing failure is logged and swallowed, never returned to the caller. There
+  is no re-index endpoint yet, so a lost write leaves the index stale until the
+  destination is next updated.
+
 ## Soft-delete
 
 Nodes are never physically removed. "Delete" sets `deletedAt` on the node to
@@ -439,9 +456,9 @@ secrets/URLs, so they do have defaults.
   subscribe response gives the traveler what they need (payment id, Stripe
   `clientSecret` / PayPal `approveUrl`, `expiresAt`).
 - Recommendations exist (see "Recommendations") but are a hand-weighted
-  content-based score, not a learned model or collaborative filtering. (The
-  Elasticsearch search/autocomplete of §6 exists in the code but is not
-  described in this README yet.)
+  content-based score, not a learned model or collaborative filtering. Search
+  and autocomplete (Elasticsearch) are described above; there is no re-index
+  endpoint.
 - Feedback is immutable: no edit, no delete, no admin moderation of an abusive
   comment (see "Feedback" above). `GET /feedback` and `GET /managers/ranking`
   are paginated (`page`/`size`, `PageResponse<T>`); the other feedback lists
