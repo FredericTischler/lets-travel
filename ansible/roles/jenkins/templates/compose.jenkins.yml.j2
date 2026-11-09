@@ -76,6 +76,15 @@ services:
       # l'hote pour rien elargirait la surface du conteneur sans contrepartie).
       - "{{ jenkins_scm_repo_host_path }}:{{ jenkins_scm_mount_path }}:ro"
 {% endif %}
+{% if jenkins_deploy_enabled | bool %}
+      # Build d'image + deploiement depuis les pipelines (opt-in, cf. defaults).
+      # Meme chemin absolu qu'a l'hote : le docker-compose.yml de la stack inclut
+      # les fragments par chemin absolu et le demon resout les bind mounts cote hote.
+      - "{{ jenkins_deploy_docker_cli }}:/usr/bin/docker:ro"
+      - "{{ jenkins_deploy_compose_plugin }}:/usr/libexec/docker/cli-plugins/docker-compose:ro"
+      - "{{ jenkins_deploy_compose_dir }}:{{ jenkins_deploy_compose_dir }}:ro"
+      - "{{ jenkins_scm_repo_host_path }}:{{ jenkins_scm_repo_host_path }}:ro"
+{% endif %}
     networks:
       # UN SEUL reseau : necessaire et suffisant pour que Traefik decouvre et
       # route l'UI. Jenkins ne parle a aucune base du projet (pas besoin du

@@ -1898,6 +1898,45 @@ gonflait le compteur d'annulations).
 
 ---
 
+## 14. CI/CD — build d'image et déploiement depuis Jenkins
+
+### Décision
+
+Les `Jenkinsfile` des 3 services gagnent deux stages après les tests/Sonar :
+**Build image** (`docker build` du contexte `services/<svc>`, tags `0.1.0` et
+sha court ; l'ancienne image est d'abord taguée `:previous`) puis **Deploy**
+(`docker compose -p travel-plan -f /opt/travel-plan/docker-compose.yml --profile
+full up -d --no-build --no-deps --force-recreate <svc>`, attente `healthy`,
+rollback vers `:previous` et échec du build sinon). Ces stages sont gardés par
+`fileExists` : sans les montages, ils sont sautés, comme les stages Sonar.
+Le rôle Ansible `jenkins` les rend possibles via `jenkins_deploy_enabled`
+(défaut `false`) : montage en lecture seule du CLI docker et du plugin compose
+de l'hôte, du répertoire de la stack et du dépôt, **au même chemin absolu que
+sur l'hôte**.
+
+### Justification
+
+Le démon est celui de l'hôte (socket déjà monté pour Testcontainers) ;
+l'image Jenkins n'a pas de CLI docker, donc on monte celui de l'hôte plutôt que
+de maintenir une image dérivée. Les chemins identiques sont nécessaires car le
+`docker-compose.yml` inclut les fragments par chemin absolu et le démon résout
+les bind mounts côté hôte. « Ansible provisionne, Compose orchestre » reste vrai :
+Jenkins ne fait que rejouer `compose up` sur un service.
+
+### Ce que je sacrifie
+
+Jenkins peut lire le `.env` de la stack (donc les secrets applicatifs) et
+piloter le démon : déjà root-équivalent via le socket, mais la surface s'élargit.
+Pas de registry : les images ne vivent que sur l'hôte. Rollback limité à une
+version (`:previous`). Pas de job `admin-dashboard`. Le chemin n'a pas pu être
+exécuté de bout en bout (pas de sudo pour appliquer le rôle).
+
+### Alternative rejetée
+
+Image Jenkins dérivée embarquant docker-cli : un build de plus à maintenir et à
+épingler, pour le même niveau d'accès au démon. Déploiement via Ansible depuis
+Jenkins : alourdit le contrôleur (ansible + inventaire) pour un simple `up`.
+
 ## Récapitulatif des sacrifices de cette phase
 
 | Décision | Sacrifié |
@@ -1911,6 +1950,7 @@ gonflait le compteur d'annulations).
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
 | Avis modifiables/modérables en soft-delete (§13) | Un avis retiré ne peut pas être reposté ; anti-doublon TRANSPORT non atomique |
+| CI/CD build+deploy opt-in, CLI hôte monté, Jenkins lit le `.env` (§14) | Pas de registry, rollback d'une version, non vérifié de bout en bout |
 | i18n FR/EN maison (clé = texte français), tous les écrans traduits (§11) | Nombres/dates/devises restent en `fr-FR` (`shared/format.ts`) ; raisons des suggestions et messages d'erreur de l'API restent ceux du backend |
 
 ## Points ouverts

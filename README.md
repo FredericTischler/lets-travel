@@ -273,8 +273,12 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   provisionne un contrôleur (profil Compose `ci`) et 3 jobs Pipeline, un par
   service, jouant `./mvnw test` puis l'analyse SonarQube. Déclenchement par
   **poll SCM** sur `main` (pas de webhook : Jenkins est local, injoignable depuis
-  GitHub) — vérifié de bout en bout. Toujours **pas de build d'image ni de
-  déploiement** automatisés, et aucun déclenchement par Pull Request.
+  GitHub) — vérifié de bout en bout. Les `Jenkinsfile` des 3 services ont
+  aussi des stages **Build image** et **Deploy** (rollback auto vers l'image
+  précédente si le healthcheck échoue), **opt-in** via
+  `jenkins_deploy_enabled` (ADR §14) : écrits et revus, mais **non exécutés de
+  bout en bout** (application du rôle impossible sans sudo dans la session de
+  développement). Pas de registry d'images, pas de job pour `admin-dashboard`.
   `ci/jenkins/README.md` et `ci/sonarqube/README.md` sont désormais alignés mais
   restent des notes d'orientation, pas la config (rendue par les rôles Ansible).
 - ~~**SonarQube : absent.**~~ **Corrigé — SonarQube tourne et analyse réellement.**
@@ -303,8 +307,9 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   documentée (génération API + dépôt dans le credential store de Jenkins sous
   l'ID `sonarqube-token`). Les stages Sonar sont **conditionnels** : sans la
   variable `SONAR_HOST_URL`, les pipelines tournent sans analyse au lieu d'échouer.
-- Aucun pipeline de build d'image ni de déploiement ; les tests ne sont pas
-  déclenchés par une PR mais par le poll SCM sur `main`.
+- Build d'image + déploiement : stages présents mais non vérifiés en réel
+  (voir ci-dessus) ; pas de registry, pas de job `admin-dashboard`. Les tests
+  sont déclenchés par le poll SCM sur `main`.
 
 ### Sécurité / secrets
 - **Vault non consommé au runtime par les services** : les services ne parlent jamais

@@ -108,6 +108,17 @@
   when: jenkins_docker_gid | string | length == 0
   tags: [compose_fragment]
 
+- name: "Assert the repo host path is provided when deploy is enabled"
+  ansible.builtin.assert:
+    that:
+      - jenkins_scm_repo_host_path | length > 0
+    fail_msg: >-
+      jenkins_deploy_enabled=true exige jenkins_scm_repo_host_path (checkout du
+      depot monte au meme chemin que sur l'hote : le docker-compose.yml de la
+      stack en inclut les fragments par chemin absolu).
+  when: jenkins_deploy_enabled | bool
+  tags: [compose_fragment]
+
 - name: "Assert a docker GID was resolved (socket write access is mandatory)"
   ansible.builtin.assert:
     that:
