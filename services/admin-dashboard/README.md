@@ -410,11 +410,11 @@ message explicite s'ils manquent.
   catalogue voyageur, fiche voyage (inscription/désinscription, choix du
   moyen de paiement, avis, signalement d'un organisateur), panneau de
   paiement en attente (MANUAL/PayPal/Stripe) et « Mes abonnements » — soit le
-  parcours voyageur le plus visible. Les **~40 autres écrans** (dashboards
-  admin/organisateur, gestion des utilisateurs/paiements/destinations,
-  signalements, avis, statistiques) restent **entièrement en français codé
-  en dur** — jamais de mélange FR/EN sur un même écran, c'est un périmètre
-  restant assumé, pas un oubli. Les **raisons des suggestions** viennent
+  parcours voyageur le plus visible. **Tous les écrans** (dashboards admin/organisateur,
+  utilisateurs, paiements, destinations, signalements, avis, statistiques,
+  composants `shared/ui`) sont désormais traduits. Restent en français : les
+  formats nombre/date/devise (`fr-FR`, `shared/format.ts`) et les messages
+  d'erreur renvoyés par l'API. Les **raisons des suggestions** viennent
   toujours du backend en **anglais**. Voir
   `docs/lets-travel-architecture-decisions.md` pour le choix
   "clé = texte français" et la justification du scope.

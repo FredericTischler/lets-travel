@@ -1,3 +1,7 @@
+import { EN_ADMIN_DICTIONARY } from './en.admin.dictionary';
+import { EN_CATALOG_DICTIONARY } from './en.catalog.dictionary';
+import { EN_MANAGER_DICTIONARY } from './en.manager.dictionary';
+
 /**
  * English translations, keyed by their exact French source string — see
  * TranslateService for why the key IS the French text rather than an
@@ -9,10 +13,6 @@
  * matching usage is dead. `{{name}}`-style placeholders are substituted by
  * TranslateService#translate's optional `params` argument.
  */
-import { EN_ADMIN_DICTIONARY } from './en.admin.dictionary';
-import { EN_CATALOG_DICTIONARY } from './en.catalog.dictionary';
-import { EN_MANAGER_DICTIONARY } from './en.manager.dictionary';
-
 export const EN_DICTIONARY: Record<string, string> = {
   ...EN_ADMIN_DICTIONARY,
   ...EN_MANAGER_DICTIONARY,
