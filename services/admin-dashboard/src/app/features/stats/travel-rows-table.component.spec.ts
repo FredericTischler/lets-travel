@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { TravelRowsTableComponent } from './travel-rows-table.component';
 import { TravelRow } from './stats.service';
 
@@ -55,5 +56,22 @@ describe('TravelRowsTableComponent', () => {
 
     const el = render([{ ...row, name: '<img src=x onerror=alert(1)>' }]);
     expect(el.querySelector('img')).toBeNull();
+  });
+
+  it('displays the table in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      translate.setLocale('en');
+      const el = render([{ ...row, income: null, incomeAmount: null }], { feedbackLink: '/manager/travels' });
+      const text = el.textContent!;
+
+      expect(text).toContain('Completed');
+      expect(text).toContain('Subscribers');
+      expect(text).toContain('Income');
+      expect(text).toContain('View reviews');
+      expect(el.querySelector('[data-testid="row-income"]')!.textContent!.trim()).toBe('unavailable');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

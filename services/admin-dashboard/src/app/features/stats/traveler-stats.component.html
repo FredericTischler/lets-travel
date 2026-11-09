@@ -1,58 +1,58 @@
 <div class="flex flex-col gap-6">
-  <h1 class="font-display text-2xl font-bold text-ink">Mes statistiques</h1>
+  <h1 class="font-display text-2xl font-bold text-ink">{{ 'Mes statistiques' | translate }}</h1>
 
   @if (loading()) {
-    <app-loading />
+    <app-loading [label]="'Chargement…' | translate" />
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else if (stats(); as s) {
     <div class="grid grid-cols-2 gap-4 lg:grid-cols-5" data-testid="kpis">
-      <app-stat-tile label="Voyages effectués" [value]="'' + s.pastParticipationCount" data-testid="kpi-past" />
-      <app-stat-tile label="Voyages à venir" [value]="'' + s.upcomingSubscriptionCount" data-testid="kpi-upcoming" />
+      <app-stat-tile [label]="'Voyages effectués' | translate" [value]="'' + s.pastParticipationCount" data-testid="kpi-past" />
+      <app-stat-tile [label]="'Voyages à venir' | translate" [value]="'' + s.upcomingSubscriptionCount" data-testid="kpi-upcoming" />
       <app-stat-tile
-        label="Annulations"
+        [label]="'Annulations' | translate"
         [value]="'' + s.cancellationCount"
-        hint="Inclut les annulations par un organisateur ou un paiement échoué."
+        [hint]="'Inclut les annulations par un organisateur ou un paiement échoué.' | translate"
         data-testid="kpi-cancellations"
       />
-      <app-stat-tile label="Avis donnés" [value]="'' + s.feedbackGivenCount" data-testid="kpi-feedback" />
+      <app-stat-tile [label]="'Avis donnés' | translate" [value]="'' + s.feedbackGivenCount" data-testid="kpi-feedback" />
       <app-stat-tile
-        label="Signalements reçus"
+        [label]="'Signalements reçus' | translate"
         [value]="reportCount() === null ? '—' : '' + reportCount()"
         data-testid="kpi-reports"
       />
     </div>
 
-    <app-card title="Moyens de paiement préférés">
+    <app-card [title]="'Moyens de paiement préférés' | translate">
       @if (s.partial || !s.payments) {
         <app-alert variant="warning" data-testid="payments-unavailable">
-          Données de paiement indisponibles pour le moment (service de paiement injoignable).
+          {{ 'Données de paiement indisponibles pour le moment (service de paiement injoignable).' | translate }}
         </app-alert>
       } @else if (s.payments.totalCount === 0) {
         <p class="text-sm text-ink-dim" data-testid="payments-none">
-          Aucun paiement effectué pour l'instant.
+          {{ 'Aucun paiement effectué pour l\'instant.' | translate }}
         </p>
       } @else {
         <p class="mb-3 text-sm text-ink">
-          Moyen le plus utilisé :
+          {{ 'Moyen le plus utilisé :' | translate }}
           <strong data-testid="preferred-provider">{{
-            s.preferredPaymentProvider ? providerLabels[s.preferredPaymentProvider] : '—'
+            s.preferredPaymentProvider ? (providerLabels[s.preferredPaymentProvider] | translate) : '—'
           }}</strong>
-          ({{ s.payments.totalCount }} paiement(s) terminé(s)).
+          ({{ '{{n}} paiement(s) terminé(s)' | translate: { n: s.payments.totalCount } }}).
         </p>
         <div class="table-shell">
           <table class="table-base">
             <thead>
               <tr class="table-head-row">
-                <th class="table-head-cell" scope="col">Moyen</th>
-                <th class="table-head-cell" scope="col">Paiements</th>
-                <th class="table-head-cell" scope="col">Montants</th>
+                <th class="table-head-cell" scope="col">{{ 'Moyen' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Paiements' | translate }}</th>
+                <th class="table-head-cell" scope="col">{{ 'Montants' | translate }}</th>
               </tr>
             </thead>
             <tbody>
               @for (row of s.payments.byProvider; track row.provider) {
                 <tr class="table-row">
-                  <td class="table-cell">{{ providerLabels[row.provider] }}</td>
+                  <td class="table-cell">{{ providerLabels[row.provider] | translate }}</td>
                   <td class="table-cell tabular-nums">{{ row.count }}</td>
                   <td class="table-cell">{{ money(row.totals) }}</td>
                 </tr>
@@ -63,15 +63,15 @@
       }
     </app-card>
 
-    <app-card title="Historique des voyages effectués">
+    <app-card [title]="'Historique des voyages effectués' | translate">
       <div class="table-shell">
         <table class="table-base">
           <thead>
             <tr class="table-head-row">
-              <th class="table-head-cell" scope="col">Voyage</th>
-              <th class="table-head-cell" scope="col">Pays</th>
-              <th class="table-head-cell" scope="col">Dates</th>
-              <th class="table-head-cell" scope="col">Avis</th>
+              <th class="table-head-cell" scope="col">{{ 'Voyage' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Pays' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Dates' | translate }}</th>
+              <th class="table-head-cell" scope="col">{{ 'Avis' | translate }}</th>
             </tr>
           </thead>
           <tbody>
@@ -90,20 +90,20 @@
                 </td>
                 <td class="table-cell">
                   @if (row.feedbackGiven) {
-                    <app-badge tone="success">Donné</app-badge>
+                    <app-badge tone="success">{{ 'Donné' | translate }}</app-badge>
                   } @else {
                     <a
                       [routerLink]="['/travels', row.destinationId]"
                       class="text-teal hover:underline"
                       data-testid="give-feedback-link"
-                      >Donner mon avis</a
+                      >{{ 'Donner mon avis' | translate }}</a
                     >
                   }
                 </td>
               </tr>
             } @empty {
               <tr>
-                <td class="table-empty-cell" colspan="4">Aucun voyage effectué pour l'instant.</td>
+                <td class="table-empty-cell" colspan="4">{{ 'Aucun voyage effectué pour l\'instant.' | translate }}</td>
               </tr>
             }
           </tbody>
@@ -112,8 +112,8 @@
     </app-card>
 
     @if (myFeedback(); as mine) {
-      <app-card title="Vos avis">
-        <app-feedback-list [items]="mine" emptyMessage="Vous n'avez donné aucun avis pour l'instant." />
+      <app-card [title]="'Vos avis' | translate">
+        <app-feedback-list [items]="mine" [emptyMessage]="'Vous n\'avez donné aucun avis pour l\'instant.' | translate" />
       </app-card>
     }
   }

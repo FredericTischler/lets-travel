@@ -2,6 +2,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 
+import { TranslateService } from '../../shared/i18n/translate.service';
 import { environment } from '../../../environments/environment';
 import { ManagerDashboard } from '../stats/stats.service';
 import { ManagerDashboardComponent } from './manager-dashboard.component';
@@ -152,5 +153,23 @@ describe('ManagerDashboardComponent', () => {
     fixture.detectChanges();
 
     expect(el().querySelector('[role="alert"]')!.textContent).toContain('forbidden');
+  });
+
+  it('displays the screen in English when the locale is switched', () => {
+    const translate = TestBed.inject(TranslateService);
+    try {
+      load();
+      translate.setLocale('en');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/[\s\u00a0\u202f]+/g, ' ');
+      expect(text).toContain("Organiser's dashboard");
+      expect(text).toContain('Income period');
+      expect(text).toContain('Last 6 months');
+      expect(text).toContain('2 completed · 1 ongoing · 2 upcoming');
+      expect(text).toContain('Latest reviews');
+    } finally {
+      translate.setLocale('fr');
+    }
   });
 });

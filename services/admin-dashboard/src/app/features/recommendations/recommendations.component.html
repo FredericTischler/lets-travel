@@ -1,12 +1,11 @@
-<app-card title="Suggestions pour vous">
+<app-card [title]="'Suggestions pour vous' | translate">
   @if (loading()) {
-    <app-loading label="Chargement de vos suggestions…" />
+    <app-loading [label]="'Chargement de vos suggestions…' | translate" />
   } @else if (error()) {
-    <app-alert variant="error">{{ error() }}</app-alert>
+    <app-alert variant="error">{{ error() | translate }}</app-alert>
   } @else {
     <p class="mb-3 text-sm text-ink-dim">
-      Classées selon votre historique (voyages effectués et notes données). Le score est la somme des
-      points indiqués dans « Pourquoi ? ».
+      {{ 'Classées selon votre historique (voyages effectués et notes données). Le score est la somme des points indiqués dans « Pourquoi ? ».' | translate }}
     </p>
     <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="recommendation-list">
       @for (item of items(); track item.destinationId) {
@@ -26,14 +25,14 @@
               {{ item.country }} · {{ item.startDate }} → {{ item.endDate }}
             </p>
             <p class="text-sm text-ink-dim">
-              {{ item.price === null ? 'Prix non renseigné' : (item.price | number: '1.2-2') + ' €' }}
+              {{ item.price === null ? ('Prix non renseigné' | translate) : (item.price | number: '1.2-2') + ' €' }}
               <span class="text-ink-dim" data-testid="score"
-                >· score {{ formatScore(item.score) }}</span
+                >{{ '· score {{score}}' | translate: { score: formatScore(item.score) } }}</span
               >
             </p>
             <details class="mt-auto text-sm" data-testid="reasons">
               <summary class="cursor-pointer text-teal hover:underline">
-                Pourquoi ?
+                {{ 'Pourquoi ?' | translate }}
               </summary>
               <ul class="mt-2 list-inside list-disc text-ink">
                 @for (reason of item.reasons; track $index) {
@@ -45,7 +44,7 @@
         </li>
       } @empty {
         <li class="col-span-full text-sm text-ink-dim" data-testid="recommendation-empty">
-          Aucune suggestion pour le moment : tous les voyages à venir sont déjà réservés ou complets.
+          {{ 'Aucune suggestion pour le moment : tous les voyages à venir sont déjà réservés ou complets.' | translate }}
         </li>
       }
     </ul>

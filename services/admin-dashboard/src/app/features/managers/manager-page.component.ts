@@ -6,6 +6,7 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { formatRating } from '../../shared/format';
 import { extractErrorMessage } from '../../shared/http-error';
+import { TranslatePipe } from '../../shared/i18n/translate.pipe';
 import { AlertComponent } from '../../shared/ui/alert/alert.component';
 import { ButtonComponent } from '../../shared/ui/button/button.component';
 import { CardComponent } from '../../shared/ui/card/card.component';
@@ -39,6 +40,7 @@ import { ManagerStats, StatsService } from '../stats/stats.service';
     LoadingComponent,
     RatingComponent,
     StatTileComponent,
+    TranslatePipe,
   ],
   templateUrl: './manager-page.component.html',
 })
