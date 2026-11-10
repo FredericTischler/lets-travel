@@ -73,10 +73,9 @@ separated", "convince me").
 
 ## Process
 
-- Une branche + une PR par feature/phase (le sujet §3 et l'audit l'exigent
-  explicitement ; `services/README.md` liste déjà l'absence de ce workflow
-  comme un écart de la Phase 0 — à corriger dès cette phase). Passer par le
-  skill `/code-review` avant de merger.
+- Une branche par feature/phase, merge `--no-ff` dans `main` (pas de Pull
+  Requests GitHub, choix du projet). Passer par le skill `/code-review` avant
+  de merger.
 - Toute nouvelle décision d'architecture non triviale suit le format de
   `docs/architecture-decisions.md` (Décision / Justification / Ce qui est
   sacrifié / Alternative rejetée) dans `docs/lets-travel-architecture-decisions.md`

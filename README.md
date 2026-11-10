@@ -274,7 +274,7 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   service, jouant `./mvnw test` puis l'analyse SonarQube. Déclenchement par
   **poll SCM** sur `main` (pas de webhook : Jenkins est local, injoignable depuis
   GitHub) — vérifié de bout en bout. Toujours **pas de build d'image ni de
-  déploiement** automatisés, et aucun déclenchement par Pull Request.
+  déploiement** automatisés.
   `ci/jenkins/README.md` et `ci/sonarqube/README.md` sont désormais alignés mais
   restent des notes d'orientation, pas la config (rendue par les rôles Ansible).
 - ~~**SonarQube : absent.**~~ **Corrigé — SonarQube tourne et analyse réellement.**
@@ -303,8 +303,8 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   documentée (génération API + dépôt dans le credential store de Jenkins sous
   l'ID `sonarqube-token`). Les stages Sonar sont **conditionnels** : sans la
   variable `SONAR_HOST_URL`, les pipelines tournent sans analyse au lieu d'échouer.
-- Aucun pipeline de build d'image ni de déploiement ; les tests ne sont pas
-  déclenchés par une PR mais par le poll SCM sur `main`.
+- Aucun pipeline de build d'image ni de déploiement ; les tests sont déclenchés
+  par le poll SCM sur `main`.
 
 ### Sécurité / secrets
 - **Vault non consommé au runtime par les services** : les services ne parlent jamais
@@ -443,11 +443,10 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   Elasticsearch, de dashboard ni de CI/CD côté Kubernetes.
 
 ### Process
-- **Workflow par branche : en place, mais sans plateforme de revue.** Une branche
-  par feature/correctif, intégrée dans `main` par un merge `--no-ff` (le graphe
-  `git log --graph` montre chaque branche). Les revues ont lieu en local (skill
-  `/code-review`) ; il n'y a **pas de Pull Requests GitHub** approuvées par un tiers,
-  ce que le sujet et la grille d'audit demandent.
+- **Workflow par branche** : une branche par feature/correctif, intégrée dans `main`
+  par un merge `--no-ff` (le graphe `git log --graph` montre chaque branche). Les
+  revues ont lieu en local (skill `/code-review`). Choix assumé : pas de Pull Requests
+  GitHub.
 - **Tests** : intégration Testcontainers côté backend, Vitest (unitaires) et
   Playwright (e2e) côté front — voir « Tests existants ». Pas de test de charge
   (la cible « < 5 s sous forte charge » de la grille n'est pas mesurée) ni de test de
