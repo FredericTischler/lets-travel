@@ -1929,8 +1929,8 @@ Jenkins peut lire le `.env` de la stack (donc les secrets applicatifs) et
 piloter le démon : déjà root-équivalent via le socket, mais la surface s'élargit.
 Pas de registry : les images ne vivent que sur l'hôte. Rollback limité à une
 version (`:previous`). Pas de job `admin-dashboard`. Vérifié à la main sur identity-service
-seulement (pas via un build Jenkins ; payment/travel exigent que le compose racine
-les inclue). Le compose racine interpole aussi Vault : le stage exporte un
+et payment-service (pas via un build Jenkins ; travel-service est inclus dans le
+compose racine mais non testé). Le compose racine interpole aussi Vault : le stage exporte un
 `VAULT_DEV_ROOT_TOKEN_ID` factice (`--no-deps` laisse Vault intact) plutôt que
 de confier le root token à Jenkins.
 
@@ -1953,7 +1953,7 @@ Jenkins : alourdit le contrôleur (ansible + inventaire) pour un simple `up`.
 | Refonte du shell Angular (nav data-driven) | Seul composant partagé existant touché par cette phase |
 | Paiement d'abonnement best-effort (pas de transaction distribuée) | Fenêtre d'incohérence transitoire possible, réconciliée comme le reste du repo |
 | Avis modifiables/modérables en soft-delete (§13) | Un avis retiré ne peut pas être reposté ; anti-doublon TRANSPORT non atomique |
-| CI/CD build+deploy opt-in, CLI hôte monté, Jenkins lit le `.env` (§14) | Pas de registry, rollback d'une version, vérifié seulement sur identity-service |
+| CI/CD build+deploy opt-in, CLI hôte monté, Jenkins lit le `.env` (§14) | Pas de registry, rollback d'une version, vérifié seulement sur identity et payment |
 | i18n FR/EN maison (clé = texte français), tous les écrans traduits (§11) | Nombres/dates/devises restent en `fr-FR` (`shared/format.ts`) ; raisons des suggestions et messages d'erreur de l'API restent ceux du backend |
 
 ## Points ouverts
