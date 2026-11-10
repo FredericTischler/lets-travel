@@ -60,7 +60,7 @@ Les 3 `Jenkinsfile` ont en plus des stages **Build image** et **Deploy**
 (`docker build` taggé `0.1.0` + sha court, puis `compose up --force-recreate`
 du seul service, attente `healthy`, rollback vers `:previous` sinon). Ils sont
 **opt-in** (`jenkins_deploy_enabled`, ADR §14) et sautés sans les montages
-correspondants ; vérifiés à la main sur `identity-service` (conteneur Jenkins → build →
+correspondants ; vérifiés à la main sur `identity-service` et `payment-service` (conteneur Jenkins → build →
 recreate → `healthy`), pas encore via un build Jenkins complet.
 
 ~~Aucune intégration Stripe ni PayPal~~ — **corrigé** : `payment-service` intègre

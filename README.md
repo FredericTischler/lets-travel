@@ -276,12 +276,11 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   GitHub) — vérifié de bout en bout. Les `Jenkinsfile` des 3 services ont
   aussi des stages **Build image** et **Deploy** (rollback auto vers l'image
   précédente si le healthcheck échoue), **opt-in** via
-  `jenkins_deploy_enabled` (ADR §14) : **vérifiés à la main sur `identity-service`**
-  (build puis recreate des replicas jusqu'à `healthy`, depuis le conteneur
-  Jenkins), pas via un build Jenkins complet ni pour payment/travel : le
-  `docker-compose.yml` rendu actuellement n'inclut que identity et
-  admin-dashboard (flags `assembly_*`). Pas de registry, pas de job
-  `admin-dashboard`.
+  `jenkins_deploy_enabled` (ADR §14) : **vérifiés à la main sur `identity-service` et
+  `payment-service`** (build puis recreate des replicas jusqu'à `healthy`,
+  depuis le conteneur Jenkins), pas via un build Jenkins complet, ni pour
+  `travel-service` (pourtant inclus dans le compose racine, flags `assembly_*`).
+  Pas de registry, pas de job `admin-dashboard`.
   `ci/jenkins/README.md` et `ci/sonarqube/README.md` sont désormais alignés mais
   restent des notes d'orientation, pas la config (rendue par les rôles Ansible).
 - ~~**SonarQube : absent.**~~ **Corrigé — SonarQube tourne et analyse réellement.**
@@ -310,7 +309,7 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   documentée (génération API + dépôt dans le credential store de Jenkins sous
   l'ID `sonarqube-token`). Les stages Sonar sont **conditionnels** : sans la
   variable `SONAR_HOST_URL`, les pipelines tournent sans analyse au lieu d'échouer.
-- Build d'image + déploiement : vérifiés à la main sur identity-service seulement
+- Build d'image + déploiement : vérifiés à la main sur identity et payment seulement
   (voir ci-dessus) ; pas de registry, pas de job `admin-dashboard`. Les tests
   sont déclenchés par le poll SCM sur `main`.
 
