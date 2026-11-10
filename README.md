@@ -273,8 +273,15 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   provisionne un contrôleur (profil Compose `ci`) et 3 jobs Pipeline, un par
   service, jouant `./mvnw test` puis l'analyse SonarQube. Déclenchement par
   **poll SCM** sur `main` (pas de webhook : Jenkins est local, injoignable depuis
-  GitHub) — vérifié de bout en bout. Toujours **pas de build d'image ni de
-  déploiement** automatisés.
+  GitHub) — vérifié de bout en bout. Les `Jenkinsfile` des 3 services ont
+  aussi des stages **Build image** et **Deploy** (rollback auto vers l'image
+  précédente si le healthcheck échoue), **opt-in** via
+  `jenkins_deploy_enabled` (ADR §14) : **vérifiés à la main sur `identity-service`**
+  (build puis recreate des replicas jusqu'à `healthy`, depuis le conteneur
+  Jenkins), pas via un build Jenkins complet ni pour payment/travel : le
+  `docker-compose.yml` rendu actuellement n'inclut que identity et
+  admin-dashboard (flags `assembly_*`). Pas de registry, pas de job
+  `admin-dashboard`.
   `ci/jenkins/README.md` et `ci/sonarqube/README.md` sont désormais alignés mais
   restent des notes d'orientation, pas la config (rendue par les rôles Ansible).
 - ~~**SonarQube : absent.**~~ **Corrigé — SonarQube tourne et analyse réellement.**
@@ -303,8 +310,9 @@ attendent et qui est **absent ou partiel** dans le dépôt aujourd'hui.
   documentée (génération API + dépôt dans le credential store de Jenkins sous
   l'ID `sonarqube-token`). Les stages Sonar sont **conditionnels** : sans la
   variable `SONAR_HOST_URL`, les pipelines tournent sans analyse au lieu d'échouer.
-- Aucun pipeline de build d'image ni de déploiement ; les tests sont déclenchés
-  par le poll SCM sur `main`.
+- Build d'image + déploiement : vérifiés à la main sur identity-service seulement
+  (voir ci-dessus) ; pas de registry, pas de job `admin-dashboard`. Les tests
+  sont déclenchés par le poll SCM sur `main`.
 
 ### Sécurité / secrets
 - **Vault non consommé au runtime par les services** : les services ne parlent jamais

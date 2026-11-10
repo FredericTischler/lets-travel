@@ -56,6 +56,12 @@ déclenche les 3 builds sans action manuelle (`numExecutors: 1` côté contrôle
 Jenkins pour éviter les 3 builds simultanés). `ci/jenkins/README.md` et
 `ci/sonarqube/README.md` restaient des placeholders Phase 0 décrivant un
 déclenchement par PR qui n'existe pas — corrigés eux aussi.
+Les 3 `Jenkinsfile` ont en plus des stages **Build image** et **Deploy**
+(`docker build` taggé `0.1.0` + sha court, puis `compose up --force-recreate`
+du seul service, attente `healthy`, rollback vers `:previous` sinon). Ils sont
+**opt-in** (`jenkins_deploy_enabled`, ADR §14) et sautés sans les montages
+correspondants ; vérifiés à la main sur `identity-service` (conteneur Jenkins → build →
+recreate → `healthy`), pas encore via un build Jenkins complet.
 
 ~~Aucune intégration Stripe ni PayPal~~ — **corrigé** : `payment-service` intègre
 Stripe (PaymentIntent + webhook) et PayPal (Order + capture) ; voir son README pour

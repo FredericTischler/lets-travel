@@ -22,7 +22,8 @@
 #     (<triggers/> vide dans CHACUN des 3 config.xml, asserte par Molecule).
 #     UNE SEULE derogation, OPT-IN et explicite : `jenkins_scm_poll_enabled`
 #     (poll SCM, cf. bloc dedie plus bas). Elle n'est jamais active par defaut.
-#   - PAS de build/push d'image Docker depuis Jenkins.
+#   - Build d'image + deploiement : OPT-IN (`jenkins_deploy_enabled`, plus bas).
+#     Aucun push vers un registre distant.
 #   - PAS d'agent Jenkins distinct : les builds tournent sur le controleur
 #     (cf. jenkins_mem_limit ci-dessous pour la consequence RAM).
 #   - PAS de job "chapeau" qui enchainerait les 3 : 3 jobs independants, chacun
@@ -113,6 +114,27 @@ jenkins_docker_socket: "/var/run/docker.sock"
 # A surcharger explicitement quand le controleur Ansible n'est pas l'hote Docker
 # cible, ou en Molecule (ou le groupe docker n'existe pas dans la plateforme).
 jenkins_docker_gid: ""
+
+# --- Build d'image + deploiement depuis les pipelines (OPT-IN) ---------------
+# Quand `jenkins_deploy_enabled=true`, le conteneur Jenkins recoit :
+#   - le binaire `docker` et le plugin `docker compose` de l'HOTE, en lecture
+#     seule (l'image jenkins/jenkins n'embarque pas de client Docker ; verifie :
+#     ces binaires tournent tels quels dans l'image) ;
+#   - le repertoire de rendu Compose de la stack (`jenkins_deploy_compose_dir`,
+#     docker-compose.yml + .env) ET le checkout du depot, montes au MEME chemin
+#     absolu que sur l'hote, en lecture seule : le docker-compose.yml top-level
+#     inclut les fragments des services par chemin absolu, et le demon (hote)
+#     resout les chemins de bind mounts cote hote.
+# Les Jenkinsfile testent `fileExists(docker-compose.yml)` : sans ce montage, les
+# stages "Build image" / "Deploy" sont SAUTES (meme logique que SonarQube), les
+# pipelines restent donc des pipelines de test.
+# Cout assume : Jenkins lit le .env de la stack (secrets runtime). Il avait deja
+# un acces quasi-root au demon via le socket (cf. plus haut) : pas de nouvelle
+# frontiere franchie, mais a reevaluer pour une vraie prod.
+jenkins_deploy_enabled: false
+jenkins_deploy_docker_cli: "/usr/bin/docker"
+jenkins_deploy_compose_plugin: "/usr/libexec/docker/cli-plugins/docker-compose"
+jenkins_deploy_compose_dir: "/opt/travel-plan"
 
 # --- Testcontainers : reseau depuis un conteneur vers ses conteneurs freres --
 # Le job tourne DANS le conteneur Jenkins mais cree ses conteneurs de test sur
